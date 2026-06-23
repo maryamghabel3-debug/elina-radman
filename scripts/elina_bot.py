@@ -1,475 +1,425 @@
 #!/usr/bin/env python3
 """
-╔══════════════════════════════════════════════════════════╗
-║  ELINA OS — Telegram Management Bot                    ║
-║  Full agent control + GitHub management + Chat         ║
-║  Cost: $0/month                                        ║
-╚══════════════════════════════════════════════════════════╝
-
-COMMANDS:
-  /status     — System overview
-  /content    — Generate new content
-  /publish    — Publish approved content
-  /list       — List queued content
-  /approve ID — Approve & publish content
-  /reject ID  — Reject content
-  /trends     — Latest fashion trends
-  /agents     — List all agents
-  /agent NAME — Agent details
-  /addagent   — Add a new agent
-  /delagent   — Remove an agent
-  /github     — GitHub repo status
-  /ghfile PATH — View a file from repo
-  /ghedit PATH TEXT — Edit a file in repo
-  /help       — Show all commands
+ElinaOS Telegram Bot — Full Chat + Agent Management
+Runs every 5 min via GitHub Actions — $0/month
 """
-import os, sys, json, time, glob
+import os, sys, json, time, glob, requests
 from datetime import datetime, timedelta
-import requests
 
-# ═══ CONFIG ═══
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN","")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID","")
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY","")
 BUFFER_KEY = os.environ.get("BUFFER_API_TOKEN","")
 GH_PAT = os.environ.get("GH_PAT","")
-GH_OWNER = os.environ.get("REPO_OWNER","")
-GH_REPO = os.environ.get("REPO_NAME","elina-radman")
+REPO_OWNER = os.environ.get("REPO_OWNER","")
+REPO_NAME = os.environ.get("REPO_NAME","elina-radman")
 
 BASE = f"https://api.telegram.org/bot{TOKEN}"
-GH_API = "https://api.github.com"
+
+# ═══ BRAND CONTEXT ═══
+BRAND_FA = """الینا رادمان | اینفلوئنسر فشن | Petite Quiet Luxury
+قد: ۱۵۰cm | ۴۳kg | استایل: مینیمال، کمد کپسولی، رنگ‌های خنثی
+مخاطب: خانم‌های ۱۸-۳۵ ساله با قد زیر ۱۶۰cm
+پلتفرم‌ها: اینستاگرام، تیک‌تاک، یوتیوب، پینترست
+هشتگ: #StyledByElina"""
 
 # ═══ HELPERS ═══
-def send(msg, parse="Markdown"):
-    requests.post(f"{BASE}/sendMessage",
-        json={"chat_id":CHAT_ID,"text":msg,"parse_mode":parse},timeout=10)
+def tg(method, data=None):
+    try:
+        r = requests.post(f"{BASE}/{method}", json=data or {}, timeout=15)
+        return r.json()
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
-def reply(chat_id, msg, parse="Markdown"):
-    requests.post(f"{BASE}/sendMessage",
-        json={"chat_id":chat_id,"text":msg,"parse_mode":parse},timeout=10)
+def send(chat, text, parse="Markdown", reply_to=None):
+    d = {"chat_id": chat, "text": text, "parse_mode": parse}
+    if reply_to: d["reply_to_message_id"] = reply_to
+    return tg("sendMessage", d)
+
+def reply(chat, text, msg_id=None): 
+    return send(chat, text, reply_to=msg_id)
+
+def ai_chat(text):
+    """Use Gemini to chat intelligently"""
+    if not GEMINI_KEY:
+        return None
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=GEMINI_KEY)
+        m = genai.GenerativeModel("gemini-2.5-flash")
+        p = f"""You are ElinaOS, AI assistant for Elina Radman.
+{BRAND_FA}
+Current user message: {text}
+Reply in Persian (Farsi). Be warm, helpful, concise (under 300 chars).
+You can help with: content ideas, fashion tips, agent management, system status."""
+        r = m.generate_content(p)
+        return r.text.strip()[:1000]
+    except:
+        return None
 
 # ═══ COMMAND HANDLERS ═══
 
-def cmd_status(chat_id, args):
-    """System status overview"""
-    # Count content
+def cmd_start(chat, args, msg_id, lang="fa"):
+    text = """🕊️ *به ElinaOS خوش اومدی!*
+
+من دستیار هوشمند الینا رادمان هستم.
+
+📊 */status* — وضعیت سیستم
+🎨 */content* — ساخت پست جدید
+📋 */list* — صف محتوا
+🔥 */trends* — ترندهای فشن
+🤖 */agents* — ایجنت‌ها
+🐙 */github* — گیت‌هاب
+💬 *هر پیامی* — باهات حرف می‌زنم
+
+کافیه /status رو بزنی ✨"""
+    reply(chat, text, msg_id)
+
+def cmd_status(chat, args, msg_id, lang="fa"):
     q = len(glob.glob("content/queue/*.json"))
-    # Count agents
-    agent_files = glob.glob("agents/*.py")
-    agents = [f.split("/")[-1].replace(".py","") for f in agent_files 
-              if not f.endswith("__init__.py") and not f.endswith("base.py")]
+    pub = len(glob.glob("content/published/*.json")) if os.path.exists("content/published") else 0
+    af = glob.glob("agents/*.py")
+    agents = [f.split("/")[-1].replace(".py","") for f in af if not f.endswith("__init__.py") and not f.endswith("base.py")]
     
-    msg = f"""🕊️ *ELINA OS STATUS*
+    text = f"""🕊️ *وضعیت سیستم*
 
-📊 *Content*
-• Queue: {q} files
-• Status: {'🟢 Active' if q > 0 else '🟡 Empty'}
+📊 *محتوا*
+• در صف: {q} فایل
+• منتشر شده: {pub} فایل
 
-🤖 *Agents* ({len(agents)})
+🤖 *ایجنت‌ها* ({len(agents)})
 {chr(10).join(f'• {a}' for a in agents)}
 
-🔗 *Connections*
+🔗 *اتصالات*
 • Gemini: {'✅' if GEMINI_KEY else '❌'}
 • Buffer: {'✅' if BUFFER_KEY else '❌'}
 • GitHub: {'✅' if GH_PAT else '❌'}
 
-🕐 {datetime.now().strftime('%Y-%m-%d %H:%M')} Tehran
-"""
-    reply(chat_id, msg)
+🕐 {datetime.now().strftime('%H:%M')}"""
+    reply(chat, text, msg_id)
 
-def cmd_content(chat_id, args):
-    """Generate new content"""
-    reply(chat_id, "🎨 *Generating content...*\nPlease wait ~10 seconds")
-    
+def cmd_content(chat, args, msg_id, lang="fa"):
+    reply(chat, "🎨 *در حال ساخت محتوا...*\nلطفاً ۱۰ ثانیه صبر کن ⏳", msg_id)
     try:
         from agents.content_creator import ContentCreator
         cc = ContentCreator()
         pieces = cc.run(count=3)
-        
-        msg = f"✅ *{len(pieces)} pieces created!*\n\n"
+        text = f"✅ *{len(pieces)} محتوا ساخته شد!*\n\n"
         for p in pieces:
-            msg += f"🆔 `{p['id']}`\n"
-            msg += f"🏷 {p['pillar']}\n"
-            msg += f"📝 {p['caption'][:100]}...\n\n"
-        msg += "Approve with: `/approve ID`"
-        reply(chat_id, msg)
+            text += f"🆔 `{p['id']}`\n🏷 {p['pillar']}\n📝 {p['caption'][:100]}...\n\n"
+        text += "برای تأیید: `/approve شناسه`"
+        send(chat, text)
     except Exception as e:
-        reply(chat_id, f"❌ Error: {e}")
+        send(chat, f"❌ خطا: {str(e)[:200]}")
 
-def cmd_publish(chat_id, args):
-    """Publish approved content"""
-    reply(chat_id, "📤 *Publishing...*")
-    try:
-        from agents.publisher import Publisher
-        p = Publisher()
-        result = p.run()
-        if "error" in result:
-            reply(chat_id, f"❌ {result['error']}")
-        else:
-            n = len(result.get("published",[]))
-            reply(chat_id, f"✅ Published {n} items!")
-    except Exception as e:
-        reply(chat_id, f"❌ {e}")
-
-def cmd_list(chat_id, args):
-    """List queued content"""
+def cmd_list(chat, args, msg_id, lang="fa"):
     files = sorted(glob.glob("content/queue/*.json"))
     if not files:
-        reply(chat_id, "📭 Queue is empty. Use /content to generate.")
+        reply(chat, "📭 صف خالیه. /content بزن.", msg_id)
         return
-    
-    msg = "📋 *Content Queue*\n\n"
+    text = "📋 *صف محتوا*\n\n"
     for fp in files[-5:]:
         with open(fp) as f:
             pieces = json.load(f)
         for p in pieces:
-            icon = {"pending_approval":"⏳","approved":"✅","rejected":"❌","published":"📤"}
-            s = icon.get(p.get("status",""),"❓")
-            msg += f"{s} `{p['id']}` — {p['pillar']}\n"
-            msg += f"   {p['caption'][:80]}...\n\n"
-    
-    reply(chat_id, msg)
+            s = {"pending_approval":"⏳","approved":"✅","rejected":"❌","published":"📤"}
+            icon = s.get(p.get("status",""),"❓")
+            text += f"{icon} `{p['id']}` — {p['pillar']}\n{p['caption'][:80]}...\n\n"
+    reply(chat, text, msg_id)
 
-def cmd_approve(chat_id, args):
-    """Approve content by ID"""
+def cmd_approve(chat, args, msg_id, lang="fa"):
     if not args:
-        reply(chat_id, "Usage: `/approve CONTENT_ID`")
+        reply(chat, "کاربرد: `/approve شناسه_محتوا`\nمثال: `/approve elina-20260623-peti`", msg_id)
         return
-    
     cid = args[0]
     found = False
     for fp in sorted(glob.glob("content/queue/*.json")):
-        with open(fp) as f:
-            pieces = json.load(f)
+        with open(fp) as f: pieces = json.load(f)
         for p in pieces:
             if p.get("id") == cid:
                 p["status"] = "approved"
                 p["approved_at"] = datetime.now().isoformat()
                 found = True
-        with open(fp,"w") as f:
-            json.dump(pieces, f, indent=2)
+        with open(fp,"w") as f: json.dump(pieces, f, indent=2)
         if found: break
     
     if found:
-        reply(chat_id, f"✅ Approved: `{cid}`\nPublishing now...")
-        cmd_publish(chat_id, [])
+        reply(chat, f"✅ *تأیید شد!*\n`{cid}`\n\nدر حال انتشار...", msg_id)
+        # Publish immediately
+        try:
+            from agents.publisher import Publisher
+            pub = Publisher()
+            pub.run()
+            send(chat, "📤 انتشار انجام شد!")
+        except Exception as e:
+            send(chat, f"⚠️ انتشار ناموفق: {str(e)[:100]}")
     else:
-        reply(chat_id, f"❌ Content `{cid}` not found")
+        reply(chat, f"❌ محتوای `{cid}` پیدا نشد.", msg_id)
 
-def cmd_reject(chat_id, args):
-    """Reject content"""
+def cmd_reject(chat, args, msg_id, lang="fa"):
     if not args:
-        reply(chat_id, "Usage: `/reject CONTENT_ID`")
+        reply(chat, "کاربرد: `/reject شناسه_محتوا`", msg_id)
         return
     cid = args[0]
     for fp in sorted(glob.glob("content/queue/*.json")):
-        with open(fp) as f:
-            pieces = json.load(f)
+        with open(fp) as f: pieces = json.load(f)
         for p in pieces:
-            if p.get("id") == cid:
-                p["status"] = "rejected"
-        with open(fp,"w") as f:
-            json.dump(pieces, f, indent=2)
-    reply(chat_id, f"❌ Rejected: `{cid}`")
+            if p.get("id") == cid: p["status"] = "rejected"
+        with open(fp,"w") as f: json.dump(pieces, f, indent=2)
+    reply(chat, f"❌ رد شد: `{cid}`", msg_id)
 
-def cmd_trends(chat_id, args):
-    """Show latest trends"""
+def cmd_trends(chat, args, msg_id, lang="fa"):
     try:
         from agents.trend_hunter import TrendHunter
         th = TrendHunter()
         trends = th.run()
-        msg = "🔥 *Latest Trends*\n\n"
+        text = "🔥 *ترندهای جدید فشن*\n\n"
         for t in trends[:5]:
-            msg += f"• *{t['name']}*\n"
-            msg += f"  {t['platform']} | {t['format']} | effort: {t['effort']}\n\n"
-        reply(chat_id, msg)
+            text += f"• *{t['name']}*\n  {t['platform']} | {t['format']} | زحمت: {t['effort']}\n\n"
+        reply(chat, text, msg_id)
     except Exception as e:
-        reply(chat_id, f"❌ {e}")
+        reply(chat, f"❌ {e}", msg_id)
 
-def cmd_agents(chat_id, args):
-    """List all agents"""
-    files = sorted(glob.glob("agents/*.py"))
-    agents = [f.split("/")[-1].replace(".py","") for f in files
-              if not f.endswith("__init__.py") and not f.endswith("base.py")]
-    
-    msg = f"🤖 *Agent Roster* ({len(agents)})\n\n"
+def cmd_agents(chat, args, msg_id, lang="fa"):
+    af = sorted(glob.glob("agents/*.py"))
+    agents = [f.split("/")[-1].replace(".py","") for f in af if not f.endswith("__init__.py") and not f.endswith("base.py")]
+    text = f"🤖 *ایجنت‌ها* ({len(agents)})\n\n"
     for a in agents:
-        msg += f"• *{a}* — `/agent {a}` for details\n"
-    msg += "\n➕ `/addagent` | ➖ `/delagent NAME`"
-    reply(chat_id, msg)
+        text += f"• *{a}* — `/agent {a}` جزئیات\n"
+    text += "\n➕ `/addagent` | ➖ `/delagent نام`"
+    reply(chat, text, msg_id)
 
-def cmd_agent(chat_id, args):
-    """Agent details"""
+def cmd_agent(chat, args, msg_id, lang="fa"):
     if not args:
-        reply(chat_id, "Usage: `/agent AGENT_NAME`")
+        reply(chat, "کاربرد: `/agent نام_ایجنت`\nمثال: `/agent trend_hunter`", msg_id)
         return
     name = args[0]
     fp = f"agents/{name}.py"
     if not os.path.exists(fp):
-        reply(chat_id, f"❌ Agent `{name}` not found")
+        reply(chat, f"❌ ایجنت `{name}` پیدا نشد.", msg_id)
         return
     with open(fp) as f:
         content = f.read()
     # Extract docstring
-    lines = content.split("\n")
-    doc = ""
     in_doc = False
-    for l in lines:
+    doc = ""
+    for l in content.split("\n"):
         if '"""' in l:
             if in_doc: break
-            in_doc = True
-            continue
-        if in_doc:
-            doc += l + "\n"
-    
-    size = len(content)
-    reply(chat_id, f"🤖 *Agent: {name}*\n\n{doc}\n📏 {size} bytes\n📁 `{fp}`")
+            in_doc = True; continue
+        if in_doc: doc += l + "\n"
+    reply(chat, f"🤖 *{name}*\n\n{doc}\n📏 {len(content)} بایت", msg_id)
 
-def cmd_addagent(chat_id, args):
-    """Add a new agent via GitHub"""
+def cmd_addagent(chat, args, msg_id, lang="fa"):
     if not GH_PAT:
-        reply(chat_id, "❌ GitHub PAT not configured. Set GH_PAT secret.")
+        reply(chat, "❌ GitHub PAT تنظیم نشده.", msg_id)
         return
-    reply(chat_id, "➕ *Add Agent*\n\nSend in format:\n`/addagent_done NAME | DESCRIPTION | CODE`\n\nExample:\n`/addagent_done engagement | replies to comments | pass`")
+    reply(chat, """➕ *افزودن ایجنت جدید*
 
-def cmd_addagent_done(chat_id, args):
-    """Process add agent request"""
+فرمت:
+`/addagent_done نام ایجنت | توضیحات | کد`
+
+مثال:
+`/addagent_done engagement | پاسخ به کامنت‌ها | pass`
+
+⚠️ بعد از افزودن، گیت‌هاب redeploy می‌کنه.""", msg_id)
+
+def cmd_addagent_done(chat, args, msg_id, lang="fa"):
     if not args:
-        reply(chat_id, "Send: `/addagent_done NAME | DESC | CODE`")
+        reply(chat, "فرمت: `/addagent_done نام | توضیحات | کد`", msg_id)
         return
     text = " ".join(args)
     parts = text.split("|",2)
     if len(parts) < 2:
-        reply(chat_id, "Format: `/addagent_done NAME | DESCRIPTION | CODE`")
+        reply(chat, "❌ فرمت اشتباه. نیاز: نام | توضیحات | کد", msg_id)
         return
     name = parts[0].strip()
     desc = parts[1].strip() if len(parts) > 1 else ""
     code = parts[2].strip() if len(parts) > 2 else "pass"
-    
     try:
         from agents.github_manager import GitHubManager
         gm = GitHubManager()
         result = gm.add_agent(name, desc, code)
         if "error" in result:
-            reply(chat_id, f"❌ {result}")
+            reply(chat, f"❌ {result}", msg_id)
         else:
-            reply(chat_id, f"✅ Agent *{name}* added!\n📁 `{result['path']}`\n\nRedeploy to activate.")
+            reply(chat, f"✅ ایجنت *{name}* اضافه شد!\n📍 `{result['path']}`", msg_id)
     except Exception as e:
-        reply(chat_id, f"❌ {e}")
+        reply(chat, f"❌ {e}", msg_id)
 
-def cmd_delagent(chat_id, args):
-    """Delete an agent"""
+def cmd_delagent(chat, args, msg_id, lang="fa"):
     if not args:
-        reply(chat_id, "Usage: `/delagent AGENT_NAME`\nProtected: base, __init__, github_manager")
+        reply(chat, "کاربرد: `/delagent نام_ایجنت`\n⚠️ ایجنت‌های base، github_manager و __init__ محافظت شده‌اند.", msg_id)
         return
     name = args[0]
     if name in ["base","__init__","github_manager"]:
-        reply(chat_id, f"🔒 Agent `{name}` is protected")
+        reply(chat, f"🔒 ایجنت `{name}` محافظت شده و قابل حذف نیست.", msg_id)
         return
-    
     try:
         from agents.github_manager import GitHubManager
         gm = GitHubManager()
         result = gm.remove_agent(name)
         if "error" in result:
-            reply(chat_id, f"❌ {result}")
+            reply(chat, f"❌ {result}", msg_id)
         else:
-            reply(chat_id, f"➖ Agent *{name}* removed!")
+            reply(chat, f"➖ ایجنت *{name}* حذف شد!", msg_id)
     except Exception as e:
-        reply(chat_id, f"❌ {e}")
+        reply(chat, f"❌ {e}", msg_id)
 
-def cmd_github(chat_id, args):
-    """GitHub repo status"""
+def cmd_github(chat, args, msg_id, lang="fa"):
     if not GH_PAT:
-        reply(chat_id, "❌ No GH_PAT. Set it in GitHub Secrets.")
+        reply(chat, "❌ GitHub PAT تنظیم نشده.", msg_id)
         return
     try:
         from agents.github_manager import GitHubManager
         gm = GitHubManager()
         status = gm.repo_status()
         agents_list = gm.list_agents()
-        
-        msg = f"🐙 *GitHub Repo*\n\n"
-        msg += f"📦 {status.get('name','?')}\n"
-        msg += f"⭐ {status.get('stars','?')} stars\n"
-        msg += f"🕐 Updated: {status.get('updated','?')[:10]}\n"
-        msg += f"🤖 Agents: {agents_list.get('count','?')}\n"
-        msg += f"🔗 {status.get('url','')}"
-        reply(chat_id, msg)
+        text = f"🐙 *گیت‌هاب*\n\n📦 {status.get('name','?')}\n⭐ {status.get('stars','?')} ستاره\n🕐 {status.get('updated','?')[:10]}\n🤖 {agents_list.get('count','?')} ایجنت"
+        reply(chat, text, msg_id)
     except Exception as e:
-        reply(chat_id, f"❌ {e}")
+        reply(chat, f"❌ {e}", msg_id)
 
-def cmd_ghfile(chat_id, args):
-    """View a file from GitHub repo"""
+def cmd_ghfile(chat, args, msg_id, lang="fa"):
     if not args:
-        reply(chat_id, "Usage: `/ghfile PATH`\nExample: `/ghfile agents/publisher.py`")
+        reply(chat, "کاربرد: `/ghfile مسیر_فایل`\nمثال: `/ghfile agents/publisher.py`", msg_id)
         return
     try:
         from agents.github_manager import GitHubManager
         gm = GitHubManager()
         result = gm.get_file(args[0])
         if "error" in result:
-            reply(chat_id, f"❌ Error {result['error']}")
+            reply(chat, f"❌ {result}", msg_id)
         else:
-            content = result['content'][:3500]
-            reply(chat_id, f"📄 *{args[0]}*\n\n```python\n{content}\n```")
+            reply(chat, f"📄 *{args[0]}*\n\n```python\n{result['content'][:3000]}\n```", msg_id)
     except Exception as e:
-        reply(chat_id, f"❌ {e}")
+        reply(chat, f"❌ {e}", msg_id)
 
-def cmd_ghedit(chat_id, args):
-    """Edit a file on GitHub — needs full new content"""
+def cmd_ghedit(chat, args, msg_id, lang="fa"):
     if not args or len(args) < 2:
-        reply(chat_id, "Usage: `/ghedit PATH | NEW_CONTENT`\nOr send file content after the path.")
+        reply(chat, "کاربرد: `/ghedit مسیر_فایل | کد_جدید`\nفایل رو از گیت‌هاب می‌خونه، ویرایش می‌کنه و push می‌کنه.", msg_id)
         return
-    text = " ".join(args)
-    parts = text.split("|",1)
+    txt = " ".join(args)
+    parts = txt.split("|",1)
     if len(parts) < 2:
-        reply(chat_id, "Format: `/ghedit agents/my_agent.py | new python code here...`")
+        reply(chat, "❌ فرمت: `/ghedit مسیر | کد_جدید`", msg_id)
         return
-    path = parts[0].strip()
-    content = parts[1].strip()
     try:
         from agents.github_manager import GitHubManager
         gm = GitHubManager()
-        result = gm.update_file(path, content, f"✏️ Edit {path} via Telegram")
+        result = gm.update_file(parts[0].strip(), parts[1].strip())
         if "error" in result:
-            reply(chat_id, f"❌ {result}")
+            reply(chat, f"❌ {result}", msg_id)
         else:
-            reply(chat_id, f"✅ *{path}* updated!")
+            reply(chat, f"✅ *{parts[0].strip()}* آپدیت شد!", msg_id)
     except Exception as e:
-        reply(chat_id, f"❌ {e}")
+        reply(chat, f"❌ {e}", msg_id)
 
-def cmd_help(chat_id, args):
-    msg = """🕊️ *ELINA OS — Commands*
-
-📊 */status* — System overview
-🎨 */content* — Generate new posts
-📤 */publish* — Publish approved
-📋 */list* — Show content queue
-✅ */approve ID* — Approve & post
-❌ */reject ID* — Reject content
-🔥 */trends* — Fashion trends
-
-🤖 */agents* — List all agents
-🔍 */agent NAME* — Agent details
-➕ */addagent* — Add new agent
-➖ */delagent NAME* — Remove agent
-
-🐙 */github* — Repo status
-📄 */ghfile PATH* — View file
-✏️ */ghedit PATH | CODE* — Edit file
-
-Any message ≠ command → I'll chat back! 💬"""
-    reply(chat_id, msg)
-
-# ═══ AI CHAT ═══
-def chat_reply(chat_id, text):
-    """Reply to non-command messages using Gemini"""
-    if not GEMINI_KEY:
-        reply(chat_id, "👋 I'm ElinaOS! Type /help for commands.")
-        return
-    
+def cmd_publish(chat, args, msg_id, lang="fa"):
+    reply(chat, "📤 *در حال انتشار...*", msg_id)
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=GEMINI_KEY)
-        model = genai.GenerativeModel("gemini-2.5-flash")
-        prompt = f"""You are ElinaOS, the AI assistant for Elina Radman (fashion influencer, Petite Quiet Luxury, 4'11", 150cm, 43kg).
-
-Elina's brand info:
-- Niche: Petite Quiet Luxury fashion
-- Audience: women 18-35, petite frames
-- Platforms: Instagram, TikTok, YouTube, Pinterest
-- Style: minimal, neutral colors, capsule wardrobes
-- Tone: warm, sophisticated, relatable
-
-Current user message: {text}
-
-Reply helpfully in the same language as the user. Be warm and supportive.
-Keep it under 500 chars unless asked for more detail."""
-        
-        response = model.generate_content(prompt)
-        reply(chat_id, response.text.strip())
+        from agents.publisher import Publisher
+        p = Publisher()
+        result = p.run()
+        if "error" in result:
+            send(chat, f"❌ {result['error']}")
+        else:
+            n = len(result.get("published",[]))
+            send(chat, f"✅ {n} محتوا منتشر شد!")
     except Exception as e:
-        reply(chat_id, f"💬 *ElinaOS here!*\n\nI can manage your content, agents, and GitHub.\nType /help for commands.\n\n(API chat unavailable: {str(e)[:100]})")
+        send(chat, f"❌ {e}")
 
-# ═══ MAIN POLLING LOOP ═══
+def cmd_help(chat, args, msg_id, lang="fa"):
+    text = """🕊️ *راهنمای ElinaOS*
+
+📊 *محتوا*
+/content — ساخت ۳ پست جدید
+/list — دیدن صف محتوا
+/approve شناسه — تأیید و انتشار
+/reject شناسه — رد کردن
+/publish — انتشار دستی
+
+🔥 *تحلیل*
+/trends — ترندهای فشن
+/status — وضعیت سیستم
+
+🤖 *ایجنت‌ها*
+/agents — لیست همه
+/agent نام — جزئیات
+/addagent — افزودن جدید
+/delagent نام — حذف
+
+🐙 *گیت‌هاب*
+/github — وضعیت ریپو
+/ghfile مسیر — نمایش فایل
+/ghedit مسیر | کد — ویرایش فایل
+
+💬 *چت*
+هر پیامی که / نداشته باشه رو می‌فهمم و جواب می‌دم ✨"""
+    reply(chat, text, msg_id)
+
+# ═══ PROCESS MESSAGES ═══
 COMMANDS = {
-    "status": cmd_status, "content": cmd_content, "publish": cmd_publish,
+    "start": cmd_start, "status": cmd_status, "content": cmd_content,
     "list": cmd_list, "approve": cmd_approve, "reject": cmd_reject,
     "trends": cmd_trends, "agents": cmd_agents, "agent": cmd_agent,
     "addagent": cmd_addagent, "addagent_done": cmd_addagent_done,
     "delagent": cmd_delagent, "github": cmd_github, "ghfile": cmd_ghfile,
-    "ghedit": cmd_ghedit, "help": cmd_help, "start": cmd_help,
+    "ghedit": cmd_ghedit, "publish": cmd_publish, "help": cmd_help,
 }
 
-def process_message(msg):
-    """Process a single Telegram message"""
+def process(msg):
     text = msg.get("text","")
-    chat_id = msg.get("chat",{}).get("id","")
-    username = msg.get("from",{}).get("username","")
+    chat = str(msg.get("chat",{}).get("id",""))
+    msg_id = msg.get("message_id")
+    user = msg.get("from",{}).get("first_name","")
     
-    print(f"📩 [{username}] {text[:80]}")
+    print(f"📩 [{user}] {text[:80]}")
     
     if text.startswith("/"):
-        parts = text[1:].split()
-        cmd = parts[0].split("@")[0]  # Remove @botname if present
-        args = parts[1:] if len(parts) > 1 else []
+        parts = text[1:].replace("@ElinaRA_bot","").split()
+        cmd = parts[0].lower()
+        args = parts[1:]
         
-        handler = COMMANDS.get(cmd)
-        if handler:
-            handler(str(chat_id), args)
+        fn = COMMANDS.get(cmd)
+        if fn:
+            fn(chat, args, msg_id)
         else:
-            reply(chat_id, f"❓ Unknown: /{cmd}\nType /help")
+            reply(chat, f"❓ دستور /{cmd} رو نمی‌شناسم.\n/help رو بزن.", msg_id)
     else:
-        chat_reply(str(chat_id), text)
+        # Chat mode
+        ai = ai_chat(text)
+        if ai:
+            reply(chat, ai, msg_id)
+        else:
+            reply(chat, f"👋 سلام {user} جان!\n\nمن ElinaOS هستم، دستیار الینا رادمان.\n/help رو بزن تا ببینی چیکار می‌تونم برات انجام بدم 🤍", msg_id)
 
 def main():
-    print("🕊️ ELINA OS Bot starting...")
-    print(f"   Token: {'✅' if TOKEN else '❌'}")
-    print(f"   Chat ID: {CHAT_ID}")
-    print(f"   Gemini: {'✅' if GEMINI_KEY else '❌'}")
-    print(f"   Buffer: {'✅' if BUFFER_KEY else '❌'}")
-    print(f"   GitHub PAT: {'✅' if GH_PAT else '❌'}")
-    
     if not TOKEN:
-        print("❌ No TELEGRAM_BOT_TOKEN — cannot start")
+        print("No TELEGRAM_BOT_TOKEN")
         return
     
-    # Check for pending commands (GitHub Actions mode)
-    if os.environ.get("RUN_MODE") == "ACTION":
-        print("📋 Running in GitHub Actions mode — checking for commands...")
-        # Process any pending commands from a queue file
-        cmd_file = "content/queue/pending_commands.json"
-        if os.path.exists(cmd_file):
-            with open(cmd_file) as f:
-                commands = json.load(f)
-            for cmd in commands:
-                print(f"   Running: {cmd}")
-                process_message(cmd.get("message",{}))
-            os.remove(cmd_file)
-        return
-    
-    # Polling mode — runs for 5 minutes (GitHub Actions limit per run)
-    print("📡 Polling for messages...")
+    # Poll for messages
+    offset_file = "content/bot_offset.txt"
     offset = 0
-    start = time.time()
+    if os.path.exists(offset_file):
+        with open(offset_file) as f:
+            offset = int(f.read().strip() or 0)
     
-    while time.time() - start < 300:  # 5 minute window
-        try:
-            url = f"{BASE}/getUpdates?offset={offset}&timeout=30"
-            r = requests.get(url, timeout=35)
-            updates = r.json().get("result",[])
-            
-            for u in updates:
-                offset = u["update_id"] + 1
-                msg = u.get("message")
-                if msg:
-                    process_message(msg)
-        except Exception as e:
-            print(f"Poll error: {e}")
-            time.sleep(5)
+    r = requests.get(f"{BASE}/getUpdates?offset={offset}&timeout=10", timeout=15)
+    updates = r.json().get("result",[])
     
-    print("⏹ Bot session ended (5 min limit)")
+    for u in updates:
+        offset = u["update_id"] + 1
+        msg = u.get("message")
+        if msg:
+            process(msg)
+    
+    # Save offset
+    with open(offset_file,"w") as f:
+        f.write(str(offset))
+    
+    print(f"Processed {len(updates)} messages. Offset: {offset}")
 
 if __name__ == "__main__":
     main()
