@@ -11,8 +11,8 @@ Add these 7 secrets:
 | `TELEGRAM_CHAT_ID` | From @userinfobot on Telegram |
 | `BUFFER_API_TOKEN` | From buffer.com → Settings → API |
 | `GH_PAT` | GitHub → Settings → Developer settings → PAT (classic) → repo+workflow |
-| `GITHUB_REPO_OWNER` | `maryamghabel3-debug` |
-| `GITHUB_REPO_NAME` | `elina-radman` |
+| `REPO_OWNER` | `maryamghabel3-debug` |
+| `REPO_NAME` | `elina-radman` |
 
 Then: **Settings → Actions → General**
 - ✅ Allow all actions

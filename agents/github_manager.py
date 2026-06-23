@@ -10,8 +10,8 @@ import os, json, base64, requests
 class GitHubManager(Agent):
     def __init__(self):
         super().__init__("GitHubManager", "Manages GitHub repo: add/remove/update agents")
-        self.owner = os.environ.get("GITHUB_REPO_OWNER","")
-        self.repo = os.environ.get("GITHUB_REPO_NAME","elina-radman")
+        self.owner = os.environ.get("REPO_OWNER","")
+        self.repo = os.environ.get("REPO_NAME","elina-radman")
         self.token = os.environ.get("GH_PAT","")
         self.api = "https://api.github.com"
     

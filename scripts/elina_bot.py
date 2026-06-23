@@ -33,8 +33,8 @@ CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID","")
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY","")
 BUFFER_KEY = os.environ.get("BUFFER_API_TOKEN","")
 GH_PAT = os.environ.get("GH_PAT","")
-GH_OWNER = os.environ.get("GITHUB_REPO_OWNER","")
-GH_REPO = os.environ.get("GITHUB_REPO_NAME","elina-radman")
+GH_OWNER = os.environ.get("REPO_OWNER","")
+GH_REPO = os.environ.get("REPO_NAME","elina-radman")
 
 BASE = f"https://api.telegram.org/bot{TOKEN}"
 GH_API = "https://api.github.com"

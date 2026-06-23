@@ -18,8 +18,8 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           BUFFER_API_TOKEN: ${{ secrets.BUFFER_API_TOKEN }}
           GH_PAT: ${{ secrets.GH_PAT }}
-          GITHUB_REPO_OWNER: ${{ secrets.GITHUB_REPO_OWNER }}
-          GITHUB_REPO_NAME: ${{ secrets.GITHUB_REPO_NAME }}
+          REPO_OWNER: ${{ secrets.REPO_OWNER }}
+          REPO_NAME: ${{ secrets.REPO_NAME }}
           RUN_MODE: ACTION
         run: python scripts/elina_bot.py
       - name: Save
