@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ElinaOS Dashboard</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Georgia',serif;background:#F5F0E8;color:#3A3A3A;padding:20px;min-height:100vh}
+h1{font-weight:300;text-align:center;letter-spacing:3px;margin:30px 0;color:#C4A882}
+.container{max-width:600px;margin:0 auto}
+.card{background:#FAFAFA;border:1px solid #E8DDD0;padding:20px;margin-bottom:15px;border-radius:2px}
+.card h3{font-size:13px;text-transform:uppercase;letter-spacing:2px;color:#C4A882;margin-bottom:10px}
+.card p{font-size:14px;line-height:1.6;color:#6B6258}
+.card .tag{display:inline-block;font-size:10px;letter-spacing:2px;text-transform:uppercase;padding:3px 8px;background:#F5F0E8;border:1px solid #D4C5B9;margin-right:5px;margin-top:8px}
+.btn{display:inline-block;padding:10px 20px;margin:5px;border:1px solid #C4A882;background:transparent;color:#C4A882;cursor:pointer;font-size:12px;letter-spacing:2px;text-transform:uppercase;transition:all 0.3s}
+.btn:hover{background:#C4A882;color:white}
+.btn.approve{background:#C4A882;color:white}
+.btn.reject{border-color:#8B6F6F;color:#8B6F6F}
+.status{font-size:10px;letter-spacing:2px;text-transform:uppercase;padding:4px 10px;display:inline-block;margin-bottom:10px}
+.status.pending{background:#FFF3CD;color:#856404}
+.status.approved{background:#D4EDDA;color:#155724}
+.status.published{background:#CCE5FF;color:#004085}
+footer{text-align:center;margin-top:40px;font-size:11px;letter-spacing:2px;color:#999}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>🕊️ ElinaOS</h1>
+<div class="card">
+<h3>System Status</h3>
+<p>✅ GitHub Actions active<br>✅ Gemini API connected<br>✅ Buffer ready<br>⏳ Pending approval: 3 pieces</p>
+</div>
+<div class="card">
+<span class="status pending">⏳ pending</span>
+<h3>elina-20260624-peti</h3>
+<p>3 style rules every petite needs 🕊️<br><br>1. High-waisted everything<br>2. Monochrome = taller<br>3. Tailor everything...</p>
+<div class="tag">instagram</div><div class="tag">tiktok</div><div class="tag">pinterest</div>
+<br><br>
+<button class="btn approve" onclick="alert('Approved! ✅')">✅ Approve</button>
+<button class="btn reject" onclick="alert('Rejected ❌')">❌ Reject</button>
+</div>
+<div class="card">
+<span class="status pending">⏳ pending</span>
+<h3>elina-20260624-ootd</h3>
+<p>Today's OOTD: Quiet Luxury 🕊️<br><br>Cropped camel blazer + high-waist trousers...</p>
+<div class="tag">instagram</div><div class="tag">tiktok</div>
+<br><br>
+<button class="btn approve" onclick="alert('Approved! ✅')">✅ Approve</button>
+<button class="btn reject" onclick="alert('Rejected ❌')">❌ Reject</button>
+</div>
+<footer>ElinaOS v1.0 · $0/month · 24/7</footer>
+</div>
+</body>
+</html>

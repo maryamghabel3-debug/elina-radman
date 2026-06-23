@@ -1,0 +1,26 @@
+name: Generate Daily Content
+on:
+  schedule: [{cron: '0 23 * * *'}]
+  workflow_dispatch:
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests google-generativeai
+      - name: Generate
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python scripts/generate.py
+      - name: Commit
+        run: |
+          git config user.name "ElinaOS"
+          git config user.email "bot@elina-radman.com"
+          git add content/queue/ || true
+          git diff --staged --quiet || git commit -m "Daily content [$(date +%Y-%m-%d)]"
+          git push
