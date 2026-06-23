@@ -2,12 +2,18 @@ name: Publish Content
 on:
   schedule: [{cron: '30 4,11,16 * * *'}]
   workflow_dispatch:
+
+permissions:
+  contents: write
+
 jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - run: pip install requests
@@ -15,3 +21,12 @@ jobs:
         env:
           BUFFER_API_TOKEN: ${{ secrets.BUFFER_API_TOKEN }}
         run: python scripts/publish.py
+      - name: Save
+        run: |
+          git config user.name "ElinaOS"
+          git config user.email "elinaradman24@gmail.com"
+          git add content/ || true
+          if ! git diff --staged --quiet; then
+            git commit -m "Publish updates [$(date +%Y-%m-%d)]"
+            git push
+          fi

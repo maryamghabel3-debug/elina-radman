@@ -2,12 +2,18 @@ name: Telegram Bot Runner
 on:
   schedule: [{cron: '*/5 * * * *'}]
   workflow_dispatch:
+
+permissions:
+  contents: write
+
 jobs:
   bot:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - run: pip install requests google-generativeai
@@ -25,7 +31,9 @@ jobs:
       - name: Save
         run: |
           git config user.name "ElinaOS"
-          git config user.email "bot@elina-radman.com"
+          git config user.email "elinaradman24@gmail.com"
           git add content/ || true
-          git diff --staged --quiet || git commit -m "Bot updates [$(date +%Y-%m-%d)]"
-          git push || true
+          if ! git diff --staged --quiet; then
+            git commit -m "Bot updates [$(date +%Y-%m-%d)]"
+            git push
+          fi

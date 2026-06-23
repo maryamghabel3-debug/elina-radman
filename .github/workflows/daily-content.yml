@@ -2,12 +2,18 @@ name: Generate Daily Content
 on:
   schedule: [{cron: '0 23 * * *'}]
   workflow_dispatch:
+
+permissions:
+  contents: write
+
 jobs:
   generate:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - run: pip install requests google-generativeai
@@ -20,7 +26,9 @@ jobs:
       - name: Commit
         run: |
           git config user.name "ElinaOS"
-          git config user.email "bot@elina-radman.com"
+          git config user.email "elinaradman24@gmail.com"
           git add content/queue/ || true
-          git diff --staged --quiet || git commit -m "Daily content [$(date +%Y-%m-%d)]"
-          git push
+          if ! git diff --staged --quiet; then
+            git commit -m "Daily content [$(date +%Y-%m-%d)]"
+            git push
+          fi
