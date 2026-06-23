@@ -15,16 +15,19 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - run: pip install requests
-      - name: Publish
+      - name: Publish to platforms
         env:
           BUFFER_API_TOKEN: ${{ secrets.BUFFER_API_TOKEN }}
         run: python scripts/publish.py
-      - name: Save
+      - name: Push status
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
         run: |
           git config user.name "ElinaOS"
           git config user.email "elinaradman24@gmail.com"
+          git remote set-url origin "https://ElinaOS:${GH_PAT}@github.com/${GITHUB_REPOSITORY}.git"
           git add content/ || true
           if ! git diff --staged --quiet; then
-            git commit -m "Publish updates [$(date +%Y-%m-%d)]"
+            git commit -m "📤 Publish updates [$(date +%Y-%m-%d)]"
             git push
           fi

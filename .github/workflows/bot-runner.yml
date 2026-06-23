@@ -12,8 +12,6 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GH_PAT }}
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - run: pip install requests google-generativeai
@@ -28,12 +26,15 @@ jobs:
           REPO_NAME: ${{ secrets.REPO_NAME }}
           RUN_MODE: ACTION
         run: python scripts/elina_bot.py
-      - name: Save
+      - name: Push changes
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
         run: |
           git config user.name "ElinaOS"
           git config user.email "elinaradman24@gmail.com"
+          git remote set-url origin "https://ElinaOS:${GH_PAT}@github.com/${GITHUB_REPOSITORY}.git"
           git add content/ || true
           if ! git diff --staged --quiet; then
-            git commit -m "Bot updates [$(date +%Y-%m-%d)]"
+            git commit -m "🤖 Bot updates [$(date +%Y-%m-%d)]"
             git push
           fi
