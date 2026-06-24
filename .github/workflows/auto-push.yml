@@ -1,0 +1,30 @@
+name: Auto Push Changes
+
+on:
+  workflow_dispatch:   # اجرا دستی
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "Elina Radman Bot"
+          git config user.email "bot@elina-radman.ai"
+
+      - name: Add, Commit and Push
+        run: |
+          git add .
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: Update project with LLM Router, new agents and docs"
+            git push origin main
+          fi
