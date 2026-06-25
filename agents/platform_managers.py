@@ -35,34 +35,55 @@ class PinterestManager(PlatformManager):
 
 class VisualCreatorAgent:
     def __init__(self):
-        self.workflow = "Cloudflare Workers AI (SDXL)"
+        # We use Cloudflare for free B-Rolls/Backgrounds
         self.cf_account_id = os.environ.get("CF_ACCOUNT_ID", "")
         self.cf_api_token = os.environ.get("CF_API_TOKEN", "")
+        
+        # We MUST use Replicate/ComfyUI/InstantID for Elina's Face
+        self.replicate_api_token = os.environ.get("REPLICATE_API_TOKEN", "")
+        self.use_local_comfyui = os.environ.get("USE_LOCAL_COMFYUI", "false").lower() == "true"
 
-    def generate_image_cloudflare(self, prompt, output_path="output.png"):
-        """Generate Free Images using Cloudflare Workers AI (100k free requests/day)"""
+    def generate_b_roll_cloudflare(self, prompt, output_path="broll.png"):
+        """Generate Free Backgrounds/Objects using Cloudflare (No Face Required)"""
         if not self.cf_account_id or not self.cf_api_token:
-            print("[VisualCreator] No Cloudflare credentials. Mocking output.")
-            return f"Mock Generated Asset for: {prompt}"
+            print("[VisualCreator] No CF credentials. Mocking B-Roll.")
+            return f"Mock B-Roll for: {prompt}"
 
         url = f"https://api.cloudflare.com/client/v4/accounts/{self.cf_account_id}/ai/run/@cf/stabilityai/stable-diffusion-xl-base-1.0"
         headers = {"Authorization": f"Bearer {self.cf_api_token}"}
-        payload = {"prompt": prompt}
-
+        
         try:
-            print(f"[VisualCreator] Requesting Free AI Image from Cloudflare...")
-            response = requests.post(url, headers=headers, json=payload)
+            print(f"[VisualCreator] Requesting Free B-Roll from Cloudflare...")
+            response = requests.post(url, headers=headers, json={"prompt": prompt})
             if response.status_code == 200:
                 with open(output_path, "wb") as f:
                     f.write(response.content)
                 return output_path
         except Exception as e:
-            print(f"[VisualCreator] Error: {e}")
-        
-        return "Error generating image"
+            print(f"[VisualCreator] CF Error: {e}")
+        return None
 
     def generate_consistent_character(self, prompt):
-        """Generate visual assets maintaining Elina's face consistency"""
-        enhanced_prompt = f"{prompt}, highly detailed, portrait of Elina, photorealistic, 8k"
-        return self.generate_image_cloudflare(enhanced_prompt)
+        """
+        Generate visual assets maintaining Elina's EXACT face.
+        Cloudflare alone is NOT enough for a consistent face. We must use LoRA or InstantID.
+        """
+        print(f"[VisualCreator] Generating STRICT consistent face for Elina...")
+        
+        character_prompt = (
+            f"1girl, Elina Radman, Iranian, petite 150cm, dark brown eyes, "
+            f"wavy brown hair, quiet luxury aesthetic, {prompt}"
+        )
+        
+        if self.use_local_comfyui:
+            print("[VisualCreator] Sending to Local ComfyUI (InstantID + SDXL) via API...")
+            # Here you would connect to 127.0.0.1:8188 (ComfyUI)
+            return "local_comfyui_output.png"
+        elif self.replicate_api_token:
+            print("[VisualCreator] Sending to Replicate API (LoRA / InstantID)...")
+            # Here you would call Replicate API using replicate python package
+            return "cloud_replicate_output.png"
+        else:
+            print("[VisualCreator] ⚠️ WARNING: No Consistent Face engine configured. Falling back to Cloudflare (Face will NOT match perfectly).")
+            return self.generate_b_roll_cloudflare(character_prompt, "fallback_face.png")
 
