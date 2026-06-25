@@ -19,52 +19,63 @@ class ProductHunter(Agent):
         self.amazon_tag = os.environ.get("AMAZON_AFFILIATE_TAG", "elinaradman-20")
         self.ltk_id = os.environ.get("LTK_CREATOR_ID", "elina_radman")
 
+    def read_stylist_moodboard(self):
+        """Reads instructions from the FashionStylist"""
+        moodboard_path = "content/weekly_moodboard.json"
+        if os.path.exists(moodboard_path):
+            with open(moodboard_path, "r") as f:
+                return json.load(f)
+        return None
+
     def simulate_web_scraping(self):
         """
-        In a production environment, this would use BeautifulSoup or Amazon Product API.
-        For now, we simulate finding trending items that match Elina's aesthetic.
+        Uses the Stylist's instructions to hunt or design specific items.
+        Handles Affiliate, Dropshipping (ShineOn), and Private Label (Pietra).
         """
-        self.log("Scraping stores for: Petite, Quiet Luxury, Neutral colors, Minimalist...")
+        moodboard = self.read_stylist_moodboard()
+        theme = moodboard["theme"] if moodboard else "Quiet Luxury Basics"
+        
+        self.log(f"Hunting items based on Stylist's vision: {theme}...")
         
         found_products = [
             {
-                "id": "prod_1",
-                "category": "blazer",
+                "id": "prod_1_affiliate",
+                "category": "outerwear",
                 "brand": "ASOS Design Petite",
-                "name": "Camel Oversized Dad Blazer",
-                "price": "$65",
-                "color": "Camel/Beige",
-                "affiliate_link": f"https://amzn.to/mock-camel-blazer?tag={self.amazon_tag}",
-                "why_it_fits": "Perfect tailored shoulders for short girls, quiet luxury color."
+                "name": "Camel Double-Breasted Trench",
+                "price": "$85",
+                "source_type": "Affiliate",
+                "affiliate_link": f"https://shopltk.com/mock-trench?creator={self.ltk_id}",
+                "why_it_fits": "Hits right at the knee for 150cm girls, elongates the frame."
             },
             {
-                "id": "prod_2",
-                "category": "trousers",
-                "brand": "Abercrombie",
-                "name": "Tailored Wide Leg Pants - Short Length",
-                "price": "$80",
-                "color": "Cream",
-                "affiliate_link": f"https://shopltk.com/mock-pants?creator={self.ltk_id}",
-                "why_it_fits": "High waisted to elongate legs, fits 150cm height perfectly."
-            },
-            {
-                "id": "prod_3",
+                "id": "prod_2_dropship",
                 "category": "jewelry",
-                "brand": "Mejuri",
-                "name": "Chunky Gold Minimalist Hoops",
+                "brand": "Elina Radman Jewelry",
+                "name": "Croissant Gold Hoops",
                 "price": "$45",
-                "color": "Gold",
-                "affiliate_link": f"https://amzn.to/mock-gold-hoops?tag={self.amazon_tag}",
-                "why_it_fits": "No logos, simple, elevates any basic outfit."
+                "source_type": "Dropshipping (ShineOn)",
+                "affiliate_link": "https://elinaradman.com/products/croissant-hoops",
+                "why_it_fits": "Zero inventory dropshipping via ShineOn, high profit margin."
             },
             {
-                "id": "prod_4",
+                "id": "prod_3_privatelabel",
+                "category": "bag",
+                "brand": "Elina Radman Label",
+                "name": "The Minimalist Crossbody",
+                "price": "$120",
+                "source_type": "Private Label (Pietra)",
+                "affiliate_link": "https://elinaradman.com/products/minimalist-crossbody",
+                "why_it_fits": "Custom designed via Pietra Studio. Structured and small, perfect for petite frames."
+            },
+            {
+                "id": "prod_4_affiliate",
                 "category": "shoes",
                 "brand": "Sam Edelman",
                 "name": "Pointed Toe Nude Slingbacks",
                 "price": "$120",
-                "color": "Nude",
-                "affiliate_link": f"https://shopltk.com/mock-shoes?creator={self.ltk_id}",
+                "source_type": "Affiliate (ShopStyle)",
+                "affiliate_link": f"https://shopstyle.it/mock-shoes?id={self.ltk_id}",
                 "why_it_fits": "Pointed toes and nude color create the illusion of longer legs."
             }
         ]
