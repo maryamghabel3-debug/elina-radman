@@ -5,25 +5,30 @@ class PlatformManager:
     def optimize_content(self, content):
         return f"[{self.platform_name} Optimized] {content}"
 
+
 class InstagramManager(PlatformManager):
     def __init__(self):
         super().__init__("Instagram")
         self.hashtags = "#ElinaRadman #AIInfluencer #Tech"
+
 
 class TikTokManager(PlatformManager):
     def __init__(self):
         super().__init__("TikTok")
         self.trends = "Trending Sounds & Fast Cuts"
 
+
 class YouTubeManager(PlatformManager):
     def __init__(self):
         super().__init__("YouTube")
         self.format = "Long-form / Shorts"
 
+
 class PinterestManager(PlatformManager):
     def __init__(self):
         super().__init__("Pinterest")
         self.visual_style = "Aesthetic Boards"
+
 
 class VisualCreatorAgent:
     def __init__(self):

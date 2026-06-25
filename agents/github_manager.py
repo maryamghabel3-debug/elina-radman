@@ -3,30 +3,36 @@ GitHub Manager Agent
 Modifies code on GitHub based on Elina's requests.
 Uses GitHub API + PAT to commit changes.
 """
+
 from .base import Agent
 from datetime import datetime
-import os, json, base64, requests
+import os
+import base64
+import requests
+
 
 class GitHubManager(Agent):
     def __init__(self):
-        super().__init__("GitHubManager", "Manages GitHub repo: add/remove/update agents")
-        self.owner = os.environ.get("REPO_OWNER","")
-        self.repo = os.environ.get("REPO_NAME","elina-radman")
-        self.token = os.environ.get("GH_PAT","")
+        super().__init__(
+            "GitHubManager", "Manages GitHub repo: add/remove/update agents"
+        )
+        self.owner = os.environ.get("REPO_OWNER", "")
+        self.repo = os.environ.get("REPO_NAME", "elina-radman")
+        self.token = os.environ.get("GH_PAT", "")
         self.api = "https://api.github.com"
-    
+
     def _headers(self):
         return {
             "Authorization": f"token {self.token}",
-            "Accept": "application/vnd.github.v3+json"
+            "Accept": "application/vnd.github.v3+json",
         }
-    
+
     def run(self, action=None, **kwargs):
         self.runs += 1
         self.last_run = datetime.now().isoformat()
         if not self.token:
             return {"error": "No GH_PAT set"}
-        action = action or kwargs.get("command","list_agents")
+        action = action or kwargs.get("command", "list_agents")
         actions = {
             "list_agents": self.list_agents,
             "add_agent": self.add_agent,
@@ -40,23 +46,30 @@ class GitHubManager(Agent):
         if fn:
             return fn(**kwargs)
         return {"error": f"Unknown action: {action}", "available": list(actions.keys())}
-    
+
     def repo_status(self, **kw):
         url = f"{self.api}/repos/{self.owner}/{self.repo}"
         r = requests.get(url, headers=self._headers())
         if r.status_code == 200:
             d = r.json()
-            return {"name": d["full_name"], "stars": d["stargazers_count"],
-                    "updated": d["updated_at"], "url": d["html_url"]}
+            return {
+                "name": d["full_name"],
+                "stars": d["stargazers_count"],
+                "updated": d["updated_at"],
+                "url": d["html_url"],
+            }
         return {"error": r.status_code, "msg": r.text[:200]}
-    
+
     def list_files(self, path="", **kw):
         url = f"{self.api}/repos/{self.owner}/{self.repo}/contents/{path}"
         r = requests.get(url, headers=self._headers())
         if r.status_code == 200:
-            return [{"name": f["name"], "type": f["type"], "path": f["path"]} for f in r.json()]
+            return [
+                {"name": f["name"], "type": f["type"], "path": f["path"]}
+                for f in r.json()
+            ]
         return {"error": r.status_code}
-    
+
     def get_file(self, path, **kw):
         url = f"{self.api}/repos/{self.owner}/{self.repo}/contents/{path}"
         r = requests.get(url, headers=self._headers())
@@ -65,13 +78,13 @@ class GitHubManager(Agent):
             content = base64.b64decode(d["content"]).decode()
             return {"path": path, "content": content, "sha": d["sha"]}
         return {"error": r.status_code}
-    
+
     def update_file(self, path, content, message=None, **kw):
         url = f"{self.api}/repos/{self.owner}/{self.repo}/contents/{path}"
         # Get current SHA
         r = requests.get(url, headers=self._headers())
-        sha = r.json().get("sha","") if r.status_code == 200 else ""
-        
+        sha = r.json().get("sha", "") if r.status_code == 200 else ""
+
         data = {
             "message": message or f"✏️ Update {path} via ElinaOS",
             "content": base64.b64encode(content.encode()).decode(),
@@ -79,12 +92,12 @@ class GitHubManager(Agent):
         }
         if sha:
             data["sha"] = sha
-        
+
         r2 = requests.put(url, headers=self._headers(), json=data)
         if r2.status_code in [200, 201]:
             return {"status": "updated", "path": path}
         return {"error": r2.status_code, "msg": r2.text[:300]}
-    
+
     def add_agent(self, name, description, code, **kw):
         path = f"agents/{name.lower().replace(' ','_')}.py"
         content = f'''"""Agent: {name} — {description}
@@ -105,7 +118,7 @@ class {name.replace(" ","")}(Agent):
         return {{"status": "ok"}}
 '''
         return self.update_file(path, content, f"➕ Add agent: {name}")
-    
+
     def remove_agent(self, name, **kw):
         path = f"agents/{name.lower().replace(' ','_')}.py"
         url = f"{self.api}/repos/{self.owner}/{self.repo}/contents/{path}"
@@ -118,12 +131,17 @@ class {name.replace(" ","")}(Agent):
         if r2.status_code == 200:
             return {"status": "removed", "agent": name}
         return {"error": r2.status_code}
-    
+
     def list_agents(self, **kw):
         url = f"{self.api}/repos/{self.owner}/{self.repo}/contents/agents"
         r = requests.get(url, headers=self._headers())
         if r.status_code == 200:
-            agents = [f["name"].replace(".py","") for f in r.json() 
-                     if f["name"].endswith(".py") and f["name"] != "__init__.py" and f["name"] != "base.py"]
+            agents = [
+                f["name"].replace(".py", "")
+                for f in r.json()
+                if f["name"].endswith(".py")
+                and f["name"] != "__init__.py"
+                and f["name"] != "base.py"
+            ]
             return {"agents": agents, "count": len(agents)}
         return {"error": r.status_code}
