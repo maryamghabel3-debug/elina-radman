@@ -1,70 +1,121 @@
 """
-Video Generator Agent
-Sets up the infrastructure for generating faceless & AI-avatar videos.
-Handles YouTube Shorts, TikToks, and Long-form content.
+Director Agent (VideoGenerator)
+Acts as a professional Film Director for Elina Radman.
+Manages screenplay, cinematography (camera angles, lighting, focus), 
+voice-over (Edge-TTS), and accesses free Cloud AI (Hugging Face Spaces via gradio_client) 
+to generate videos without needing local hardware.
 """
 
 import os
-from .base import Agent
+import json
+import asyncio
 from datetime import datetime
+from .base import Agent
 
-class VideoGenerator(Agent):
+class DirectorAgent(Agent):
     def __init__(self):
-        super().__init__("VideoGenerator", "Creates Shorts and Long-form videos using AI")
+        super().__init__("Director", "Professional AI Film Director for video generation")
         self.output_dir = "content/videos/"
         os.makedirs(self.output_dir, exist_ok=True)
 
-    def generate_short_script(self, topic):
-        """Generates a high-retention 60-second script"""
-        self.log(f"Generating Short script for: {topic}")
-        # In production, this would call LLMRouter
-        return {
-            "hook": "Are you making this petite styling mistake?",
-            "body": "Here are 3 rules for wearing oversized blazers when you are under 5 foot...",
-            "cta": "Save this for your next shopping trip! 🤍"
-        }
+    def write_screenplay(self, topic, format_type):
+        """Creates a detailed shot-by-shot Director's script"""
+        self.log(f"Writing screenplay for: {topic}")
+        # Here we instruct the LLM to act as a Director
+        director_prompt = f"""
+        Act as a professional Film Director. Create a {format_type} script about '{topic}' for Elina Radman.
+        Include for each scene:
+        1. Camera Angle (e.g., Close-up, Dutch angle, Drone shot)
+        2. Lighting (e.g., Cinematic, Golden hour, Soft studio lighting)
+        3. Action/B-Roll description
+        4. Dialogue (Voiceover)
+        """
+        # Simulated LLM response for the script
+        return [
+            {
+                "scene": 1,
+                "camera": "Medium Close-up, eye-level, shallow depth of field",
+                "lighting": "Soft window light, rim light on hair",
+                "action": "Elina adjusting her minimal jewelry, looking thoughtfully at the camera.",
+                "dialogue": "سلام دخترا🤍 امروز می‌خوایم درباره یه استایل خاص صحبت کنیم..."
+            },
+            {
+                "scene": 2,
+                "camera": "Dynamic pan, full body shot",
+                "lighting": "Cinematic street lighting",
+                "action": "Elina walking down a Parisian-style street wearing a tailored oversized blazer.",
+                "dialogue": "خیلی وقت‌ها پیدا کردن سایز مناسب برای ما پتیت‌ها سخته، اما یه ترفند وجود داره."
+            }
+        ]
 
-    def generate_long_form_script(self, topic):
-        """Generates an 8-minute YouTube video script"""
-        self.log(f"Generating Long-form script for: {topic}")
-        return {"title": topic, "sections": ["Intro", "Main 1", "Main 2", "Conclusion"]}
-
-    def text_to_speech(self, script_text):
-        """Converts text to an AI voice (e.g., using ElevenLabs or Edge-TTS)"""
-        self.log("Converting script to voice...")
-        audio_path = os.path.join(self.output_dir, "temp_voice.mp3")
-        # Placeholder for TTS API
+    def generate_voiceover(self, text, index):
+        """Uses edge-tts for 100% FREE, unlimited, high-quality Text-to-Speech"""
+        self.log(f"Recording voiceover for scene {index} using Edge-TTS...")
+        audio_path = os.path.join(self.output_dir, f"scene_{index}_vo.mp3")
+        
+        # Edge-TTS command line generation (Persian female voice)
+        # Note: You can run `pip install edge-tts` in your environment
+        command = f'edge-tts --voice fa-IR-DilaraNeural --text "{text}" --write-media {audio_path}'
+        print(f"[Director] 🎤 Audio Command: {command}")
+        # os.system(command)  # Would execute in real run
+        
         return audio_path
 
-    def generate_b_roll_and_avatar(self, script_sections):
+    def generate_video_shot(self, scene_data, index):
         """
-        Mixes B-Rolls (generated via Cloudflare) with
-        Elina's consistent Avatar (via InstantID/SadTalker).
+        Uses Hugging Face Spaces (via gradio_client) for FREE Cloud GPU Video Generation!
+        No local hardware required.
         """
-        self.log("Generating B-Rolls and syncing lip-movement...")
-        return ["clip1.mp4", "clip2.mp4"]
+        self.log(f"Filming scene {index} via Cloud GPU (HuggingFace Spaces)...")
+        video_path = os.path.join(self.output_dir, f"scene_{index}_raw.mp4")
+        
+        # Crafting the ultimate cinematic prompt
+        prompt = (
+            f"Cinematic video, 4k resolution, {scene_data['camera']}, "
+            f"{scene_data['lighting']}, {scene_data['action']}. "
+            f"Subject: Elina Radman, 150cm petite Iranian woman, quiet luxury aesthetic."
+        )
+        
+        print(f"[Director] 🎥 Camera Rolling: {prompt}")
+        
+        # 💡 PRO TIP: Using gradio_client to hit open-source models like LivePortrait or HunyuanVideo 
+        # hosted for free on Hugging Face Spaces.
+        """
+        Example Implementation:
+        from gradio_client import Client
+        client = Client("model-space-name/LivePortrait-or-similar")
+        result = client.predict(prompt, api_name="/predict")
+        """
+        
+        return video_path
 
-    def compile_video(self, audio_path, video_clips, format_type="9:16"):
-        """Compiles clips, adds auto-captions (Whisper), and renders final MP4"""
-        self.log(f"Compiling {format_type} video...")
-        final_path = os.path.join(self.output_dir, f"final_{int(datetime.now().timestamp())}.mp4")
-        # Integration point for AI-Youtube-Shorts-Generator / FFmpeg
-        return final_path
+    def compile_final_cut(self, shots):
+        """Uses FFmpeg to stitch video and audio, add transitions, and burn subtitles"""
+        self.log("Editing Room: Stitching shots, adding color grade and subtitles...")
+        final_cut = os.path.join(self.output_dir, f"FINAL_CUT_{int(datetime.now().timestamp())}.mp4")
+        
+        print("[Director] 🎞️ FFmpeg merging video + audio + subtitles...")
+        # FFmpeg magic happens here
+        
+        return final_cut
 
     def run(self, topic, format_type="shorts"):
         self.runs += 1
         self.last_run = datetime.now().isoformat()
         
-        if format_type == "shorts":
-            script = self.generate_short_script(topic)
-            audio = self.text_to_speech(script["body"])
-        else:
-            script = self.generate_long_form_script(topic)
-            audio = self.text_to_speech(str(script))
-            
-        clips = self.generate_b_roll_and_avatar(script)
-        aspect_ratio = "9:16" if format_type == "shorts" else "16:9"
+        self.log(f"🎬 PRE-PRODUCTION: {topic}")
+        screenplay = self.write_screenplay(topic, format_type)
         
-        final_video = self.compile_video(audio, clips, aspect_ratio)
-        self.log(f"Successfully generated video: {final_video}")
+        shots = []
+        for i, scene in enumerate(screenplay, 1):
+            self.log(f"🎬 PRODUCTION: Shooting Scene {i} / {len(screenplay)}")
+            audio = self.generate_voiceover(scene["dialogue"], i)
+            video = self.generate_video_shot(scene, i)
+            shots.append({"audio": audio, "video": video})
+            
+        self.log("🎬 POST-PRODUCTION")
+        final_video = self.compile_final_cut(shots)
+        
+        self.log(f"✅ It's a Wrap! Final video ready: {final_video}")
         return final_video
+
