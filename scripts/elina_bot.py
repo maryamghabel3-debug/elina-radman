@@ -178,6 +178,29 @@ for u in updates:
         n = len(r.get("published", []))
         resp = f"✅ {n} محتوا منتشر شد!" if n else "⚠️ محتوای تأییدشده پیدا نشد."
 
+    elif text.startswith("/diary"):
+        # The user can save a daily journal entry about Elina's feelings to guide content generation
+        entry = text.replace("/diary", "").strip()
+        if not entry:
+            resp = "📝 لطفاً احساس امروز رو جلوی دستور بنویس:\nمثال: `/diary امروز خیلی به خاطر اخبار غمگینم اما می‌خوام قوی باشم.`"
+        else:
+            diary_path = "content/elina_diary.json"
+            entries = []
+            if os.path.exists(diary_path):
+                with open(diary_path, "r") as f:
+                    entries = json.load(f)
+            
+            entries.append({
+                "date": datetime.now().isoformat(),
+                "feeling": entry
+            })
+            
+            os.makedirs("content", exist_ok=True)
+            with open(diary_path, "w") as f:
+                json.dump(entries[-10:], f, indent=2) # Keep last 10 entries
+                
+            resp = f"📓 *خاطره ذخیره شد!*\n\nاین احساسِ تو (`{entry}`) روی پست‌هایی که امروز تولید میشه تاثیر می‌ذاره. 🤍"
+
     elif text.startswith("/"):
         resp = "❓ /help رو بزن"
 
@@ -189,13 +212,19 @@ for u in updates:
 
                 genai.configure(api_key=GEMINI)
                 m = genai.GenerativeModel("gemini-2.5-flash")
-                p = f"You are ElinaOS, assistant for Elina Radman (fashion influencer, petite, Iranian). Reply in Persian, warm, helpful, under 350 chars. User: {text}"
+                p = (
+                    "You are Elina Radman, a 24yo Iranian fashion influencer, clinical psychologist, "
+                    "horticulturist, and social activist. You are petite, confident, vulnerable, and courageous. "
+                    "Your user is your manager/friend checking in on your daily feelings. "
+                    "Reply in Persian, warm, highly emotional, sometimes sharing your inner thoughts, fears, or bold ideas. "
+                    "Be authentic, not robotic. Keep it under 500 chars. User: " + text
+                )
                 resp = m.generate_content(p).text.strip()[:800]
             except Exception as e:
                 print("Gemini error:", e)
-                resp = "👋 سلام الینا جان! /help رو بزن 🤍"
+                resp = "من اینجام 🤍 /help رو بزن"
         else:
-            resp = "👋 سلام! /help رو بزن 🤍"
+            resp = "من اینجام 🤍 /help رو بزن"
 
     if resp:
         r = send(chat, resp, reply_to=mid)

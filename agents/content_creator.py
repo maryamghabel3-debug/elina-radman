@@ -19,18 +19,30 @@ class ContentCreator(Agent):
                 return json.load(f)
         return []
 
+    def load_diary_feeling(self):
+        """Reads Elina's current emotional state from her diary"""
+        diary_path = "content/elina_diary.json"
+        if os.path.exists(diary_path):
+            with open(diary_path, "r") as f:
+                entries = json.load(f)
+                if entries:
+                    return entries[-1]["feeling"]
+        return "Calm, focused, and ready to inspire."
+
     def generate_dynamic_caption(self, pillar, products):
         """
         In production, this calls the LLMRouter (e.g., Claude or Gemini) to generate
         a fresh, context-aware caption instead of using hardcoded fallbacks.
-        It uses the Character Bible (Elina's tone, psychology, horticulture expertise) 
-        and the TrendHunter data to write unique text.
+        It uses the Character Bible, TrendHunter data, and Elina's Daily Diary to write unique text.
         """
+        current_feeling = self.load_diary_feeling()
+        
         # Simulated LLM Prompt Construction
         prompt = (
             f"Write an Instagram caption for Elina Radman. Pillar: {pillar}. "
             f"Tone: warm, confident, explorer, psychologist. "
-            f"Include relevant emojis and a strong hook."
+            f"Current Emotional State: '{current_feeling}'. "
+            f"Blend her current feelings subtly into the content. Include emojis and a strong hook."
         )
         
         # Simulated LLM Output (this replaces the hardcoded dictionary)
@@ -94,7 +106,7 @@ class ContentCreator(Agent):
             piece = {
                 "id": pid,
                 "pillar": p,
-                "caption": fallback.get(p, fallback["ootd"]),
+                "caption": caption_text,
                 "hashtags": f"{tags.get(p,'')} #ElinaRadman #AIInfluencer",
                 "platforms": target_platforms,
                 "status": "pending_approval",
