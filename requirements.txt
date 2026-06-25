@@ -3,3 +3,5 @@ google-generativeai>=0.8
 edge-tts
 gradio_client
 ffmpeg-python
+kivy>=2.34
+kivymd>=1.2
