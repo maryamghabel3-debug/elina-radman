@@ -1,7 +1,7 @@
 """
 ELINA OS — Publisher
-Posts content via Buffer API (FREE tier: 3 channels, 10 queued posts)
-Instagram + TikTok + Pinterest
+Posts content via Postiz API (Open Source, Self-Hostable, 100% Free)
+Instagram + TikTok + Pinterest + YouTube + LinkedIn and more!
 """
 
 import os
@@ -12,58 +12,41 @@ from datetime import datetime
 
 
 def publish(content):
-    token = os.environ.get("BUFFER_API_TOKEN", "")
+    postiz_url = os.environ.get("POSTIZ_URL", "http://localhost:3000/api")
+    token = os.environ.get("POSTIZ_API_TOKEN", "")
+    
     if not token:
-        print("No BUFFER_API_TOKEN")
+        print("No POSTIZ_API_TOKEN")
         return False
 
     text = content["caption"] + "\n.\n" + content["hashtags"]
-    headers = {"Authorization": f"Bearer {token}"}
-
-    # Get profiles from Buffer
-    try:
-        r = requests.get("https://api.bufferapp.com/1/profiles.json", headers=headers)
-        profiles = {p["service"]: p["id"] for p in r.json()}
-        print(f"   Profiles: {list(profiles.keys())}")
-    except Exception as e:
-        print(f"   Buffer error: {e}")
-        return False
-
-    platform_map = {
-        "instagram": "instagram",
-        "tiktok": "tiktok",
-        "pinterest": "pinterest",
+    platforms = content.get("platforms", ["instagram", "tiktok", "youtube"])
+    
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
     }
 
-    results = []
-    for plat in content.get("platforms", []):
-        service = platform_map.get(plat)
-        pid = profiles.get(service)
-        if not pid:
-            print(f"   ⚠️ No {plat} profile")
-            continue
+    payload = {
+        "content": text,
+        "platforms": platforms,
+        "scheduled_at": content.get("scheduled_for", datetime.now().isoformat())
+    }
 
-        data = {
-            "profile_ids": [pid],
-            "text": text,
-            "scheduled_at": content.get("scheduled_for", datetime.now().isoformat()),
-        }
-
-        try:
-            r2 = requests.post(
-                "https://api.bufferapp.com/1/updates/create.json",
-                headers=headers,
-                json=data,
-            )
-            if r2.status_code == 200:
-                print(f"   ✅ {plat}")
-                results.append(plat)
-            else:
-                print(f"   ❌ {plat}: {r2.status_code}")
-        except Exception as e:
-            print(f"   ❌ {plat}: {e}")
-
-    return len(results) > 0
+    try:
+        print(f"   Scheduling on Postiz for platforms: {platforms}...")
+        r2 = requests.post(f"{postiz_url}/posts", headers=headers, json=payload)
+        
+        if r2.status_code in [200, 201]:
+            print(f"   ✅ Published successfully via Postiz!")
+            return True
+        else:
+            print(f"   ❌ Postiz Error: {r2.status_code}")
+            return False
+            
+    except Exception as e:
+        print(f"   ❌ Postiz Exception: {e}")
+        return False
 
 
 def main():

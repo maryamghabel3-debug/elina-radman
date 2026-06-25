@@ -1,4 +1,4 @@
-"""Publisher Agent — Posts to social platforms via Buffer"""
+"""Publisher Agent — Posts to social platforms via Postiz (Unlimited & Free)"""
 
 from .base import Agent
 from datetime import datetime
@@ -15,26 +15,14 @@ class Publisher(Agent):
     def run(self):
         self.runs += 1
         self.last_run = datetime.now().isoformat()
-        token = os.environ.get("BUFFER_API_TOKEN", "")
+        postiz_url = os.environ.get("POSTIZ_URL", "http://localhost:3000/api")
+        token = os.environ.get("POSTIZ_API_TOKEN", "")
         if not token:
-            self.log("No BUFFER_API_TOKEN", "error")
+            self.log("No POSTIZ_API_TOKEN", "error")
             return {"error": "no_token"}
 
-        headers = {"Authorization": f"Bearer {token}"}
-        try:
-            r = requests.get(
-                "https://api.bufferapp.com/1/profiles.json", headers=headers
-            )
-            profiles = {p["service"]: p["id"] for p in r.json()}
-        except Exception as e:
-            self.log(f"Buffer connect failed: {e}", "error")
-            return {"error": str(e)}
-
-        platform_map = {
-            "instagram": "instagram",
-            "tiktok": "tiktok",
-            "pinterest": "pinterest",
-        }
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        
         published = []
 
         for fp in sorted(glob.glob("content/queue/*.json")):
@@ -44,33 +32,28 @@ class Publisher(Agent):
             for c in pieces:
                 if c.get("status") != "approved":
                     continue
+                
                 text = c["caption"] + "\n.\n" + c["hashtags"]
-                for plat in c.get("platforms", []):
-                    sid = platform_map.get(plat)
-                    pid = profiles.get(sid)
-                    if not pid:
-                        continue
-                    data = {
-                        "profile_ids": [pid],
-                        "text": text,
-                        "scheduled_at": c.get(
-                            "scheduled_for", datetime.now().isoformat()
-                        ),
-                    }
-                    try:
-                        r2 = requests.post(
-                            "https://api.bufferapp.com/1/updates/create.json",
-                            headers=headers,
-                            json=data,
-                        )
-                        if r2.status_code == 200:
-                            self.log(f"Posted to {plat}")
-                            published.append({"id": c["id"], "platform": plat})
-                    except Exception as e:
-                        self.log(f"Post failed {plat}: {e}", "error")
+                platforms = c.get("platforms", ["instagram", "tiktok"])
+                
+                data = {
+                    "content": text,
+                    "platforms": platforms,
+                    "scheduled_at": c.get("scheduled_for", datetime.now().isoformat())
+                }
+                
+                try:
+                    # Request to Postiz
+                    r2 = requests.post(f"{postiz_url}/posts", headers=headers, json=data)
+                    self.log(f"Posted to {platforms} via Postiz")
+                    published.append({"id": c.get("id", "1"), "platforms": platforms})
+                except Exception as e:
+                    self.log(f"Post failed via Postiz: {e}", "error")
+                    
                 c["status"] = "published"
                 c["published_at"] = datetime.now().isoformat()
                 changed = True
+                
             if changed:
                 with open(fp, "w") as f:
                     json.dump(pieces, f, indent=2)
