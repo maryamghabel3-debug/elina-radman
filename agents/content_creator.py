@@ -19,33 +19,45 @@ class ContentCreator(Agent):
             "capsule_wardrobe",
             "smart_shopping",
             "lifestyle",
+            "ai_tech_hacks"
         ]
 
+        # Integrated Affiliate / Monetization Hooks
         fallback = {
-            "petite_styling": "3 style rules every petite needs 🕊️\n\n1. High-waisted everything\n2. Monochrome = taller\n3. Tailor everything\n\nSave this 📌 What's your #1 style rule? 👇",
-            "ootd": "Today's OOTD: Quiet Luxury 🕊️\n\nCropped camel blazer + high-waist trousers\nEvery piece tailored for 4'11\" ✨\n\nWhat are you wearing today? 👇",
-            "capsule_wardrobe": "15 pieces. 30+ outfits. My petite capsule 🤍\n\n3 bottoms + 4 tops + 2 blazers + 2 dresses\nAll neutral. Everything matches.\n\nComment CAPSULE for the list 📩",
-            "smart_shopping": "Look expensive on a budget 💰\n\n1. Natural fabrics 2. Neutral colors\n3. Tailor everything 4. Less is more\n\nYour best budget style hack? 👇",
+            "petite_styling": "3 style rules every petite needs 🕊️\n\n1. High-waisted everything\n2. Monochrome = taller\n3. Tailor everything\n\nSave this 📌 Link in bio for my favorite high-waisted trousers! 👇",
+            "ootd": "Today's OOTD: Quiet Luxury 🕊️\n\nCropped camel blazer + high-waist trousers\nEvery piece tailored for 4'11\" ✨\n\nShop my exact look via the LTK link in my bio 🤍",
+            "capsule_wardrobe": "15 pieces. 30+ outfits. My petite capsule 🤍\n\nAll neutral. Everything matches.\n\nComment CAPSULE and I'll DM you my free guide on how to build one! 📩",
+            "smart_shopping": "Look expensive on a budget 💰\n\n1. Natural fabrics 2. Neutral colors\n3. Tailor everything 4. Less is more\n\nGrab my Lightroom presets (Link in Bio) to make your photos look expensive too! ✨",
             "lifestyle": "A day in my outfits ☕\n\nMorning coffee → stroll → dinner\nSame base, three different looks\n\nCapsule wardrobe magic ✨",
+            "ai_tech_hacks": "How I plan my outfits using AI 🤖✨\n\nI use ChatGPT to build a smart wardrobe schedule.\nWant the prompt I use? Check the link in my bio! 🔗",
         }
         tags = {
-            "petite_styling": "#PetiteStyle #StyleTips #ShortGirlFashion #FashionHacks",
-            "ootd": "#OOTD #PetiteStyle #QuietLuxury #4ft11",
+            "petite_styling": "#PetiteStyle #StyleTips #ShortGirlFashion #LTKunder50",
+            "ootd": "#OOTD #PetiteStyle #QuietLuxury #4ft11 #LTKit",
             "capsule_wardrobe": "#CapsuleWardrobe #MinimalistStyle #PetiteStyle",
             "smart_shopping": "#AffordableStyle #SmartShopping #QuietLuxury",
             "lifestyle": "#DayInMyLife #PetiteStyle #LifeStyleCreator",
+            "ai_tech_hacks": "#AITech #TechTips #OutfitPlanner #TechGirl",
         }
 
         pieces = []
         for i in range(count):
             p = pillars[i % len(pillars)]
             pid = f"elina-{datetime.now().strftime('%Y%m%d%H%M')}-{p[:4]}"
+            
+            # Smart targeting for monetization platforms
+            target_platforms = ["instagram", "tiktok"]
+            if p == "ai_tech_hacks":
+                target_platforms.extend(["youtube", "threads"])
+            elif p in ["ootd", "petite_styling"]:
+                target_platforms.extend(["pinterest", "lemon8"])
+
             piece = {
                 "id": pid,
                 "pillar": p,
                 "caption": fallback.get(p, fallback["ootd"]),
-                "hashtags": f"{tags.get(p,'')} #StyledByElina #PetiteFashion",
-                "platforms": ["instagram", "tiktok", "pinterest"],
+                "hashtags": f"{tags.get(p,'')} #ElinaRadman #AIInfluencer",
+                "platforms": target_platforms,
                 "status": "pending_approval",
                 "created_at": datetime.now().isoformat(),
                 "scheduled_for": (datetime.now() + timedelta(days=1)).strftime(
