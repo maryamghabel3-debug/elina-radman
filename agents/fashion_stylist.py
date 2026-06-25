@@ -24,11 +24,21 @@ class FashionStylist(Agent):
             "theme": "Parisian Autumn for Petites",
             "color_palette": ["Camel", "Navy", "Cream", "Matte Gold"],
             "aesthetic": "Quiet Luxury, Minimalist, Tailored",
+            "target_brands": [
+                "Reformation Petite", "Aritzia (Short Lengths)", "Petite Studio NYC",
+                "Abercrombie & Fitch (Short/Extra Short)", "Madewell Petite",
+                "Everlane", "ASOS Design Petite", "Mango"
+            ],
             "instructions_for_hunter": [
                 {
+                    "category": "trousers",
+                    "description": "Effortless tailored wide-leg trousers (Short Length)",
+                    "target_platform": "Aritzia / Abercrombie"
+                },
+                {
                     "category": "outerwear",
-                    "description": "Petite double-breasted trench coat (Affiliate)",
-                    "target_platform": "LTK / ASOS"
+                    "description": "Structured minimalist blazer sized for under 5'4\"",
+                    "target_platform": "Petite Studio NYC / Reformation"
                 },
                 {
                     "category": "jewelry",
