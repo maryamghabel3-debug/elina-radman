@@ -4,11 +4,18 @@ from .base import Agent
 from datetime import datetime, timedelta
 import os
 import json
-
+import random
 
 class ContentCreator(Agent):
     def __init__(self):
-        super().__init__("ContentCreator", "Generates content pieces")
+        super().__init__("ContentCreator", "Generates content pieces and injects Affiliate Links")
+
+    def load_affiliate_products(self):
+        db_path = "content/affiliate_products.json"
+        if os.path.exists(db_path):
+            with open(db_path, "r") as f:
+                return json.load(f)
+        return []
 
     def run(self, pillars=None, count=3):
         self.runs += 1
@@ -40,11 +47,26 @@ class ContentCreator(Agent):
             "ai_tech_hacks": "#AITech #TechTips #OutfitPlanner #TechGirl",
         }
 
+        # Load dynamic products found by ProductHunter
+        products = self.load_affiliate_products()
+
         pieces = []
         for i in range(count):
             p = pillars[i % len(pillars)]
             pid = f"elina-{datetime.now().strftime('%Y%m%d%H%M')}-{p[:4]}"
             
+            # Dynamic Affiliate Link Injection
+            caption_text = fallback.get(p, fallback["ootd"])
+            if p in ["ootd", "petite_styling", "smart_shopping"] and products:
+                # Pick a random product matching the aesthetic
+                prod = random.choice(products)
+                affiliate_section = (
+                    f"\n\n✨ Found the perfect {prod['name']} from {prod['brand']} "
+                    f"({prod['why_it_fits']})! \n"
+                    f"🛒 Shop here: {prod['affiliate_link']}"
+                )
+                caption_text += affiliate_section
+
             # Smart targeting for monetization platforms
             target_platforms = ["instagram", "tiktok"]
             if p == "ai_tech_hacks":
