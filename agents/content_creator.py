@@ -27,7 +27,8 @@ class ContentCreator(Agent):
             "smart_shopping",
             "lifestyle",
             "ai_tech_hacks",
-            "psychology_of_style"
+            "psychology_of_style",
+            "horticulture_and_growth"
         ]
 
         # Integrated Affiliate / Monetization Hooks
@@ -36,18 +37,20 @@ class ContentCreator(Agent):
             "ootd": "Today's OOTD: Quiet Luxury 🕊️\n\nCropped camel blazer + high-waist trousers\nEvery piece tailored for 4'11\" ✨\n\nShop my exact look via the LTK link in my bio 🤍",
             "capsule_wardrobe": "15 pieces. 30+ outfits. My petite capsule 🤍\n\nAll neutral. Everything matches.\n\nComment CAPSULE and I'll DM you my free guide on how to build one! 📩",
             "smart_shopping": "Look expensive on a budget 💰\n\n1. Natural fabrics 2. Neutral colors\n3. Tailor everything 4. Less is more\n\nGrab my Lightroom presets (Link in Bio) to make your photos look expensive too! ✨",
-            "lifestyle": "Recharging in nature today 🌿\n\nEarthy tones and fresh air are my ultimate therapy.\nWhat's your favorite way to unplug? ☕",
+            "lifestyle": "Always exploring, always learning 🌍\n\nThere's so much beauty in the world when you step outside and just observe. What's your latest discovery? 📖✨",
             "ai_tech_hacks": "How I plan my outfits using AI 🤖✨\n\nI use ChatGPT to build a smart wardrobe schedule.\nWant the prompt I use? Check the link in my bio! 🔗",
             "psychology_of_style": "Enclothed Cognition: Why your outfit changes your mood 🧠✨\n\nAs a psychologist, I know that wearing structured clothes actually makes you feel more confident and focused. \n\nDress for the mindset you want today. 🤍",
+            "horticulture_and_growth": "Plant care is self-care 🌿\n\nAs a horticulturist, watching things take root and bloom is my favorite kind of therapy. We need strong roots to grow, just like them. What's your favorite plant? 🪴🤍"
         }
         tags = {
             "petite_styling": "#PetiteStyle #StyleTips #ShortGirlFashion #LTKunder50",
             "ootd": "#OOTD #PetiteStyle #QuietLuxury #4ft11 #LTKit",
             "capsule_wardrobe": "#CapsuleWardrobe #MinimalistStyle #PetiteStyle",
             "smart_shopping": "#AffordableStyle #SmartShopping #QuietLuxury",
-            "lifestyle": "#NatureLover #Mindfulness #PetiteStyle #LifeStyleCreator",
+            "lifestyle": "#Explorer #LifeStyleCreator #IndependentWoman #GrowthMindset",
             "ai_tech_hacks": "#AITech #TechTips #OutfitPlanner #TechGirl",
             "psychology_of_style": "#FashionPsychology #Confidence #MentalHealth #Mindset",
+            "horticulture_and_growth": "#Horticulture #PlantTherapy #NatureLover #Growth",
         }
 
         # Load dynamic products found by ProductHunter

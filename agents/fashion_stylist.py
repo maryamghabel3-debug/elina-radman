@@ -21,24 +21,24 @@ class FashionStylist(Agent):
         
         vision = {
             "week": datetime.now().strftime("%Y-W%W"),
-            "theme": "Nature-Inspired Minimalism & Enclothed Cognition",
-            "color_palette": ["Olive Green", "Camel", "Cream", "Matte Gold"],
-            "aesthetic": "Quiet Luxury, Eco-friendly, Tailored",
+            "theme": "Confident Modern Explorer & Enclothed Cognition",
+            "color_palette": ["Camel", "Navy", "Cream", "Matte Gold", "Forest Green"],
+            "aesthetic": "Confident Quiet Luxury, Modern Chic, Tailored",
             "target_brands": [
-                "Reformation Petite (Priority)", "Aritzia (Short Lengths)", "Petite Studio NYC",
-                "Abercrombie & Fitch", "Everlane", "ASOS Design Petite",
-                "*Open to any sustainable/eco-friendly petite brands*"
+                "Aritzia (Short Lengths)", "Reformation Petite", "Petite Studio NYC",
+                "Abercrombie & Fitch", "Mango", "ASOS Design Petite",
+                "Any modern chic global brands"
             ],
             "instructions_for_hunter": [
                 {
                     "category": "trousers",
-                    "description": "Linen or organic cotton wide-leg trousers (Short Length)",
-                    "target_platform": "Aritzia / Abercrombie / Global Search"
+                    "description": "Tailored wide-leg trousers for a confident stride (Short Length)",
+                    "target_platform": "Aritzia / Abercrombie"
                 },
                 {
                     "category": "outerwear",
-                    "description": "Earth-toned structured blazer, confidence-boosting fit",
-                    "target_platform": "Petite Studio NYC / Reformation"
+                    "description": "Modern structured blazer, sharp and sophisticated",
+                    "target_platform": "Petite Studio NYC / Mango"
                 },
                 {
                     "category": "jewelry",
