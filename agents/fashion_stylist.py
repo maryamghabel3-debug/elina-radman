@@ -21,23 +21,23 @@ class FashionStylist(Agent):
         
         vision = {
             "week": datetime.now().strftime("%Y-W%W"),
-            "theme": "Parisian Autumn for Petites",
-            "color_palette": ["Camel", "Navy", "Cream", "Matte Gold"],
-            "aesthetic": "Quiet Luxury, Minimalist, Tailored",
+            "theme": "Nature-Inspired Minimalism & Enclothed Cognition",
+            "color_palette": ["Olive Green", "Camel", "Cream", "Matte Gold"],
+            "aesthetic": "Quiet Luxury, Eco-friendly, Tailored",
             "target_brands": [
-                "Reformation Petite", "Aritzia (Short Lengths)", "Petite Studio NYC",
-                "Abercrombie & Fitch (Short/Extra Short)", "Madewell Petite",
-                "Everlane", "ASOS Design Petite", "Mango"
+                "Reformation Petite (Priority)", "Aritzia (Short Lengths)", "Petite Studio NYC",
+                "Abercrombie & Fitch", "Everlane", "ASOS Design Petite",
+                "*Open to any sustainable/eco-friendly petite brands*"
             ],
             "instructions_for_hunter": [
                 {
                     "category": "trousers",
-                    "description": "Effortless tailored wide-leg trousers (Short Length)",
-                    "target_platform": "Aritzia / Abercrombie"
+                    "description": "Linen or organic cotton wide-leg trousers (Short Length)",
+                    "target_platform": "Aritzia / Abercrombie / Global Search"
                 },
                 {
                     "category": "outerwear",
-                    "description": "Structured minimalist blazer sized for under 5'4\"",
+                    "description": "Earth-toned structured blazer, confidence-boosting fit",
                     "target_platform": "Petite Studio NYC / Reformation"
                 },
                 {

@@ -26,7 +26,8 @@ class ContentCreator(Agent):
             "capsule_wardrobe",
             "smart_shopping",
             "lifestyle",
-            "ai_tech_hacks"
+            "ai_tech_hacks",
+            "psychology_of_style"
         ]
 
         # Integrated Affiliate / Monetization Hooks
@@ -35,16 +36,18 @@ class ContentCreator(Agent):
             "ootd": "Today's OOTD: Quiet Luxury 🕊️\n\nCropped camel blazer + high-waist trousers\nEvery piece tailored for 4'11\" ✨\n\nShop my exact look via the LTK link in my bio 🤍",
             "capsule_wardrobe": "15 pieces. 30+ outfits. My petite capsule 🤍\n\nAll neutral. Everything matches.\n\nComment CAPSULE and I'll DM you my free guide on how to build one! 📩",
             "smart_shopping": "Look expensive on a budget 💰\n\n1. Natural fabrics 2. Neutral colors\n3. Tailor everything 4. Less is more\n\nGrab my Lightroom presets (Link in Bio) to make your photos look expensive too! ✨",
-            "lifestyle": "A day in my outfits ☕\n\nMorning coffee → stroll → dinner\nSame base, three different looks\n\nCapsule wardrobe magic ✨",
+            "lifestyle": "Recharging in nature today 🌿\n\nEarthy tones and fresh air are my ultimate therapy.\nWhat's your favorite way to unplug? ☕",
             "ai_tech_hacks": "How I plan my outfits using AI 🤖✨\n\nI use ChatGPT to build a smart wardrobe schedule.\nWant the prompt I use? Check the link in my bio! 🔗",
+            "psychology_of_style": "Enclothed Cognition: Why your outfit changes your mood 🧠✨\n\nAs a psychologist, I know that wearing structured clothes actually makes you feel more confident and focused. \n\nDress for the mindset you want today. 🤍",
         }
         tags = {
             "petite_styling": "#PetiteStyle #StyleTips #ShortGirlFashion #LTKunder50",
             "ootd": "#OOTD #PetiteStyle #QuietLuxury #4ft11 #LTKit",
             "capsule_wardrobe": "#CapsuleWardrobe #MinimalistStyle #PetiteStyle",
             "smart_shopping": "#AffordableStyle #SmartShopping #QuietLuxury",
-            "lifestyle": "#DayInMyLife #PetiteStyle #LifeStyleCreator",
+            "lifestyle": "#NatureLover #Mindfulness #PetiteStyle #LifeStyleCreator",
             "ai_tech_hacks": "#AITech #TechTips #OutfitPlanner #TechGirl",
+            "psychology_of_style": "#FashionPsychology #Confidence #MentalHealth #Mindset",
         }
 
         # Load dynamic products found by ProductHunter
