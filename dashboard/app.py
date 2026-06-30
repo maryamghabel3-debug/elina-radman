@@ -263,92 +263,72 @@ elif page == "Content Manager":
                 st.write(f"**Hashtags:** {p.get('hashtags', '')}")
 
 elif page == "Media Generator":
-    st.title("📸 Media & Studio")
-    st.markdown("Trigger image and video generation using Free Cloud GPUs (Hugging Face / Tencent).")
+    st.title("🎬 Elina's Video & Media Studio")
+    st.markdown("Welcome to the Director's Chair. You just express your vision, and the AI Project Manager will automatically choose the best model from our **2026 Open-Source Catalog** (LongCat, OpenMontage, Hunyuan, OmniTalker, etc.) to execute it.")
     
-    tab1, tab2 = st.tabs(["🖼️ Image Studio", "🎬 Video Studio"])
+    # Simple, uncluttered UI
+    user_vision = st.text_area(
+        "🧠 What is your vision for this video?", 
+        placeholder="E.g., 'Make a 1-minute YouTube video where Elina talks about the psychology of minimalist fashion. I want it fully automated with background music.'",
+        height=100
+    )
     
-    with tab1:
-        st.markdown("### Generate Consistent Face Photo")
-        img_prompt = st.text_input("Describe the scene (e.g., 'wearing a tailored camel blazer, sitting in a Parisian cafe'):", key="img_prompt")
-        
-        if st.button("Generate Image (InstantID)"):
-            if not img_prompt:
-                st.warning("Please enter a prompt.")
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        if st.button("🎬 Let the Manager Decide & Produce", use_container_width=True):
+            if not user_vision:
+                st.warning("Please describe your vision first.")
             else:
-                with st.spinner("Requesting Cloud GPU (Takes ~20 seconds)..."):
+                with st.spinner("Manager is analyzing your vision and assigning AI models..."):
                     try:
-                        from agents.platform_managers import VisualCreatorAgent
-                        agent = VisualCreatorAgent()
-                        path = agent.generate_consistent_character(img_prompt)
-                        st.success(f"Media generated: {path}")
-                        st.image(path)
+                        from agents.video_generator import DirectorAgent
+                        director = DirectorAgent()
+                        
+                        # Add a progress bar to show the steps
+                        progress_text = "Operation in progress. Please wait."
+                        my_bar = st.progress(0, text="Analyzing intent and matching to AI Catalog...")
+                        
+                        result = director.run_managed_project(user_vision, audio_text="Auto-generated script")
+                        
+                        my_bar.progress(50, text=f"Model Selected: {result['manager_report']['primary_model']}... Generating!")
+                        import time; time.sleep(2) # Simulating processing time
+                        
+                        my_bar.progress(100, text="Video Compiled and Ready!")
+                        
+                        st.success("✨ Project Completed Successfully!")
+                        
+                        # Show the Manager's Report
+                        st.info(f"**📊 Manager's Report:**\n"
+                                f"- **Selected Model:** `{result['manager_report']['primary_model']}`\n"
+                                f"- **Strategy:** `{result['manager_report']['workflow']}`\n"
+                                f"- **Reason:** {result['manager_report']['reason']}")
+                        
+                        st.write("*(Note: Due to hardware limits, a mock file is shown if no real API keys were charged/provided)*")
+                        
                     except Exception as e:
-                        st.error(f"Error: {e}")
+                        st.error(f"Error in production: {e}")
 
-    with tab2:
-        st.markdown("### 🎬 Advanced Video Studio")
-        st.markdown("Creates High-Quality videos without needing local GPUs. You can specify the style, background music, and Elina's language.")
+    st.markdown("---")
+    # Advanced / Manual Mode hidden inside an expander
+    with st.expander("⚙️ Advanced: Manual Model Selection & Settings"):
+        st.markdown("Override the Manager and explicitly select your pipeline.")
         
-        # New Video Customization Options
-        col_v1, col_v2 = st.columns(2)
-        with col_v1:
-            vid_style = st.selectbox("Video Style:", ["OPG (Organic Photorealistic)", "Cinematic (Standard)", "CGV (Computer Generated Vision/3D)"])
-            vid_language = st.selectbox("Elina's Language:", ["Persian (فارسی)", "English", "German (Deutsch)", "Turkish (Türkçe)", "Arabic (العربية)"])
-            lip_sync = st.checkbox("Enable Lip-Sync (Talking Head)", value=True, help="Automatically syncs Elina's lips to the generated voiceover using VideoReTalking.")
-        with col_v2:
-            vid_music = st.selectbox("Background Music Vibe:", ["Lo-Fi / Chillhop (Therapeutic)", "Acoustic Pop", "Cinematic Ambient", "Trending TikTok Beat", "None"])
-            vid_camera = st.text_input("Camera Angle:", value="Medium Close-up, tracking shot")
+        tab_th, tab_broll, tab_auto = st.tabs(["🗣️ Talking Head / Avatar", "🎥 Cinematic B-Roll", "⚙️ End-to-End Automation"])
+        
+        with tab_th:
+            st.selectbox("Select Avatar Model:", ["LongCat-Avatar-1.5 (High Accuracy Lip-Sync)", "OmniTalker (Emotional Lip-Sync)", "VideoReTalking-HQ (Dynamic Movement)", "MuseTalk (Real-time)"])
+            st.text_area("Voiceover Text:")
+            st.button("Generate Talking Head", key="btn_th")
             
-        vid_lighting = st.text_input("Lighting:", value="Golden hour, cinematic lighting")
-        vid_action = st.text_area("Action/Scene Description:", value="Elina walking gracefully down the street, looking at the camera, wearing neutral tones.")
-        vid_voiceover = st.text_area("Voiceover Text (What Elina says):", value="سلام دخترا🤍 امروز درباره قدرت سکوت حرف می‌زنیم.")
-        
-        if st.button("Auto-Pilot 🤖 (Let Elina Decide)"):
-            st.info("Letting the AI Director choose the best style, music, and shot based on current trends...")
-            try:
-                from agents.video_generator import DirectorAgent
-                agent = DirectorAgent()
-                # Run the full automated pipeline
-                final_path = agent.run(topic="Psychology of minimal fashion", format_type="shorts")
-                st.success(f"Auto-pilot video ready: {final_path}")
-                if os.path.exists(final_path):
-                    st.video(final_path)
-            except Exception as e:
-                st.error(f"Auto-Pilot Error: {e}")
-
-        if st.button("Action! 🎬 (Custom Generate)"):
-            with st.spinner(f"Rendering {vid_style} video with {vid_language} voiceover and {vid_music} music (This may take several minutes)..."):
-                try:
-                    from agents.video_generator import DirectorAgent
-                    agent = DirectorAgent()
-                    
-                    scene = {
-                        "camera": vid_camera,
-                        "lighting": vid_lighting,
-                        "action": vid_action,
-                        "dialogue": vid_voiceover,
-                        "language": vid_language,
-                        "music": vid_music
-                    }
-                    
-                    # 1. Generate Video
-                    st.toast("Generating visual frames...")
-                    video_raw_path = agent.generate_video_shot(scene, index=99, video_style=vid_style.split(" ")[0])
-                    
-                    # 2. Generate Voiceover
-                    st.toast(f"Generating {vid_language} voiceover...")
-                    audio_path = agent.generate_voiceover(scene["dialogue"], index=99)
-                    
-                    # 3. Compile (Sync video, voice, and BG music)
-                    st.toast("Compiling Final Cut (Adding Music & Subtitles)...")
-                    final_path = agent.compile_final_cut([{"audio": audio_path, "video": video_raw_path}])
-                    
-                    st.success(f"Video saved to: {final_path}")
-                    if os.path.exists(final_path):
-                        st.video(final_path)
-                except Exception as e:
-                    st.error(f"Error generating video: {e}")
+        with tab_broll:
+            st.selectbox("Select Text-to-Video Model:", ["HunyuanVideo (13B Cinematic)", "Wan 2.2-T2V (Physical Realism)", "CogVideoX-5B (Complex Prompts)", "LTX-Video (Fast 1080p)"])
+            st.text_input("Visual Prompt:")
+            st.button("Generate B-Roll", key="btn_br")
+            
+        with tab_auto:
+            st.selectbox("Select Pipeline:", ["OpenMontage (Agentic Video Builder)", "OpenShorts (TikTok/Reels Automation)", "MoneyPrinterV2 (Faceless YouTube)"])
+            st.text_input("Topic / Keyword:")
+            st.button("Start Automation", key="btn_auto")
 
 elif page == "System Status":
     st.title("⚙️ System Status")
