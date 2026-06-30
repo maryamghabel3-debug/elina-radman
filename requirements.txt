@@ -5,3 +5,4 @@ gradio_client
 ffmpeg-python
 kivy>=2.34
 kivymd>=1.2
+mcp>=1.0.0
