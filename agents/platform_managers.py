@@ -46,7 +46,7 @@ class VisualCreatorAgent:
         os.makedirs(self.output_dir, exist_ok=True)
         
         # Ensure a reference image exists for Face consistency
-        self.reference_face = "docs/elina_reference.jpg"
+        self.reference_face = "images/elina-profile-pic-03.jpg"
         if not os.path.exists("docs"):
             os.makedirs("docs", exist_ok=True)
         if not os.path.exists(self.reference_face):
