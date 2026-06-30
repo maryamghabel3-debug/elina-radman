@@ -49,6 +49,9 @@ st.sidebar.markdown("### Control Panel")
 page = st.sidebar.radio("Navigate", ["Home", "Diary & Emotions", "Content Manager", "Media Generator", "System Status"])
 
 # ----------------- UTILS -----------------
+# To allow imports from the parent directory
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 def load_diary():
     path = "content/elina_diary.json"
     if os.path.exists(path):
