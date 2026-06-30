@@ -120,6 +120,43 @@ class DirectorAgent(Agent):
             
         return video_path
 
+    def generate_talking_head(self, video_path, audio_path, index):
+        """
+        Takes a generated video and an audio file, and applies lip-sync using 
+        advanced open-source models (like VideoReTalking or daVinci-MagiHuman) 
+        hosted on Hugging Face Spaces.
+        """
+        self.log(f"Applying Lip-Sync to scene {index}...")
+        synced_path = os.path.join(self.output_dir, f"scene_{index}_synced.mp4")
+        
+        hf_token = os.environ.get("HF_TOKEN", "")
+        if not hf_token:
+            print("⚠️ HF_TOKEN not found. Returning unsynced video.")
+            return video_path
+            
+        try:
+            # We connect to an Open-Source Lip-Sync Space
+            # VideoReTalking is an excellent choice for this.
+            print(f"🚀 [Director] Requesting Lip-Sync on Cloud GPU (VideoReTalking)...")
+            client = Client("OpenTalker/video-retalking", hf_token=hf_token)
+            
+            # The API parameters depend on the specific space. 
+            # We pass the generated video and the TTS audio.
+            result = client.predict(
+                face_video=handle_file(video_path),
+                input_audio=handle_file(audio_path),
+                api_name="/predict"
+            )
+            
+            if isinstance(result, str) and os.path.exists(result):
+                shutil.copy(result, synced_path)
+                print(f"✅ [Director] Synced Video saved: {synced_path}")
+                return synced_path
+        except Exception as e:
+            print(f"❌ [Director] Lip-Sync API Error: {e}")
+            
+        return video_path
+
     def compile_final_cut(self, shots):
         """Uses FFmpeg to stitch video and audio, add transitions, and burn subtitles"""
         self.log("Editing Room: Stitching shots, adding color grade and subtitles...")
@@ -144,6 +181,12 @@ class DirectorAgent(Agent):
             # Defaulting to OPG (Organic Photorealistic Generation) for fashion/lifestyle
             video_style = scene.get("style", "OPG")
             video = self.generate_video_shot(scene, i, video_style=video_style)
+            shots.append({"audio": audio, "video": video})
+            
+            # If the video involves Elina speaking to the camera, apply Lip-Sync
+            if "dialogue" in scene and scene["dialogue"]:
+                video = self.generate_talking_head(video, audio, i)
+                
             shots.append({"audio": audio, "video": video})
             
         self.log("🎬 POST-PRODUCTION")

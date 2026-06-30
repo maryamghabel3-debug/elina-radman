@@ -287,7 +287,7 @@ elif page == "Media Generator":
                         st.error(f"Error: {e}")
 
     with tab2:
-        st.markdown("### Generate Video (HunyuanVideo)")
+        st.markdown("### 🎬 Advanced Video Studio")
         st.markdown("Creates High-Quality videos without needing local GPUs. You can specify the style, background music, and Elina's language.")
         
         # New Video Customization Options
@@ -295,6 +295,7 @@ elif page == "Media Generator":
         with col_v1:
             vid_style = st.selectbox("Video Style:", ["OPG (Organic Photorealistic)", "Cinematic (Standard)", "CGV (Computer Generated Vision/3D)"])
             vid_language = st.selectbox("Elina's Language:", ["Persian (فارسی)", "English", "German (Deutsch)", "Turkish (Türkçe)", "Arabic (العربية)"])
+            lip_sync = st.checkbox("Enable Lip-Sync (Talking Head)", value=True, help="Automatically syncs Elina's lips to the generated voiceover using VideoReTalking.")
         with col_v2:
             vid_music = st.selectbox("Background Music Vibe:", ["Lo-Fi / Chillhop (Therapeutic)", "Acoustic Pop", "Cinematic Ambient", "Trending TikTok Beat", "None"])
             vid_camera = st.text_input("Camera Angle:", value="Medium Close-up, tracking shot")
