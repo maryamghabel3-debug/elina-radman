@@ -46,7 +46,7 @@ st.markdown("""
 # ----------------- SIDEBAR -----------------
 st.sidebar.title("ElinaOS 🌿")
 st.sidebar.markdown("### Control Panel")
-page = st.sidebar.radio("Navigate", ["Home", "Diary & Emotions", "Content Manager", "Media Generator", "System Status"])
+page = st.sidebar.radio("Navigate", ["Home", "Chat with Elina", "AI Developer (Coder)", "Strategy Editor", "Diary & Emotions", "Content Manager", "Media Generator", "System Status"])
 
 # ----------------- UTILS -----------------
 # To allow imports from the parent directory
@@ -90,6 +90,132 @@ if page == "Home":
         st.markdown('<div class="metric-box"><h3>🎭 Emotional State</h3><p>Currently feeling: <b>' + (load_diary()[-1]["feeling"] if load_diary() else "Neutral") + '</b></p></div>', unsafe_allow_html=True)
     with col3:
         st.markdown('<div class="metric-box"><h3>💰 Monetization</h3><p>Active Links: LTK, Amazon, Pietra.</p></div>', unsafe_allow_html=True)
+
+elif page == "Chat with Elina":
+    st.title("💬 Chat with Elina")
+    st.markdown("Have a natural conversation with Elina to brainstorm ideas or ask about her day.")
+    
+    if "elina_chat_history" not in st.session_state:
+        st.session_state.elina_chat_history = []
+        
+    for msg in st.session_state.elina_chat_history:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+            
+    user_input = st.chat_input("Talk to Elina...")
+    if user_input:
+        st.session_state.elina_chat_history.append({"role": "user", "content": user_input})
+        with st.chat_message("user"):
+            st.markdown(user_input)
+            
+        with st.chat_message("assistant"):
+            with st.spinner("Elina is typing..."):
+                try:
+                    from agents.llm_router import LLMRouter
+                    router = LLMRouter()
+                    system_prompt = (
+                        "You are Elina Radman, a 24yo Iranian fashion influencer, clinical psychologist, "
+                        "horticulturist, and social activist. You are petite, confident, vulnerable, and courageous. "
+                        "Your user is your manager/friend. Reply in Persian, warm, emotional, and relatable."
+                    )
+                    # We use 'creative_writing' to route to OpenRouter/Claude or 'general' to route to GitHub/Gemini
+                    response_data = router.smart_generate(user_input, task_type="general", system_prompt=system_prompt)
+                    bot_reply = response_data.get("response", "من اینجام 🤍 مشکلی در ارتباط پیش اومد.")
+                    st.markdown(bot_reply)
+                    st.session_state.elina_chat_history.append({"role": "assistant", "content": bot_reply})
+                except Exception as e:
+                    st.error(f"Error connecting to LLM: {e}")
+
+elif page == "AI Developer (Coder)":
+    st.title("💻 AI Developer & GitHub Manager")
+    st.markdown("Ask the AI Coder to write new agents, update code, or fix bugs, and push directly to GitHub.")
+    
+    if "coder_chat_history" not in st.session_state:
+        st.session_state.coder_chat_history = []
+        
+    for msg in st.session_state.coder_chat_history:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+            
+    coder_input = st.chat_input("Tell the developer what to code...")
+    if coder_input:
+        st.session_state.coder_chat_history.append({"role": "user", "content": coder_input})
+        with st.chat_message("user"):
+            st.markdown(coder_input)
+            
+        with st.chat_message("assistant"):
+            with st.spinner("Developer is thinking..."):
+                try:
+                    from agents.llm_router import LLMRouter
+                    from agents.github_manager import GitHubManager
+                    router = LLMRouter()
+                    gh = GitHubManager()
+                    
+                    system_prompt = (
+                        "You are an expert Senior Python Developer. The user is asking you to write or update code for the ElinaOS project. "
+                        "Only reply with the requested Python code or Markdown text. Do NOT include markdown code blocks (```python) in your final output if the user wants to save it as a file directly, "
+                        "or provide instructions if they just want advice."
+                    )
+                    # We use 'coding' task type to route to DeepSeek (if available) or fallback to Gemini
+                    response_data = router.smart_generate(coder_input, task_type="coding", system_prompt=system_prompt)
+                    code_reply = response_data.get("response", "Error generating code.")
+                    
+                    st.markdown("### Generated Response/Code:")
+                    st.code(code_reply)
+                    st.session_state.coder_chat_history.append({"role": "assistant", "content": code_reply})
+                    
+                    # Store in session so user can review and push
+                    st.session_state.last_generated_code = code_reply
+                    
+                except Exception as e:
+                    st.error(f"Error: {e}")
+                    
+        # Option to push the code
+        if "last_generated_code" in st.session_state:
+            st.markdown("---")
+            file_path = st.text_input("File path to save/update in GitHub (e.g., agents/new_agent.py):")
+            commit_msg = st.text_input("Commit message:", value="feat: Add AI Developer generated code")
+            if st.button("Push to GitHub 🐙"):
+                with st.spinner("Pushing to GitHub..."):
+                    gh = GitHubManager()
+                    res = gh.update_file(file_path, st.session_state.last_generated_code, commit_msg)
+                    if "error" in res:
+                        st.error(f"Failed to push: {res}")
+                    else:
+                        st.success(f"Successfully pushed to {file_path}!")
+
+elif page == "Strategy Editor":
+    st.title("📈 Strategy & Documentation Editor")
+    st.markdown("Directly edit Elina's core philosophy and monetization strategies.")
+    
+    file_to_edit = st.selectbox("Select file to edit:", ["docs/CHARACTER.md", "docs/BUSINESS-PLAN.md"])
+    
+    try:
+        from agents.github_manager import GitHubManager
+        gh = GitHubManager()
+        
+        # Load file content
+        if "current_file_content" not in st.session_state or st.session_state.get("current_file_name") != file_to_edit:
+            res = gh.get_file(file_to_edit)
+            if "content" in res:
+                st.session_state.current_file_content = res["content"]
+                st.session_state.current_file_name = file_to_edit
+            else:
+                st.session_state.current_file_content = f"Could not load {file_to_edit}. Make sure GH_PAT is set."
+                
+        new_content = st.text_area("File Content:", value=st.session_state.current_file_content, height=400)
+        
+        if st.button("Save Changes to GitHub"):
+            with st.spinner("Saving..."):
+                res = gh.update_file(file_to_edit, new_content, f"docs: Update {file_to_edit} via Dashboard")
+                if "error" in res:
+                    st.error(f"Failed: {res}")
+                else:
+                    st.success("Successfully updated!")
+                    st.session_state.current_file_content = new_content
+                    
+    except Exception as e:
+        st.error(f"GitHub Error: {e}. Check if GH_PAT is set correctly in secrets.")
 
 elif page == "Diary & Emotions":
     st.title("🎭 Diary & Emotional State")
