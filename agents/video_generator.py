@@ -9,8 +9,13 @@ to generate videos without needing local hardware.
 import os
 import json
 import asyncio
+import shutil
 from datetime import datetime
 from .base import Agent
+try:
+    from gradio_client import Client
+except ImportError:
+    pass
 
 class DirectorAgent(Agent):
     def __init__(self):
@@ -78,15 +83,31 @@ class DirectorAgent(Agent):
         
         print(f"[Director] 🎥 Camera Rolling: {prompt}")
         
-        # 💡 PRO TIP: Using gradio_client to hit open-source models like LivePortrait or HunyuanVideo 
+        # 💡 PRO TIP: Using gradio_client to hit open-source models like HunyuanVideo 
         # hosted for free on Hugging Face Spaces.
-        """
-        Example Implementation:
-        from gradio_client import Client
-        client = Client("model-space-name/LivePortrait-or-similar")
-        result = client.predict(prompt, api_name="/predict")
-        """
-        
+        hf_token = os.environ.get("HF_TOKEN", "")
+        if not hf_token:
+            print("⚠️ HF_TOKEN not found. Returning mock video.")
+            return "mock_video.mp4"
+            
+        try:
+            # Connect to Tencent's HunyuanVideo (Free Space)
+            # This requires zero local GPU!
+            client = Client("tencent/HunyuanVideo", hf_token=hf_token)
+            print(f"🚀 [Director] Requesting HunyuanVideo Generation on Cloud GPU...")
+            
+            result = client.predict(
+                prompt=prompt,
+                api_name="/predict" # Depends on the specific space's API
+            )
+            
+            if isinstance(result, str) and os.path.exists(result):
+                shutil.copy(result, video_path)
+                print(f"✅ [Director] Video saved: {video_path}")
+                return video_path
+        except Exception as e:
+            print(f"❌ [Director] Cloud Video API Error: {e}")
+            
         return video_path
 
     def compile_final_cut(self, shots):
