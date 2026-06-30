@@ -66,17 +66,27 @@ class DirectorAgent(Agent):
         
         return audio_path
 
-    def generate_video_shot(self, scene_data, index):
+    def generate_video_shot(self, scene_data, index, video_style="Cinematic"):
         """
         Uses Hugging Face Spaces (via gradio_client) for FREE Cloud GPU Video Generation!
-        No local hardware required.
+        Handles multiple styles including CGV (Computer Generated Vision/3D), 
+        OPG (Organic Photorealistic Generation), and standard Cinematic formats.
         """
-        self.log(f"Filming scene {index} via Cloud GPU (HuggingFace Spaces)...")
+        self.log(f"Filming scene {index} via Cloud GPU (Style: {video_style})...")
         video_path = os.path.join(self.output_dir, f"scene_{index}_raw.mp4")
         
-        # Crafting the ultimate cinematic prompt
+        # Adjust prompt based on requested video style (CGV vs OPG)
+        style_prefix = ""
+        if video_style == "CGV":
+            style_prefix = "High-end 3D render, Octane render, Unreal Engine 5, hyper-detailed CGV, stylized 3D avatar, "
+        elif video_style == "OPG":
+            style_prefix = "Ultra-realistic, organic photorealistic generation, shot on Arri Alexa 65, 8k resolution, documentary style, "
+        else:
+            style_prefix = "Cinematic video, 4k resolution, "
+
+        # Crafting the ultimate prompt
         prompt = (
-            f"Cinematic video, 4k resolution, {scene_data['camera']}, "
+            f"{style_prefix}{scene_data['camera']}, "
             f"{scene_data['lighting']}, {scene_data['action']}. "
             f"Subject: Elina Radman, 150cm petite Iranian woman, quiet luxury aesthetic."
         )
@@ -131,7 +141,9 @@ class DirectorAgent(Agent):
         for i, scene in enumerate(screenplay, 1):
             self.log(f"🎬 PRODUCTION: Shooting Scene {i} / {len(screenplay)}")
             audio = self.generate_voiceover(scene["dialogue"], i)
-            video = self.generate_video_shot(scene, i)
+            # Defaulting to OPG (Organic Photorealistic Generation) for fashion/lifestyle
+            video_style = scene.get("style", "OPG")
+            video = self.generate_video_shot(scene, i, video_style=video_style)
             shots.append({"audio": audio, "video": video})
             
         self.log("🎬 POST-PRODUCTION")

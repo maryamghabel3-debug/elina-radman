@@ -264,17 +264,56 @@ elif page == "Content Manager":
 
 elif page == "Media Generator":
     st.title("📸 Media & Studio")
-    st.markdown("Trigger image and video generation using Hugging Face Cloud GPUs.")
+    st.markdown("Trigger image and video generation using Free Cloud GPUs (Hugging Face / Tencent).")
     
-    if st.button("Generate Consistent Image (InstantID)"):
-        st.info("Requesting Cloud GPU... (Requires HF_TOKEN)")
-        try:
-            from agents.platform_managers import VisualCreatorAgent
-            agent = VisualCreatorAgent()
-            path = agent.generate_consistent_character("wearing a cozy beige sweater, drinking tea")
-            st.success(f"Media generated: {path}")
-        except Exception as e:
-            st.error(f"Error: {e}")
+    tab1, tab2 = st.tabs(["🖼️ Image Studio", "🎬 Video Studio"])
+    
+    with tab1:
+        st.markdown("### Generate Consistent Face Photo")
+        img_prompt = st.text_input("Describe the scene (e.g., 'wearing a tailored camel blazer, sitting in a Parisian cafe'):", key="img_prompt")
+        
+        if st.button("Generate Image (InstantID)"):
+            if not img_prompt:
+                st.warning("Please enter a prompt.")
+            else:
+                with st.spinner("Requesting Cloud GPU (Takes ~20 seconds)..."):
+                    try:
+                        from agents.platform_managers import VisualCreatorAgent
+                        agent = VisualCreatorAgent()
+                        path = agent.generate_consistent_character(img_prompt)
+                        st.success(f"Media generated: {path}")
+                        st.image(path)
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+
+    with tab2:
+        st.markdown("### Generate Video (HunyuanVideo)")
+        st.markdown("Creates High-Quality videos without needing local GPUs. You can specify the style (Cinematic, CGV, or OPG).")
+        
+        vid_style = st.selectbox("Video Style:", ["OPG (Organic Photorealistic)", "Cinematic (Standard)", "CGV (Computer Generated Vision/3D)"])
+        vid_camera = st.text_input("Camera Angle:", value="Medium Close-up, tracking shot")
+        vid_lighting = st.text_input("Lighting:", value="Golden hour, cinematic lighting")
+        vid_action = st.text_area("Action/Scene Description:", value="Elina walking gracefully down the street, looking at the camera, wearing neutral tones.")
+        
+        if st.button("Action! 🎬 (Generate Video)"):
+            with st.spinner("Rendering video on Cloud GPU (This may take several minutes)..."):
+                try:
+                    from agents.video_generator import DirectorAgent
+                    agent = DirectorAgent()
+                    
+                    # Creating a mock scene dict as expected by the agent
+                    scene = {
+                        "camera": vid_camera,
+                        "lighting": vid_lighting,
+                        "action": vid_action
+                    }
+                    
+                    video_path = agent.generate_video_shot(scene, index=99, video_style=vid_style.split(" ")[0])
+                    st.success(f"Video saved to: {video_path}")
+                    if os.path.exists(video_path):
+                        st.video(video_path)
+                except Exception as e:
+                    st.error(f"Error generating video: {e}")
 
 elif page == "System Status":
     st.title("⚙️ System Status")
