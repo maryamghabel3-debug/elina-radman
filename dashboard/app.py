@@ -288,30 +288,64 @@ elif page == "Media Generator":
 
     with tab2:
         st.markdown("### Generate Video (HunyuanVideo)")
-        st.markdown("Creates High-Quality videos without needing local GPUs. You can specify the style (Cinematic, CGV, or OPG).")
+        st.markdown("Creates High-Quality videos without needing local GPUs. You can specify the style, background music, and Elina's language.")
         
-        vid_style = st.selectbox("Video Style:", ["OPG (Organic Photorealistic)", "Cinematic (Standard)", "CGV (Computer Generated Vision/3D)"])
-        vid_camera = st.text_input("Camera Angle:", value="Medium Close-up, tracking shot")
+        # New Video Customization Options
+        col_v1, col_v2 = st.columns(2)
+        with col_v1:
+            vid_style = st.selectbox("Video Style:", ["OPG (Organic Photorealistic)", "Cinematic (Standard)", "CGV (Computer Generated Vision/3D)"])
+            vid_language = st.selectbox("Elina's Language:", ["Persian (فارسی)", "English", "German (Deutsch)", "Turkish (Türkçe)", "Arabic (العربية)"])
+        with col_v2:
+            vid_music = st.selectbox("Background Music Vibe:", ["Lo-Fi / Chillhop (Therapeutic)", "Acoustic Pop", "Cinematic Ambient", "Trending TikTok Beat", "None"])
+            vid_camera = st.text_input("Camera Angle:", value="Medium Close-up, tracking shot")
+            
         vid_lighting = st.text_input("Lighting:", value="Golden hour, cinematic lighting")
         vid_action = st.text_area("Action/Scene Description:", value="Elina walking gracefully down the street, looking at the camera, wearing neutral tones.")
+        vid_voiceover = st.text_area("Voiceover Text (What Elina says):", value="سلام دخترا🤍 امروز درباره قدرت سکوت حرف می‌زنیم.")
         
-        if st.button("Action! 🎬 (Generate Video)"):
-            with st.spinner("Rendering video on Cloud GPU (This may take several minutes)..."):
+        if st.button("Auto-Pilot 🤖 (Let Elina Decide)"):
+            st.info("Letting the AI Director choose the best style, music, and shot based on current trends...")
+            try:
+                from agents.video_generator import DirectorAgent
+                agent = DirectorAgent()
+                # Run the full automated pipeline
+                final_path = agent.run(topic="Psychology of minimal fashion", format_type="shorts")
+                st.success(f"Auto-pilot video ready: {final_path}")
+                if os.path.exists(final_path):
+                    st.video(final_path)
+            except Exception as e:
+                st.error(f"Auto-Pilot Error: {e}")
+
+        if st.button("Action! 🎬 (Custom Generate)"):
+            with st.spinner(f"Rendering {vid_style} video with {vid_language} voiceover and {vid_music} music (This may take several minutes)..."):
                 try:
                     from agents.video_generator import DirectorAgent
                     agent = DirectorAgent()
                     
-                    # Creating a mock scene dict as expected by the agent
                     scene = {
                         "camera": vid_camera,
                         "lighting": vid_lighting,
-                        "action": vid_action
+                        "action": vid_action,
+                        "dialogue": vid_voiceover,
+                        "language": vid_language,
+                        "music": vid_music
                     }
                     
-                    video_path = agent.generate_video_shot(scene, index=99, video_style=vid_style.split(" ")[0])
-                    st.success(f"Video saved to: {video_path}")
-                    if os.path.exists(video_path):
-                        st.video(video_path)
+                    # 1. Generate Video
+                    st.toast("Generating visual frames...")
+                    video_raw_path = agent.generate_video_shot(scene, index=99, video_style=vid_style.split(" ")[0])
+                    
+                    # 2. Generate Voiceover
+                    st.toast(f"Generating {vid_language} voiceover...")
+                    audio_path = agent.generate_voiceover(scene["dialogue"], index=99)
+                    
+                    # 3. Compile (Sync video, voice, and BG music)
+                    st.toast("Compiling Final Cut (Adding Music & Subtitles)...")
+                    final_path = agent.compile_final_cut([{"audio": audio_path, "video": video_raw_path}])
+                    
+                    st.success(f"Video saved to: {final_path}")
+                    if os.path.exists(final_path):
+                        st.video(final_path)
                 except Exception as e:
                     st.error(f"Error generating video: {e}")
 
