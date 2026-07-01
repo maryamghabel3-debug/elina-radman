@@ -337,6 +337,54 @@ def test_content_creator_video_ideas_from_blueprints(workdir):
 
 
 # --------------------------------------------------------------------------- #
+# Daily pipeline wiring (generate.py) with deep analysis skipped
+# --------------------------------------------------------------------------- #
+def test_daily_pipeline_runs_with_deep_skip(workdir, monkeypatch):
+    """The full daily entrypoint should produce a queue file and never crash,
+    even offline, when deep analysis is skipped."""
+    import importlib
+
+    monkeypatch.setenv("SKIP_DEEP_ANALYSIS", "1")
+    for k in ("GEMINI_API_KEY", "YOUTUBE_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"):
+        monkeypatch.delenv(k, raising=False)
+
+    # Seed the trend cache so load_trends() stays fully offline
+    from agents.trend_hunter import TrendHunter
+    TrendHunter()._save_cache([{"name": "seeded", "platform": "reddit", "popularity_rank": 1}])
+
+    import scripts.generate as gen
+    importlib.reload(gen)
+
+    # run_deep_analysis honours the skip flag and returns no video ideas
+    assert gen.run_deep_analysis() == []
+
+    gen.main()
+    files = glob.glob("content/queue/*.json")
+    assert files
+    with open(files[0]) as f:
+        data = json.load(f)
+    assert len(data) == 3
+    assert all(d["status"] == "pending_approval" for d in data)
+
+
+def test_load_visual_signals_reads_report(workdir):
+    import importlib, scripts.generate as gen
+    importlib.reload(gen)
+
+    os.makedirs("content", exist_ok=True)
+    with open("content/trend_visuals.json", "w") as f:
+        json.dump(
+            {
+                "trending_aesthetics": ["quiet luxury"],
+                "trending_standout_products": ["camel trench"],
+            },
+            f,
+        )
+    sig = gen.load_visual_signals()
+    assert "quiet luxury" in sig and "camel trench" in sig
+
+
+# --------------------------------------------------------------------------- #
 # Base Agent
 # --------------------------------------------------------------------------- #
 def test_base_agent_status_and_logging():
