@@ -30,10 +30,17 @@
 ```
 GitHub Actions (سرور رایگان)
 │
-├── 🔥 TrendHunter Agent — ترندهای فشن رو پیدا می‌کنه
-├── 🎨 ContentCreator Agent — اسکریپت + کپشن + هشتگ می‌سازه
-├── 📤 Publisher Agent — تو Instagram + TikTok + Pinterest پست می‌کنه
-├── 🐙 GitHubManager Agent — کدهای گیت‌هاب رو مدیریت می‌کنه
+├── 🔥 TrendHunter — ترندهای واقعی فشن (Reddit + Google + YouTube) با عکس
+├── 🖼️ TrendVisualAnalyzer — پالت رنگ عکس‌های ترند رو تحلیل می‌کنه
+├── 🎨 ContentCreator — کپشن + هشتگ بر اساس ترندهای زنده می‌سازه
+├── ✍️ PromptEngineer — prompt عکس/ویدیوی سینمایی می‌سازه
+├── 🛍️ ProductHunter — محصولات افیلیت پیدا می‌کنه
+├── 👗 FashionStylist — moodboard هفتگی می‌سازه
+├── 📊 PerformanceAnalyzer — آمار واقعی رو تحلیل و استراتژی می‌ده
+├── 📤 Publisher — تو Instagram + TikTok + Pinterest پست می‌کنه
+├── 🎬 DirectorAgent (video_generator) — مدیر پروژه ویدیو
+├── 🧭 LLMRouter — بین مدل‌های مختلف LLM مسیریابی می‌کنه
+└── 🐙 GitHubManager — کدهای گیت‌هاب رو مدیریت می‌کنه
 │
 ├── ⏰ daily-content.yml — هر شب ۲:۳۰ صبح اجرا می‌شه
 ├── 📱 bot-runner.yml — هر ۵ دقیقه ربات تلگرام رو بیدار می‌کنه
@@ -80,7 +87,7 @@ elina-radman/
 ├── scripts/
 │   ├── elina_bot.py            ← ربات تلگرام (۱۸ فرمان)
 │   ├── generate.py             ← تولید محتوا با Gemini
-│   └── publish.py              ← انتشار با Buffer API
+│   └── publish.py              ← انتشار با Postiz API
 ├── docs/                       ← مستندات کامل استراتژی (۱۳ فایل)
 ├── images/                     ← عکس‌های برند (۱۱ فایل)
 ├── content/queue/              ← صف محتوا
@@ -97,7 +104,7 @@ elina-radman/
 |-------|------|--------|
 | GitHub Actions | **$۰** — public repo = unlimited | سرور + زمان‌بندی |
 | Google Gemini API | **$۰** — ۱۵۰۰ درخواست/روز | ساخت اسکریپت + چت |
-| Buffer | **$۰** — ۳ کانال رایگان | انتشار در IG + TT + Pinterest |
+| Postiz | **$۰** — متن‌باز و self-host | انتشار در IG + TT + Pinterest + ... |
 | Telegram Bot API | **$۰** — همیشه رایگان | رابط کاربری |
 | YouTube Data API | **$۰** — ۱۰,۰۰۰ درخواست/روز | انتشار در یوتیوب |
 | Leonardo AI | **$۰** — ۱۵۰ عکس/روز | ساخت تصویر (آینده) |
@@ -133,4 +140,4 @@ elina-radman/
 
 ---
 
-*Built with ❤️ — June 2026 — $0/month forever*
+*Built with ❤️ — 2026 — $0/month by default · MIT License*

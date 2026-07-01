@@ -12,7 +12,7 @@ class Publisher(Agent):
     def __init__(self):
         super().__init__("Publisher", "Posts content to social media")
 
-    def run(self):
+    def run(self) -> dict:
         self.runs += 1
         self.last_run = datetime.now().isoformat()
         postiz_url = os.environ.get("POSTIZ_URL", "http://localhost:3000/api")

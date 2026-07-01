@@ -203,21 +203,31 @@ for u in updates:
             resp = "⚠️ خطا در دریافت عکس‌ها. بعداً دوباره امتحان کن."
 
     elif text == "/agents":
-        resp = """🤖 *ایجنت‌ها* (۴)
-
-• *trend_hunter* — ترندها 🔥
-• *content_creator* — محتوا 🎨
-• *publisher* — انتشار 📤
-• *github_manager* — گیت‌هاب 🐙
-
-➕ /addagent | ➖ /delagent"""
+        agent_files = sorted(
+            os.path.basename(a)[:-3]
+            for a in g.glob("agents/*.py")
+            if os.path.basename(a) not in ("__init__.py", "base.py", "content_config.py")
+        )
+        resp = f"🤖 *ایجنت‌ها* ({len(agent_files)})\n\n"
+        resp += "\n".join(f"• *{name}*" for name in agent_files)
 
     elif text == "/github":
-        resp = """🐙 *گیت‌هاب*
+        # Count things dynamically instead of hardcoding stale numbers
+        n_workflows = len(g.glob(".github/workflows/*.yml"))
+        n_agents = len(
+            [
+                a
+                for a in g.glob("agents/*.py")
+                if os.path.basename(a) not in ("__init__.py", "base.py", "content_config.py")
+            ]
+        )
+        owner = os.environ.get("REPO_OWNER", "maryamghabel3-debug")
+        repo = os.environ.get("REPO_NAME", "elina-radman")
+        resp = f"""🐙 *گیت‌هاب*
 
-📦 maryamghabel3-debug/elina-radman
-📁 ۱۷ فایل | ۳ workflow | ۴ ایجنت
-🔐 ۷ Secret فعال ✅"""
+📦 {owner}/{repo}
+🔧 {n_workflows} workflow | 🤖 {n_agents} ایجنت
+🔐 اسرار در GitHub Secrets"""
 
     elif text == "/help":
         resp = """🕊️ *راهنما*

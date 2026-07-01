@@ -1,5 +1,6 @@
-"""ContentCreator Agent — Generates captions and scripts"""
+"""ContentCreator Agent — Generates captions and scripts."""
 
+from typing import List, Optional
 from .base import Agent
 from . import content_config as cfg
 from datetime import datetime, timedelta
@@ -13,14 +14,14 @@ class ContentCreator(Agent):
         # In a real setup, this would connect to the LLMRouter
         # self.llm = LLMRouter()
 
-    def load_affiliate_products(self):
+    def load_affiliate_products(self) -> list:
         db_path = "content/affiliate_products.json"
         if os.path.exists(db_path):
             with open(db_path, "r") as f:
                 return json.load(f)
         return []
 
-    def load_diary_feeling(self):
+    def load_diary_feeling(self) -> str:
         """Reads Elina's current emotional state from her diary"""
         diary_path = "content/elina_diary.json"
         if os.path.exists(diary_path):
@@ -34,7 +35,7 @@ class ContentCreator(Agent):
     # bot/dashboard path and the GitHub Actions path stay in sync.
     FALLBACK_CAPTIONS = cfg.FALLBACK_CAPTIONS
 
-    def load_current_trends(self, limit=6):
+    def load_current_trends(self, limit: int = 6) -> List[str]:
         """Fetch the top current fashion trend topics from TrendHunter.
 
         Cached inside TrendHunter (6h), so this is cheap to call. Returns an
@@ -50,7 +51,7 @@ class ContentCreator(Agent):
             self.log(f"Could not load trends: {e}", "error")
             return []
 
-    def generate_dynamic_caption(self, pillar, products, trends=None):
+    def generate_dynamic_caption(self, pillar: str, products: list, trends: Optional[List[str]] = None) -> str:
         """
         Calls the LLMRouter (e.g., Claude or Gemini) to generate a fresh,
         context-aware caption. Uses Elina's Daily Diary to color the tone and
@@ -111,7 +112,7 @@ class ContentCreator(Agent):
             
         return generated_caption
 
-    def run(self, pillars=None, count=3, use_trends=True):
+    def run(self, pillars: Optional[List[str]] = None, count: int = 3, use_trends: bool = True) -> List[dict]:
         self.runs += 1
         self.last_run = datetime.now().isoformat()
         # Pillars/tags come from the shared content_config (single source of truth)

@@ -46,7 +46,7 @@ st.markdown("""
 # ----------------- SIDEBAR -----------------
 st.sidebar.title("ElinaOS 🌿")
 st.sidebar.markdown("### Control Panel")
-page = st.sidebar.radio("Navigate", ["Home", "Chat with Elina", "AI Developer (Coder)", "Strategy Editor", "Diary & Emotions", "Content Manager", "Media Generator", "System Status"])
+page = st.sidebar.radio("Navigate", ["Home", "Chat with Elina", "AI Developer (Coder)", "Strategy Editor", "Diary & Emotions", "Content Manager", "Trends & Analytics", "Media Generator", "System Status"])
 
 # ----------------- UTILS -----------------
 # To allow imports from the parent directory
@@ -265,6 +265,14 @@ elif page == "Content Manager":
 elif page == "Media Generator":
     st.title("🎬 Elina's Video & Media Studio")
     st.markdown("Welcome to the Director's Chair. You just express your vision, and the AI Project Manager will automatically choose the best model from our **2026 Open-Source Catalog** (LongCat, OpenMontage, Hunyuan, OmniTalker, etc.) to execute it.")
+
+    # Be honest about what is live vs. planned so expectations are clear.
+    st.warning(
+        "⚠️ **Status:** The Director's *planning* logic (choosing a model & building "
+        "the prompt/JSON script) is **live**. Actual video rendering is a **preview/"
+        "mock** unless you provide a `HF_TOKEN` and connect a real Hugging Face Space. "
+        "Text/prompt generation, palette analysis and image prompts are fully working."
+    )
     
     # Simple, uncluttered UI
     user_vision = st.text_area(
@@ -341,14 +349,71 @@ elif page == "Media Generator":
             st.text_input("Topic / Keyword:")
             st.button("Start Automation", key="btn_auto")
 
+elif page == "Trends & Analytics":
+    st.title("🔥 Trends & 📊 Analytics")
+    st.markdown("Live fashion trends and real performance metrics driving Elina's content.")
+
+    col_a, col_b = st.columns(2)
+    with col_a:
+        if st.button("🔥 Fetch Live Trends", use_container_width=True):
+            with st.spinner("Scanning Reddit / Google / YouTube..."):
+                try:
+                    from agents.trend_hunter import TrendHunter
+                    th = TrendHunter()
+                    th.run()
+                    st.session_state.trends = th.trends
+                    st.session_state.top_images = th.top_images(limit=6)
+                except Exception as e:
+                    st.error(f"Trend error: {e}")
+    with col_b:
+        if st.button("📊 Analyze Performance", use_container_width=True):
+            with st.spinner("Pulling metrics..."):
+                try:
+                    from agents.performance_analyzer import PerformanceAnalyzer
+                    pa = PerformanceAnalyzer()
+                    st.session_state.strategy = pa.run()
+                except Exception as e:
+                    st.error(f"Analytics error: {e}")
+
+    if st.session_state.get("top_images"):
+        st.markdown("### 📸 Photos getting the most views right now")
+        cols = st.columns(3)
+        for i, t in enumerate(st.session_state.top_images):
+            with cols[i % 3]:
+                if t.get("image"):
+                    st.image(t["image"], caption=t["name"][:60], use_container_width=True)
+                st.caption(f"[{t.get('platform')}]({t.get('url', '#')})")
+
+    if st.session_state.get("trends"):
+        st.markdown("### 🔥 Trending topics")
+        for t in st.session_state.trends:
+            if t.get("curated") or t.get("mock"):
+                continue
+            st.write(f"- **{t['name'][:80]}** — _{t.get('platform')}_")
+
+    if st.session_state.get("strategy"):
+        st.markdown("### 💡 Strategy recommendations")
+        for s in st.session_state.strategy:
+            st.info(s)
+
 elif page == "System Status":
     st.title("⚙️ System Status")
     
     st.write("**Environment Variables:**")
-    env_vars = ["HF_TOKEN", "GEMINI_API_KEY", "TELEGRAM_BOT_TOKEN", "BUFFER_API_TOKEN"]
-    for var in env_vars:
-        status = "✅ Set" if os.environ.get(var) else "❌ Missing"
-        st.write(f"- `{var}`: {status}")
+    # Grouped by what each unlocks; missing optional ones are fine (fallbacks exist)
+    env_groups = {
+        "Core": ["GEMINI_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "GH_PAT"],
+        "Publishing": ["POSTIZ_API_TOKEN", "POSTIZ_URL"],
+        "Real trends & analytics (optional)": [
+            "YOUTUBE_API_KEY", "YOUTUBE_CHANNEL_ID", "IG_ACCESS_TOKEN", "IG_USER_ID"
+        ],
+        "Media (optional)": ["HF_TOKEN"],
+    }
+    for group, env_vars in env_groups.items():
+        st.markdown(f"**{group}**")
+        for var in env_vars:
+            status = "✅ Set" if os.environ.get(var) else "⚪ Missing"
+            st.write(f"- `{var}`: {status}")
         
     st.markdown("---")
     st.markdown("### Start Web Dashboard Command")

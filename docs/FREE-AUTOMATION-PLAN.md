@@ -8,7 +8,7 @@
 
 | نیاز | سرویس رایگان | محدودیت | وضعیت |
 |------|-------------|---------|--------|
-| 📤 پست خودکار | **Buffer Free Plan** | ۳ کانال + ۱۰ پست در صف | ✅ Instagram + TikTok + Pinterest |
+| 📤 پست خودکار | **Postiz (متن‌باز)** | نامحدود، self-host | ✅ Instagram + TikTok + Pinterest |
 | ▶️ یوتیوب | **YouTube Data API** | ۱۰,۰۰۰ درخواست/روز | ✅ |
 | 🖼️ تولید عکس | **Leonardo AI** | ۱۵۰ عکس/روز | ✅ ۷ عکس روزانه |
 | 🧠 تولید اسکریپت | **Google Gemini API** | ۱۵۰۰ درخواست/روز | ✅ |
@@ -33,7 +33,7 @@ GitHub Actions (سرور رایگان)
 │       [✅ تایید] [❌ رد]
 │
 ├── الینا تأیید می‌کنه
-│   └── Buffer API → پست تو:
+│   └── Postiz API → پست تو:
 │       📷 Instagram 🎵 TikTok 📌 Pinterest
 │
 └── YouTube → YouTube Data API جداگانه
@@ -43,7 +43,7 @@ GitHub Actions (سرور رایگان)
 
 ## 📋 ۵ قدم راه‌اندازی (۱ ساعت)
 
-### قدم ۱: Buffer (۱۵ دقیقه)
+### قدم ۱: Postiz (۱۵ دقیقه)
 - برو به: https://buffer.com
 - Sign up رایگان با elinaradman24@gmail.com
 - پلن Free ($۰)
@@ -99,7 +99,7 @@ elina-os/
 
 | کار | زمان |
 |-----|------|
-| ثبت‌نام Buffer | ۱۵ دقیقه |
+| ثبت‌نام/راه‌اندازی Postiz | ۱۵ دقیقه |
 | Google Gemini API | ۱۰ دقیقه |
 | Leonardo AI | ۱۰ دقیقه |
 | ساخت گیت‌هاب | ۲۰ دقیقه |
@@ -123,7 +123,7 @@ elina-os/
 
 | سرویس | Free Tier |
 |-------|-----------|
-| **Buffer** | ۳ کانال + API رایگان |
+| **Postiz** | نامحدود + API رایگان (متن‌باز) |
 | **GitHub Actions** | Public repo = unlimited |
 | **Google Gemini** | ۱۵۰۰ req/day رایگان |
 | **Leonardo AI** | ۱۵۰ image/day رایگان |
@@ -131,4 +131,4 @@ elina-os/
 
 ---
 
-🚀 بگو «بریم» — از Buffer شروع می‌کنیم
+🚀 بگو «بریم» — از Postiz شروع می‌کنیم
