@@ -1,0 +1,10 @@
+# Streamlit theme — Elina Radman "Quiet Luxury" brand palette
+[theme]
+primaryColor = "#C4A882"          # Camel
+backgroundColor = "#F5F0E8"       # Cream
+secondaryBackgroundColor = "#D4C5B9"  # Beige
+textColor = "#3A3A3A"             # Charcoal
+font = "sans serif"
+
+[server]
+headless = true

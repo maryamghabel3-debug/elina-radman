@@ -1,0 +1,7 @@
+# Dependencies for the Streamlit dashboard (Streamlit Community Cloud).
+# Kept lean on purpose: no kivy/mcp/ffmpeg so the cloud build stays fast & green.
+streamlit>=1.30
+requests>=2.32
+google-generativeai>=0.8
+Pillow>=10.0
+numpy>=1.26
