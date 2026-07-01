@@ -39,16 +39,26 @@
 
 ---
 
+## ✨ بهبودهای دور سوم — **انجام‌شده**
+
+| بهبود | توضیح |
+|-------|-------|
+| 🔥 **TrendHunter واقعی** | بازنویسی کامل: ترندهای واقعی از Reddit (فیدهای top-of-week فشن، مرتب بر اساس upvote = معیار ویو) همراه **URL عکس** + Google Trends. متد `top_images()` عکس‌های پرویو رو برمی‌گردونه. |
+| 📸 **دستور `/topimages`** | ربات تلگرام حالا عکس‌هایی که بیشترین ویو می‌گیرن رو نشون می‌ده؛ `/trends` هم زنده شد. |
+| 🧩 **`content_config.py`** | منبع واحد pillar/tag/fallback — `content_creator.py` و `generate.py` دیگه ناهماهنگ نیستن. |
+| 🧪 **تست‌ها (pytest)** | ۸ تست + workflow `tests.yml` برای CI خودکار. |
+| 📦 **تفکیک requirements** | `requirements-core.txt` سبک برای CI + `requirements.txt` کامل برای local. |
+
+> **Pinterest**: endpoint قدیمی RSS پینترست حذف شده (404). به‌جاش از Reddit استفاده شد که ترند واقعی + عکس واقعی می‌ده. راهنمای کامل در `docs/TRENDS-GUIDE.md`.
+
+---
+
 ## 📋 کارهای باقی‌مانده (TODO — هنوز انجام نشده)
 
-### 🔴 اولویت بالا
-- [ ] **دو مسیر تولید محتوای موازی و ناهماهنگ**: `scripts/generate.py` و `agents/content_creator.py` منطق جدا دارن (pillarها و tagها فرق داره). یکی‌شون باید مرجع بشه. *(بهبود کیفیت، نه باگ کرش)*
-- [ ] **بدون هیچ تستی** — حداقل چند تست ساده (pytest) برای ایجنت‌ها.
-
 ### 🟠 اولویت متوسط
-- [ ] **workflow `daily-content.yml` فقط `content/queue/` رو commit می‌کنه** ولی `generate.py` احتمالاً `elina_diary.json` هم می‌سازه — بازبینی مسیرهای commit.
 - [ ] **مدیریت آفست ربات تلگرام** بین اجراهای Action در ریسک از دست رفتن پیام است اگر push انجام نشه.
-- [ ] **`requirements.txt` سنگین است** (kivy, streamlit, mcp) ولی workflowها فقط `requests` و `google-generativeai` نصب می‌کنن — یا requirements تفکیک بشه یا هماهنگ بشه.
+- [ ] **اتصال TrendHunter به ContentCreator** — الان ترندها پیدا می‌شن ولی هنوز مستقیماً به تولید محتوا تزریق نمی‌شن.
+- [ ] **YouTube Data API** برای ترندهای ویدیویی واقعی (نیاز به کلید رایگان).
 
 ### 🟡 اولویت پایین / بهبود
 - [ ] یکسان‌سازی برند «Buffer» در مستندات با «Postiz» واقعیِ کد.
