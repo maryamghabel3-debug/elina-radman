@@ -2,6 +2,10 @@
 requests>=2.32
 google-generativeai>=0.8
 
+# ── Trend photo analysis (dominant colour / palette extraction) ──
+Pillow>=10.0
+numpy>=1.26
+
 # ── Dashboard (local Streamlit UI) ──
 streamlit>=1.20
 

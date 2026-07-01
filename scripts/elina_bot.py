@@ -49,6 +49,18 @@ try:
 except Exception:
     offset = 0
 
+
+def save_offset(value):
+    """Persist the offset locally after each message so a crash mid-run does not
+    cause already-answered messages to be processed again."""
+    try:
+        os.makedirs(os.path.dirname(OFFSET_FILE), exist_ok=True)
+        with open(OFFSET_FILE, "w") as f:
+            f.write(str(value))
+    except Exception as e:
+        print("offset save error:", e)
+
+
 # Get ALL updates since last offset
 print(f"📡 Offset: {offset}")
 r = requests.get(f"{BASE}/getUpdates?offset={offset}&timeout=10", timeout=15).json()
@@ -57,6 +69,7 @@ print(f"📩 {len(updates)} messages")
 
 for u in updates:
     offset = u["update_id"] + 1
+    save_offset(offset)  # persist progress immediately (crash-safe)
     msg = u.get("message", {})
     text = msg.get("text", "")
     chat = str(msg.get("chat", {}).get("id", ""))
@@ -278,7 +291,17 @@ for u in updates:
         r = send(chat, resp, reply_to=mid)
         print(f"   → {'✅' if r.get('ok') else '❌'}")
 
-# Save offset
-with open(OFFSET_FILE, "w") as f:
-    f.write(str(offset))
+# Save offset locally...
+save_offset(offset)
 print(f"💾 Offset saved: {offset}")
+
+# ...and CONFIRM it server-side with Telegram. Calling getUpdates with this
+# offset tells Telegram those updates are handled, so they are dropped from the
+# server queue even if committing the offset file back to git later fails. This
+# is the key defense against re-processing the same messages.
+if updates:
+    try:
+        requests.get(f"{BASE}/getUpdates?offset={offset}&timeout=1", timeout=10)
+        print("✅ Offset confirmed with Telegram")
+    except Exception as e:
+        print("offset confirm error:", e)

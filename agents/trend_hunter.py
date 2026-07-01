@@ -11,9 +11,11 @@ no longer used. Every network call degrades gracefully: on failure or rate-limit
 the agent returns clearly-labelled mock data instead of crashing.
 """
 
+import os
 import re
 import time
 import html
+import json
 import requests
 import xml.etree.ElementTree as ET
 from datetime import datetime
@@ -35,6 +37,18 @@ _FASHION_SUBS = [
     "streetwear",
 ]
 
+# Fashion search terms used to find trending YouTube videos in Elina's niche.
+_YT_QUERIES = [
+    "petite fashion outfit ideas",
+    "quiet luxury outfits",
+    "capsule wardrobe",
+]
+
+# How long a cached trend result stays fresh (seconds). Reduces load on Reddit
+# and avoids hammering rate limits when /trends is called repeatedly.
+_CACHE_TTL = 6 * 60 * 60  # 6 hours
+_CACHE_PATH = "content/trends_cache.json"
+
 
 class TrendHunter(Agent):
     def __init__(self):
@@ -42,6 +56,33 @@ class TrendHunter(Agent):
         self.trends = []
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": _UA})
+        self.youtube_api_key = os.environ.get("YOUTUBE_API_KEY", "")
+
+    # ------------------------------------------------------------------ #
+    # Caching
+    # ------------------------------------------------------------------ #
+    def _load_cache(self):
+        """Return cached trends if the cache file exists and is still fresh."""
+        try:
+            if not os.path.exists(_CACHE_PATH):
+                return None
+            with open(_CACHE_PATH) as f:
+                cached = json.load(f)
+            age = time.time() - cached.get("cached_at", 0)
+            if age < _CACHE_TTL and cached.get("trends"):
+                self.log(f"Using cached trends ({int(age)}s old)")
+                return cached["trends"]
+        except (OSError, json.JSONDecodeError) as e:
+            self.log(f"Cache read failed: {e}", "error")
+        return None
+
+    def _save_cache(self, trends):
+        try:
+            os.makedirs(os.path.dirname(_CACHE_PATH), exist_ok=True)
+            with open(_CACHE_PATH, "w") as f:
+                json.dump({"cached_at": time.time(), "trends": trends}, f, indent=2)
+        except OSError as e:
+            self.log(f"Cache write failed: {e}", "error")
 
     # ------------------------------------------------------------------ #
     # Helpers
@@ -182,6 +223,83 @@ class TrendHunter(Agent):
             )
         return trends[:limit]
 
+    def get_youtube_trends(self, queries=None, per_query=3):
+        """Real trending fashion videos via the YouTube Data API v3.
+
+        Requires a free YOUTUBE_API_KEY (10,000 requests/day quota). Returns
+        videos ordered by view count with real view/like counts and thumbnails.
+        If no key is set, returns [] silently (the run() fallback covers it).
+        """
+        if not self.youtube_api_key:
+            self.log("No YOUTUBE_API_KEY set; skipping YouTube trends", "info")
+            return []
+
+        queries = queries or _YT_QUERIES
+        trends = []
+        for q in queries:
+            # 1) Search for the most-viewed recent videos matching the query
+            search_url = "https://www.googleapis.com/youtube/v3/search"
+            params = {
+                "part": "snippet",
+                "q": q,
+                "type": "video",
+                "order": "viewCount",
+                "maxResults": per_query,
+                "relevanceLanguage": "en",
+                "key": self.youtube_api_key,
+            }
+            try:
+                r = self.session.get(search_url, params=params, timeout=10)
+                r.raise_for_status()
+                items = r.json().get("items", [])
+            except (requests.RequestException, ValueError) as e:
+                self.log(f"YouTube search error for '{q}': {e}", "error")
+                continue
+
+            ids = [it["id"]["videoId"] for it in items if it.get("id", {}).get("videoId")]
+            if not ids:
+                continue
+
+            # 2) Fetch real statistics (view/like counts) for those videos
+            stats_by_id = {}
+            try:
+                stats_url = "https://www.googleapis.com/youtube/v3/videos"
+                sr = self.session.get(
+                    stats_url,
+                    params={"part": "statistics", "id": ",".join(ids), "key": self.youtube_api_key},
+                    timeout=10,
+                )
+                sr.raise_for_status()
+                for v in sr.json().get("items", []):
+                    stats_by_id[v["id"]] = v.get("statistics", {})
+            except (requests.RequestException, ValueError) as e:
+                self.log(f"YouTube stats error: {e}", "error")
+
+            for rank, it in enumerate(items):
+                vid = it.get("id", {}).get("videoId")
+                if not vid:
+                    continue
+                sn = it.get("snippet", {})
+                stats = stats_by_id.get(vid, {})
+                thumbs = sn.get("thumbnails", {})
+                thumb = (thumbs.get("high") or thumbs.get("medium") or thumbs.get("default") or {}).get("url")
+                trends.append(
+                    {
+                        "name": html.unescape(sn.get("title", "")),
+                        "platform": "youtube",
+                        "format": "video",
+                        "effort": "high",
+                        "image": thumb,
+                        "url": f"https://www.youtube.com/watch?v={vid}",
+                        "views": int(stats["viewCount"]) if stats.get("viewCount") else None,
+                        "likes": int(stats["likeCount"]) if stats.get("likeCount") else None,
+                        "query": q,
+                        "popularity_rank": rank + 1,
+                        "source": "youtube",
+                    }
+                )
+        return trends
+
     def get_evergreen_formats(self):
         """Curated, always-relevant short-form formats for Elina's niche.
 
@@ -208,16 +326,37 @@ class TrendHunter(Agent):
         with_images.sort(key=lambda t: t.get("popularity_rank", 999))
         return with_images[:limit]
 
-    def run(self):
+    def trend_summary(self, limit=6):
+        """A short, human-readable list of the top current trend topics.
+
+        Used by ContentCreator to ground captions in what's trending right now.
+        Prefers real scraped trends over curated/mock entries.
+        """
+        real = [
+            t for t in self.trends
+            if not t.get("curated") and not t.get("mock") and t.get("name")
+        ]
+        real.sort(key=lambda t: t.get("popularity_rank", 999))
+        return [t["name"] for t in real[:limit]]
+
+    def run(self, use_cache=True):
         self.runs += 1
         self.last_run = datetime.now().isoformat()
 
+        # Serve fresh cache when available to avoid hammering the sources.
+        if use_cache:
+            cached = self._load_cache()
+            if cached is not None:
+                self.trends = cached
+                return self.trends
+
         reddit = self.get_reddit_trends()
         google = self.get_google_trends()
+        youtube = self.get_youtube_trends()
 
-        # If both live sources failed (offline / rate-limited), fall back to a
-        # clearly-labelled mock so downstream code always has usable data.
-        if not reddit and not google:
+        # If all live sources failed (offline / rate-limited / no key), fall back
+        # to a clearly-labelled mock so downstream code always has usable data.
+        if not reddit and not google and not youtube:
             self.log("All live trend sources unavailable; using mock data", "info")
             live = [
                 {
@@ -231,12 +370,13 @@ class TrendHunter(Agent):
                 }
             ]
         else:
-            live = reddit + google
+            live = reddit + google + youtube
 
         self.trends = live + self.get_evergreen_formats()
+        self._save_cache(self.trends)
         self.log(
-            f"Found {len(reddit)} Reddit + {len(google)} Google trends "
-            f"({len(self.top_images())} with images)"
+            f"Found {len(reddit)} Reddit + {len(google)} Google + {len(youtube)} "
+            f"YouTube trends ({len(self.top_images())} with images)"
         )
         return self.trends
 

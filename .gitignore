@@ -20,6 +20,7 @@ dist/
 # Generated media & local state (keep the queue in git, ignore heavy media)
 content/videos/
 content/images/
+content/trends_cache.json
 
 # OS
 .DS_Store

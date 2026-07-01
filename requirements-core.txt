@@ -1,5 +1,8 @@
 # Minimal dependencies for the automation that runs on GitHub Actions
-# (Telegram bot, daily content generation, publishing, trend hunting).
+# (Telegram bot, daily content generation, publishing, trend hunting,
+# and trend-photo visual analysis).
 # Keeping this small makes CI runs fast and cheap.
 requests>=2.32
 google-generativeai>=0.8
+Pillow>=10.0
+numpy>=1.26

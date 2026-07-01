@@ -34,20 +34,45 @@ class ContentCreator(Agent):
     # bot/dashboard path and the GitHub Actions path stay in sync.
     FALLBACK_CAPTIONS = cfg.FALLBACK_CAPTIONS
 
-    def generate_dynamic_caption(self, pillar, products):
+    def load_current_trends(self, limit=6):
+        """Fetch the top current fashion trend topics from TrendHunter.
+
+        Cached inside TrendHunter (6h), so this is cheap to call. Returns an
+        empty list on any failure so caption generation never breaks.
+        """
+        try:
+            from .trend_hunter import TrendHunter
+
+            th = TrendHunter()
+            th.run()  # uses cache when fresh
+            return th.trend_summary(limit=limit)
+        except Exception as e:
+            self.log(f"Could not load trends: {e}", "error")
+            return []
+
+    def generate_dynamic_caption(self, pillar, products, trends=None):
         """
         Calls the LLMRouter (e.g., Claude or Gemini) to generate a fresh,
-        context-aware caption. Uses Elina's Daily Diary to color the tone.
+        context-aware caption. Uses Elina's Daily Diary to color the tone and
+        the current fashion trends to keep content timely.
         Falls back to a curated per-pillar caption when no API key is available,
         so the pipeline never emits placeholder text.
         """
         current_feeling = self.load_diary_feeling()
+
+        trend_line = ""
+        if trends:
+            trend_line = (
+                f"Currently trending in fashion right now: {', '.join(trends[:5])}. "
+                f"Naturally weave ONE relevant trend into the caption if it fits the pillar. "
+            )
 
         prompt = (
             f"Write a short Instagram caption (3-4 lines) for Elina Radman, a petite "
             f"quiet-luxury fashion influencer. Content pillar: {pillar}. "
             f"Tone: warm, confident, explorer, psychologist. "
             f"Current emotional state: '{current_feeling}'. "
+            f"{trend_line}"
             f"Blend her current feelings subtly into the content. Use at most 2 emojis, "
             f"end with an engaging question, and do NOT include hashtags."
         )
@@ -86,7 +111,7 @@ class ContentCreator(Agent):
             
         return generated_caption
 
-    def run(self, pillars=None, count=3):
+    def run(self, pillars=None, count=3, use_trends=True):
         self.runs += 1
         self.last_run = datetime.now().isoformat()
         # Pillars/tags come from the shared content_config (single source of truth)
@@ -95,13 +120,18 @@ class ContentCreator(Agent):
         # Load dynamic products found by ProductHunter
         products = self.load_affiliate_products()
 
+        # Fetch trending topics once and feed them into every caption
+        trends = self.load_current_trends() if use_trends else []
+        if trends:
+            self.log(f"Grounding content in {len(trends)} live trends")
+
         pieces = []
         for i in range(count):
             p = pillars[i % len(pillars)]
             pid = f"elina-{datetime.now().strftime('%Y%m%d%H%M')}-{p[:4]}"
             
             # Use the AI Copywriter method instead of hardcoded fallbacks
-            caption_text = self.generate_dynamic_caption(p, products)
+            caption_text = self.generate_dynamic_caption(p, products, trends=trends)
 
             # Smart targeting for monetization platforms
             target_platforms = ["instagram", "tiktok"]
@@ -116,6 +146,7 @@ class ContentCreator(Agent):
                 "caption": caption_text,
                 "hashtags": f"{cfg.tags_for(p)} #ElinaRadman #AIInfluencer",
                 "platforms": target_platforms,
+                "trends_used": trends[:5],
                 "status": "pending_approval",
                 "created_at": datetime.now().isoformat(),
                 "scheduled_for": (datetime.now() + timedelta(days=1)).strftime(

@@ -28,7 +28,30 @@ class PromptEngineerAgent(Agent):
         else:
             return "long wavy dark brown hair flowing naturally, minimal soft aesthetic, wearing effortless neutral-toned basics"
 
-    def generate_photo_prompt(self, base_concept, tone="Quiet Luxury"):
+    def trending_palette_phrase(self):
+        """Turn the latest TrendVisualAnalyzer report into a prompt phrase.
+
+        Returns an empty string when no analysis is available, so the prompt is
+        unchanged in that case.
+        """
+        try:
+            from .trend_visual_analyzer import TrendVisualAnalyzer
+
+            report = TrendVisualAnalyzer.load_latest_palette()
+            if not report or not report.get("dominant_tones"):
+                return ""
+            tones = ", ".join(report["dominant_tones"][:3])
+            hexes = ", ".join(report.get("top_colors", [])[:3])
+            phrase = f"color-graded toward currently-trending tones ({tones}"
+            if hexes:
+                phrase += f"; palette {hexes}"
+            phrase += ")"
+            return phrase
+        except Exception as e:
+            self.log(f"Could not load trending palette: {e}", "error")
+            return ""
+
+    def generate_photo_prompt(self, base_concept, tone="Quiet Luxury", use_trending_palette=True):
         """Aduni's 5-Part Formula for stunning AI photos"""
         self.log(f"Engineering 5-Part photo prompt for: {base_concept}")
         
@@ -56,7 +79,14 @@ class PromptEngineerAgent(Agent):
             "single dramatic spotlight from above cutting through shadow, deep cinematic shadows"
         ])
 
-        return f"{subject_with_style}, {base_concept}, {style_desc}, {camera_lens}, {lighting}. Photorealistic, high-resolution, magazine quality."
+        # Inject the palette learned from what's currently going viral
+        palette_phrase = self.trending_palette_phrase() if use_trending_palette else ""
+        palette_part = f", {palette_phrase}" if palette_phrase else ""
+
+        return (
+            f"{subject_with_style}, {base_concept}, {style_desc}, {camera_lens}, "
+            f"{lighting}{palette_part}. Photorealistic, high-resolution, magazine quality."
+        )
 
     def generate_cinematic_json_script(self, base_concept, tone="dark"):
         """

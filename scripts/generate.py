@@ -23,8 +23,25 @@ TAGS = cfg.TAGS
 BASE_TAGS = cfg.BASE_TAGS
 
 
-def generate(pillar):
+def load_trends():
+    """Fetch current fashion trends (cached in TrendHunter). Returns [] on error."""
+    try:
+        from agents.trend_hunter import TrendHunter
+
+        th = TrendHunter()
+        th.run()
+        return th.trend_summary(limit=6)
+    except Exception as e:
+        print(f"Trend load skipped: {e}")
+        return []
+
+
+def generate(pillar, trends=None):
     api_key = os.environ.get("GEMINI_API_KEY", "")
+
+    trend_line = ""
+    if trends:
+        trend_line = f"- Currently trending in fashion: {', '.join(trends[:5])}. Weave in ONE if relevant.\n"
 
     prompt = f"""You are {BRAND}. Tone: {TONE}. Audience: {AUDIENCE}.
 Create an Instagram/TikTok caption (3-4 short lines) for content pillar: {pillar}.
@@ -32,7 +49,7 @@ Create an Instagram/TikTok caption (3-4 short lines) for content pillar: {pillar
 Rules:
 - Warm, helpful, relatable voice
 - Include outfit or tip details
-- End with an engaging question
+{trend_line}- End with an engaging question
 - Use 🕊️🤍✨ sparingly (max 2 emojis)
 - NO hashtags (added separately)
 - Keep lines short for mobile reading
@@ -61,6 +78,7 @@ Caption:"""
         "caption": caption,
         "hashtags": f"{TAGS.get(pillar, '')} {BASE_TAGS}",
         "platforms": ["instagram", "tiktok", "pinterest"],
+        "trends_used": (trends or [])[:5],
         "status": "pending_approval",
         "created_at": datetime.now().isoformat(),
         "scheduled_for": (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
@@ -94,7 +112,11 @@ def main():
     print("🕊️ ELINA OS — Generating content...")
     os.makedirs("content/queue", exist_ok=True)
 
-    pieces = [generate(PILLARS[i % len(PILLARS)]) for i in range(3)]
+    trends = load_trends()
+    if trends:
+        print(f"   🔥 Grounding in {len(trends)} live trends")
+
+    pieces = [generate(PILLARS[i % len(PILLARS)], trends=trends) for i in range(3)]
     for p in pieces:
         print(f"   ✅ {p['id']} — {p['pillar']}")
 

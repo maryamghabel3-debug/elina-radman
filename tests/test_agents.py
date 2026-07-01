@@ -39,7 +39,8 @@ def test_content_creator_produces_valid_pieces(workdir, monkeypatch):
     from agents.content_creator import ContentCreator
 
     cc = ContentCreator()
-    pieces = cc.run(count=3)
+    # use_trends=False keeps the test offline/deterministic (no network)
+    pieces = cc.run(count=3, use_trends=False)
 
     assert len(pieces) == 3
     required = {"id", "pillar", "caption", "hashtags", "platforms", "status"}
@@ -109,6 +110,8 @@ def test_trend_hunter_run_always_returns_list(workdir):
     from agents.trend_hunter import TrendHunter
 
     th = TrendHunter()
+    # Seed a fresh cache so run() returns instantly without any network calls
+    th._save_cache([{"name": "seeded", "platform": "reddit", "popularity_rank": 1}])
     trends = th.run()
     assert isinstance(trends, list)
     assert len(trends) >= 1  # evergreen formats guarantee non-empty
@@ -137,6 +140,100 @@ def test_trend_hunter_upscale_enlarges_thumbnail():
     small = "https://preview.redd.it/x.jpg?width=140&height=140&crop=1:1,smart&auto=webp"
     big = TrendHunter._upscale(small)
     assert "width=640" in big and "width=140" not in big
+
+
+# --------------------------------------------------------------------------- #
+# TrendHunter caching & summary
+# --------------------------------------------------------------------------- #
+def test_trend_hunter_cache_roundtrip(workdir):
+    from agents.trend_hunter import TrendHunter
+
+    th = TrendHunter()
+    sample = [{"name": "x", "platform": "reddit", "popularity_rank": 1}]
+    th._save_cache(sample)
+    loaded = th._load_cache()
+    assert loaded == sample
+
+
+def test_trend_summary_prefers_real(workdir):
+    from agents.trend_hunter import TrendHunter
+
+    th = TrendHunter()
+    th.trends = [
+        {"name": "Real trend A", "platform": "reddit", "popularity_rank": 2},
+        {"name": "Curated B", "platform": "ig", "curated": True},
+        {"name": "Real trend C", "platform": "reddit", "popularity_rank": 1},
+        {"name": "Mock D", "platform": "reddit", "mock": True},
+    ]
+    summary = th.trend_summary(limit=5)
+    assert summary == ["Real trend C", "Real trend A"]
+
+
+# --------------------------------------------------------------------------- #
+# TrendVisualAnalyzer (offline: colour math only, no network)
+# --------------------------------------------------------------------------- #
+def test_visual_analyzer_palette_math():
+    from agents.trend_visual_analyzer import TrendVisualAnalyzer, _HAS_DEPS
+
+    if not _HAS_DEPS:
+        import pytest as _pt
+        _pt.skip("Pillow/numpy not installed")
+
+    from PIL import Image
+
+    tva = TrendVisualAnalyzer()
+    # A solid beige image should yield a cream/neutral dominant tone
+    img = Image.new("RGB", (64, 64), (245, 240, 232))
+    palette = tva._dominant_colors(img, k=2)
+    assert palette and palette[0]["name"] in ("cream/neutral", "neutral")
+    assert palette[0]["hex"].startswith("#")
+
+
+def test_visual_analyzer_hue_names():
+    from agents.trend_visual_analyzer import TrendVisualAnalyzer
+
+    assert "neutral" in TrendVisualAnalyzer._hue_name((250, 248, 245))
+    assert TrendVisualAnalyzer._hue_name((20, 20, 20)) == "charcoal/neutral"
+
+
+# --------------------------------------------------------------------------- #
+# PerformanceAnalyzer
+# --------------------------------------------------------------------------- #
+def test_performance_analyzer_simulated(workdir, monkeypatch):
+    for k in ("YOUTUBE_API_KEY", "YOUTUBE_CHANNEL_ID", "IG_ACCESS_TOKEN", "IG_USER_ID"):
+        monkeypatch.delenv(k, raising=False)
+    from agents.performance_analyzer import PerformanceAnalyzer
+
+    pa = PerformanceAnalyzer()
+    strategy = pa.run()
+    assert isinstance(strategy, list) and strategy
+    # Report file should be written
+    assert os.path.exists("content/performance_metrics.json")
+
+
+# --------------------------------------------------------------------------- #
+# PromptEngineer trending palette injection
+# --------------------------------------------------------------------------- #
+def test_prompt_engineer_uses_palette(workdir):
+    import json as _json
+
+    os.makedirs("content", exist_ok=True)
+    with open("content/trend_visuals.json", "w") as f:
+        _json.dump(
+            {"dominant_tones": ["cream/neutral", "camel"], "top_colors": ["#f5f0e8"]},
+            f,
+        )
+
+    from agents.prompt_engineer import PromptEngineerAgent
+
+    pe = PromptEngineerAgent()
+    prompt = pe.generate_photo_prompt("in a cafe")
+    assert "currently-trending tones" in prompt
+    assert "cream/neutral" in prompt
+
+    # And it should be omittable
+    plain = pe.generate_photo_prompt("in a cafe", use_trending_palette=False)
+    assert "currently-trending tones" not in plain
 
 
 # --------------------------------------------------------------------------- #
