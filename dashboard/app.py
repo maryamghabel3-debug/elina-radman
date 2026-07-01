@@ -322,8 +322,19 @@ elif page == "Media Generator":
             
         with tab_broll:
             st.selectbox("Select Text-to-Video Model:", ["HunyuanVideo (13B Cinematic)", "Wan 2.2-T2V (Physical Realism)", "CogVideoX-5B (Complex Prompts)", "LTX-Video (Fast 1080p)"])
-            st.text_input("Visual Prompt:")
-            st.button("Generate B-Roll", key="btn_br")
+            broll_prompt = st.text_area("Visual Prompt (Scene Description):")
+            if st.button("Generate B-Roll", key="btn_br"):
+                with st.spinner("Applying Aduni's Cinematic Formula and generating..."):
+                    try:
+                        from agents.prompt_engineer import PromptEngineerAgent
+                        pe = PromptEngineerAgent()
+                        # Generate the JSON Director's script
+                        json_script = pe.generate_cinematic_json_script(broll_prompt, tone="cinematic")
+                        
+                        st.success("B-Roll generation initiated! Here is the JSON Script sent to the AI:")
+                        st.code(json_script, language="json")
+                    except Exception as e:
+                        st.error(f"Error: {e}")
             
         with tab_auto:
             st.selectbox("Select Pipeline:", ["OpenMontage (Agentic Video Builder)", "OpenShorts (TikTok/Reels Automation)", "MoneyPrinterV2 (Faceless YouTube)"])
