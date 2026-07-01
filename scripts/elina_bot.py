@@ -12,9 +12,21 @@ from datetime import datetime
 # script is launched as `python scripts/elina_bot.py` (e.g. in GitHub Actions).
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-CHAT = os.environ["TELEGRAM_CHAT_ID"]
+TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+CHAT = os.environ.get("TELEGRAM_CHAT_ID", "")
 GEMINI = os.environ.get("GEMINI_API_KEY", "")
+
+# Fail fast with a clear message instead of a raw KeyError traceback
+# when required secrets are missing (e.g. misconfigured GitHub Actions).
+if not TOKEN or not CHAT:
+    missing = [
+        n
+        for n, v in (("TELEGRAM_BOT_TOKEN", TOKEN), ("TELEGRAM_CHAT_ID", CHAT))
+        if not v
+    ]
+    print(f"❌ Missing required secret(s): {', '.join(missing)}. Skipping bot run.")
+    sys.exit(0)
+
 BASE = f"https://api.telegram.org/bot{TOKEN}"
 
 

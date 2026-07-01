@@ -45,14 +45,22 @@ class VisualCreatorAgent:
         self.output_dir = "content/images/"
         os.makedirs(self.output_dir, exist_ok=True)
         
-        # Ensure a reference image exists for Face consistency
+        # Reference image used for face consistency. We never write a dummy file
+        # here, because that could overwrite/corrupt a real uploaded photo. Instead
+        # we just record whether a usable reference exists.
         self.reference_face = "images/elina-profile-pic-03.jpg"
-        if not os.path.exists("docs"):
-            os.makedirs("docs", exist_ok=True)
-        if not os.path.exists(self.reference_face):
-            # Create a blank dummy file so code doesn't crash before user uploads real face
-            with open(self.reference_face, "wb") as f:
-                f.write(b"dummy")
+        os.makedirs("images", exist_ok=True)
+        # Treat the reference as valid only if it exists and is a plausible image
+        # (larger than a few bytes, i.e. not a leftover placeholder).
+        self.has_reference_face = (
+            os.path.exists(self.reference_face)
+            and os.path.getsize(self.reference_face) > 1024
+        )
+        if not self.has_reference_face:
+            print(
+                "⚠️ [VisualCreator] No valid reference face at "
+                f"'{self.reference_face}'. Upload a real photo before generating."
+            )
 
     def generate_consistent_character(self, prompt):
         """
@@ -62,6 +70,9 @@ class VisualCreatorAgent:
         print(f"🎨 [VisualCreator] Generating STRICT consistent face using Free Cloud GPUs...")
         if not self.hf_token:
             print("⚠️ HF_TOKEN not found! Please add it to your secrets for free cloud generation.")
+            return "mock_face.jpg"
+        if not self.has_reference_face:
+            print("⚠️ No valid reference face available. Skipping generation.")
             return "mock_face.jpg"
             
         character_prompt = (

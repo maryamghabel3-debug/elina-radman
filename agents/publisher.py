@@ -44,15 +44,29 @@ class Publisher(Agent):
                 
                 try:
                     # Request to Postiz
-                    r2 = requests.post(f"{postiz_url}/posts", headers=headers, json=data)
+                    r2 = requests.post(
+                        f"{postiz_url}/posts", headers=headers, json=data, timeout=30
+                    )
+                except requests.RequestException as e:
+                    self.log(f"Post failed via Postiz: {e}", "error")
+                    continue
+
+                # Only mark as published on a real success response
+                if r2.status_code in (200, 201):
                     self.log(f"Posted to {platforms} via Postiz")
                     published.append({"id": c.get("id", "1"), "platforms": platforms})
-                except Exception as e:
-                    self.log(f"Post failed via Postiz: {e}", "error")
-                    
-                c["status"] = "published"
-                c["published_at"] = datetime.now().isoformat()
-                changed = True
+                    c["status"] = "published"
+                    c["published_at"] = datetime.now().isoformat()
+                    changed = True
+                else:
+                    self.log(
+                        f"Postiz rejected post {c.get('id')}: "
+                        f"HTTP {r2.status_code} {r2.text[:150]}",
+                        "error",
+                    )
+                    c["status"] = "failed"
+                    c["last_error"] = f"HTTP {r2.status_code}"
+                    changed = True
                 
             if changed:
                 with open(fp, "w") as f:
