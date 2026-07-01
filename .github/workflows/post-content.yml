@@ -17,7 +17,8 @@ jobs:
       - run: pip install requests
       - name: Publish to platforms
         env:
-          BUFFER_API_TOKEN: ${{ secrets.BUFFER_API_TOKEN }}
+          POSTIZ_URL: ${{ secrets.POSTIZ_URL }}
+          POSTIZ_API_TOKEN: ${{ secrets.POSTIZ_API_TOKEN }}
         run: python scripts/publish.py
       - name: Push status
         env:

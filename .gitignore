@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Secrets / local env
+.env
+*.env
+secrets.json
+
+# Build artifacts
+app/bin/
+.buildozer/
+build/
+dist/
+
+# Generated media & local state (keep the queue in git, ignore heavy media)
+content/videos/
+content/images/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -2,10 +2,15 @@
 """ElinaOS Bot — Process ALL messages without losing any"""
 
 import os
+import sys
 import json
 import glob as g
 import requests
 from datetime import datetime
+
+# Ensure the repo root is importable so `from agents...` works when this
+# script is launched as `python scripts/elina_bot.py` (e.g. in GitHub Actions).
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 CHAT = os.environ["TELEGRAM_CHAT_ID"]
@@ -76,8 +81,8 @@ for u in updates:
 
 🔗 *اتصالات*
 • Gemini: {'✅' if GEMINI else '❌'}
-• Buffer: ✅
-• GitHub: ✅
+• Postiz: {'✅' if os.environ.get('POSTIZ_API_TOKEN') else '❌'}
+• GitHub: {'✅' if os.environ.get('GH_PAT') else '❌'}
 
 🕐 {datetime.now().strftime('%H:%M')}
 💰 هزینه: ۰ تومان"""

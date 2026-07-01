@@ -20,7 +20,8 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          BUFFER_API_TOKEN: ${{ secrets.BUFFER_API_TOKEN }}
+          POSTIZ_URL: ${{ secrets.POSTIZ_URL }}
+          POSTIZ_API_TOKEN: ${{ secrets.POSTIZ_API_TOKEN }}
           GH_PAT: ${{ secrets.GH_PAT }}
           REPO_OWNER: ${{ secrets.REPO_OWNER }}
           REPO_NAME: ${{ secrets.REPO_NAME }}

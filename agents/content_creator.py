@@ -29,24 +29,54 @@ class ContentCreator(Agent):
                     return entries[-1]["feeling"]
         return "Calm, focused, and ready to inspire."
 
+    # Offline fallback captions per pillar (used when no LLM key is configured)
+    FALLBACK_CAPTIONS = {
+        "petite_styling": "3 style rules every petite needs 🕊️\n\n1. High-waisted everything — elongates legs\n2. Monochrome outfits — no visual break\n3. Tailor everything\n\nWhich rule do you already follow? 👇",
+        "ootd": "Today's OOTD: Quiet Luxury 🕊️\n\nCropped camel blazer + high-waist trousers\nEvery piece tailored for 4'11\" ✨\n\nWhat are you wearing today? 👇",
+        "capsule_wardrobe": "15 pieces = 30+ outfits 🤍\n\n3 bottoms + 4 tops + 2 blazers + 2 dresses\nAll neutral. Everything matches.\n\nComment CAPSULE for the list 📩",
+        "smart_shopping": "Look expensive without the price tag 💰\n\nNatural fabrics · neutral palette · tailor everything.\n\nYour best budget style tip? 👇",
+        "lifestyle": "A day in my outfits ☕\n\nSame base pieces, three different looks.\nThis is capsule wardrobe magic ✨\n\nWhat does your day look like? 👇",
+    }
+
     def generate_dynamic_caption(self, pillar, products):
         """
-        In production, this calls the LLMRouter (e.g., Claude or Gemini) to generate
-        a fresh, context-aware caption instead of using hardcoded fallbacks.
-        It uses the Character Bible, TrendHunter data, and Elina's Daily Diary to write unique text.
+        Calls the LLMRouter (e.g., Claude or Gemini) to generate a fresh,
+        context-aware caption. Uses Elina's Daily Diary to color the tone.
+        Falls back to a curated per-pillar caption when no API key is available,
+        so the pipeline never emits placeholder text.
         """
         current_feeling = self.load_diary_feeling()
-        
-        # Simulated LLM Prompt Construction
+
         prompt = (
-            f"Write an Instagram caption for Elina Radman. Pillar: {pillar}. "
+            f"Write a short Instagram caption (3-4 lines) for Elina Radman, a petite "
+            f"quiet-luxury fashion influencer. Content pillar: {pillar}. "
             f"Tone: warm, confident, explorer, psychologist. "
-            f"Current Emotional State: '{current_feeling}'. "
-            f"Blend her current feelings subtly into the content. Include emojis and a strong hook."
+            f"Current emotional state: '{current_feeling}'. "
+            f"Blend her current feelings subtly into the content. Use at most 2 emojis, "
+            f"end with an engaging question, and do NOT include hashtags."
         )
-        
-        # Simulated LLM Output (this replaces the hardcoded dictionary)
-        generated_caption = f"[AI Generated Caption for {pillar} based on today's trends and Elina's persona] ✨\n\nWhat are your thoughts on this? 👇"
+
+        generated_caption = ""
+        try:
+            from .llm_router import LLMRouter
+            router = LLMRouter()
+            result = router.smart_generate(
+                prompt,
+                task_type="creative_writing",
+                system_prompt="You are Elina Radman, an authentic petite fashion influencer and psychologist.",
+            )
+            text = (result or {}).get("response", "") or ""
+            # Ignore simulation/error stubs from the router
+            if text and not text.startswith("[Simulation") and not text.startswith("Error calling"):
+                generated_caption = text.strip()
+        except Exception as e:
+            self.log(f"LLM caption generation failed, using fallback: {e}", "error")
+
+        if not generated_caption:
+            generated_caption = self.FALLBACK_CAPTIONS.get(
+                pillar,
+                self.FALLBACK_CAPTIONS["ootd"],
+            )
         
         # Smart Monetization Injection
         if pillar in ["ootd", "petite_styling", "smart_shopping"] and products:
