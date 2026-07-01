@@ -13,7 +13,21 @@ Go to: **Settings → Secrets and variables → Actions → New repository secre
 | `REPO_OWNER` | `maryamghabel3-debug` |
 | `REPO_NAME` | `elina-radman` |
 
-## Publishing (choose Postiz)
+## Publishing — pick ONE backend (Zernio recommended)
+
+The publisher auto-detects which backend to use. If `ZERNIO_API_KEY` is set it
+uses Zernio; otherwise it falls back to Postiz.
+
+**Option A — Zernio / Late (cloud, free tier, no server) ✅ recommended**
+
+| Secret Name | How to Get It |
+|-------------|---------------|
+| `ZERNIO_API_KEY` | Sign up at https://zernio.com → connect accounts → Settings → API Keys (starts with `sk_`) |
+
+Free tier: 2 connected accounts, unlimited posts, full API. See
+`docs/PUBLISHING-ZERNIO.md` for the step-by-step.
+
+**Option B — Postiz (self-hosted = free, cloud = paid)**
 
 | Secret Name | How to Get It |
 |-------------|---------------|

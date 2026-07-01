@@ -17,6 +17,7 @@ jobs:
       - run: pip install requests
       - name: Publish to platforms
         env:
+          ZERNIO_API_KEY: ${{ secrets.ZERNIO_API_KEY }}
           POSTIZ_URL: ${{ secrets.POSTIZ_URL }}
           POSTIZ_API_TOKEN: ${{ secrets.POSTIZ_API_TOKEN }}
         run: python scripts/publish.py

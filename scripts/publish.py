@@ -1,79 +1,45 @@
 """
-ELINA OS — Publisher
-Posts content via Postiz API (Open Source, Self-Hostable, 100% Free)
-Instagram + TikTok + Pinterest + YouTube + LinkedIn and more!
+ELINA OS — Publisher (auto-routing)
+
+Chooses the publishing backend automatically:
+  * ZERNIO_API_KEY set  -> Zernio/Late unified API (cloud, free tier, no server)
+  * else POSTIZ_API_TOKEN set -> Postiz (self-hosted / cloud)
+  * else -> nothing to do (prints a hint)
+
+Both backends publish approved items from content/queue/*.json to Instagram,
+TikTok, YouTube, Pinterest, Facebook and more, and only mark a piece as
+`published` on a real success response.
 """
 
 import os
-import json
-import glob
-import requests
-from datetime import datetime
+import sys
 
-
-def publish(content):
-    postiz_url = os.environ.get("POSTIZ_URL", "http://localhost:3000/api")
-    token = os.environ.get("POSTIZ_API_TOKEN", "")
-    
-    if not token:
-        print("No POSTIZ_API_TOKEN")
-        return False
-
-    text = content["caption"] + "\n.\n" + content["hashtags"]
-    platforms = content.get("platforms", ["instagram", "tiktok", "youtube"])
-    
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
-    }
-
-    payload = {
-        "content": text,
-        "platforms": platforms,
-        "scheduled_at": content.get("scheduled_for", datetime.now().isoformat())
-    }
-
-    try:
-        print(f"   Scheduling on Postiz for platforms: {platforms}...")
-        r2 = requests.post(f"{postiz_url}/posts", headers=headers, json=payload)
-        
-        if r2.status_code in [200, 201]:
-            print(f"   ✅ Published successfully via Postiz!")
-            return True
-        else:
-            print(f"   ❌ Postiz Error: {r2.status_code}")
-            return False
-            
-    except Exception as e:
-        print(f"   ❌ Postiz Exception: {e}")
-        return False
+# Make the repo root importable so we can reuse the agent publishers
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def main():
     print("📤 ELINA OS — Publisher")
 
-    queue = "content/queue"
-    if not os.path.isdir(queue):
-        print("No queue")
+    if os.environ.get("ZERNIO_API_KEY"):
+        print("   Backend: Zernio/Late (cloud)")
+        from agents.publisher_zernio import ZernioPublisher
+
+        result = ZernioPublisher().run()
+    elif os.environ.get("POSTIZ_API_TOKEN"):
+        print("   Backend: Postiz")
+        from agents.publisher import Publisher
+
+        result = Publisher().run()
+    else:
+        print("   ⚠️  No publishing backend configured.")
+        print("   Set ZERNIO_API_KEY (recommended) or POSTIZ_API_TOKEN to enable auto-posting.")
         return
 
-    for fp in sorted(glob.glob(f"{queue}/*.json")):
-        with open(fp) as f:
-            pieces = json.load(f)
-
-        changed = False
-        for c in pieces:
-            if c.get("status") == "approved":
-                print(f"📤 {c['id']}")
-                if publish(c):
-                    c["status"] = "published"
-                    c["published_at"] = datetime.now().isoformat()
-                    changed = True
-
-        if changed:
-            with open(fp, "w") as f:
-                json.dump(pieces, f, indent=2)
-            print(f"   💾 Updated {fp}")
+    published = result.get("published", []) if isinstance(result, dict) else []
+    if result.get("error"):
+        print(f"   ❌ {result['error']}")
+    print(f"   ✅ Published {len(published)} item(s)")
 
 
 if __name__ == "__main__":

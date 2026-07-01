@@ -104,6 +104,73 @@ def test_publisher_keeps_approved_on_network_failure(workdir, monkeypatch):
 
 
 # --------------------------------------------------------------------------- #
+# ZernioPublisher
+# --------------------------------------------------------------------------- #
+def test_zernio_publisher_no_token(workdir, monkeypatch):
+    monkeypatch.delenv("ZERNIO_API_KEY", raising=False)
+    from agents.publisher_zernio import ZernioPublisher
+
+    result = ZernioPublisher().run()
+    assert result.get("error") == "no_token"
+
+
+def test_zernio_platform_resolution(workdir, monkeypatch):
+    monkeypatch.setenv("ZERNIO_API_KEY", "sk_fake")
+    from agents.publisher_zernio import ZernioPublisher
+
+    pub = ZernioPublisher()
+    account_map = {"instagram": "acc_ig", "tiktok": "acc_tt"}
+    # 'lemon8' is unsupported and should be dropped; 'x' maps to twitter (absent)
+    resolved = pub._resolve_platforms(["instagram", "lemon8", "tiktok"], account_map)
+    assert {"platform": "instagram", "accountId": "acc_ig"} in resolved
+    assert {"platform": "tiktok", "accountId": "acc_tt"} in resolved
+    assert all(p["platform"] != "lemon8" for p in resolved)
+
+
+def test_zernio_publish_success(workdir, monkeypatch):
+    monkeypatch.setenv("ZERNIO_API_KEY", "sk_fake")
+    from agents import publisher_zernio
+
+    piece = {
+        "id": "z-1",
+        "caption": "hi",
+        "hashtags": "#x",
+        "platforms": ["instagram"],
+        "status": "approved",
+    }
+    fp = "content/queue/z.json"
+    with open(fp, "w") as f:
+        json.dump([piece], f)
+
+    pub = publisher_zernio.ZernioPublisher()
+    # Stub network: account listing + successful post
+    monkeypatch.setattr(pub, "list_accounts", lambda: [{"_id": "acc_ig", "platform": "instagram"}])
+
+    class _Resp:
+        status_code = 201
+        text = "ok"
+
+    monkeypatch.setattr(pub.session, "post", lambda *a, **k: _Resp())
+
+    result = pub.run()
+    assert len(result["published"]) == 1
+    with open(fp) as f:
+        data = json.load(f)
+    assert data[0]["status"] == "published"
+    assert data[0]["published_via"] == "zernio"
+
+
+def test_zernio_no_accounts(workdir, monkeypatch):
+    monkeypatch.setenv("ZERNIO_API_KEY", "sk_fake")
+    from agents.publisher_zernio import ZernioPublisher
+
+    pub = ZernioPublisher()
+    monkeypatch.setattr(pub, "list_accounts", lambda: [])
+    result = pub.run()
+    assert result.get("error") == "no_accounts"
+
+
+# --------------------------------------------------------------------------- #
 # TrendHunter
 # --------------------------------------------------------------------------- #
 def test_trend_hunter_run_always_returns_list(workdir):

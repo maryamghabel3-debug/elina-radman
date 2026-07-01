@@ -312,11 +312,22 @@ for u in updates:
 
     elif text == "/publish":
         send(chat, "📤 *در حال انتشار...*", reply_to=mid)
-        from agents.publisher import Publisher
+        # Auto-route to Zernio (cloud) if configured, else Postiz.
+        if os.environ.get("ZERNIO_API_KEY"):
+            from agents.publisher_zernio import ZernioPublisher
 
-        r = Publisher().run()
-        n = len(r.get("published", []))
-        resp = f"✅ {n} محتوا منتشر شد!" if n else "⚠️ محتوای تأییدشده پیدا نشد."
+            r = ZernioPublisher().run()
+        else:
+            from agents.publisher import Publisher
+
+            r = Publisher().run()
+        if r.get("error") == "no_token":
+            resp = "⚠️ هیچ سرویس انتشاری تنظیم نشده. `ZERNIO_API_KEY` رو ست کن."
+        elif r.get("error") == "no_accounts":
+            resp = "⚠️ هیچ اکانتی در Zernio وصل نشده. اول اکانت‌ها رو وصل کن."
+        else:
+            n = len(r.get("published", []))
+            resp = f"✅ {n} محتوا منتشر شد!" if n else "⚠️ محتوای تأییدشده پیدا نشد."
 
     elif text.startswith("/diary"):
         # The user can save a daily journal entry about Elina's feelings to guide content generation
