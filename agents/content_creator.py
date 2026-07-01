@@ -1,6 +1,7 @@
 """ContentCreator Agent — Generates captions and scripts"""
 
 from .base import Agent
+from . import content_config as cfg
 from datetime import datetime, timedelta
 import os
 import json
@@ -29,14 +30,9 @@ class ContentCreator(Agent):
                     return entries[-1]["feeling"]
         return "Calm, focused, and ready to inspire."
 
-    # Offline fallback captions per pillar (used when no LLM key is configured)
-    FALLBACK_CAPTIONS = {
-        "petite_styling": "3 style rules every petite needs 🕊️\n\n1. High-waisted everything — elongates legs\n2. Monochrome outfits — no visual break\n3. Tailor everything\n\nWhich rule do you already follow? 👇",
-        "ootd": "Today's OOTD: Quiet Luxury 🕊️\n\nCropped camel blazer + high-waist trousers\nEvery piece tailored for 4'11\" ✨\n\nWhat are you wearing today? 👇",
-        "capsule_wardrobe": "15 pieces = 30+ outfits 🤍\n\n3 bottoms + 4 tops + 2 blazers + 2 dresses\nAll neutral. Everything matches.\n\nComment CAPSULE for the list 📩",
-        "smart_shopping": "Look expensive without the price tag 💰\n\nNatural fabrics · neutral palette · tailor everything.\n\nYour best budget style tip? 👇",
-        "lifestyle": "A day in my outfits ☕\n\nSame base pieces, three different looks.\nThis is capsule wardrobe magic ✨\n\nWhat does your day look like? 👇",
-    }
+    # Offline fallback captions live in the shared content_config module so the
+    # bot/dashboard path and the GitHub Actions path stay in sync.
+    FALLBACK_CAPTIONS = cfg.FALLBACK_CAPTIONS
 
     def generate_dynamic_caption(self, pillar, products):
         """
@@ -93,27 +89,8 @@ class ContentCreator(Agent):
     def run(self, pillars=None, count=3):
         self.runs += 1
         self.last_run = datetime.now().isoformat()
-        pillars = pillars or [
-            "petite_styling",
-            "ootd",
-            "capsule_wardrobe",
-            "smart_shopping",
-            "lifestyle",
-            "ai_tech_hacks",
-            "psychology_of_style",
-            "horticulture_and_growth"
-        ]
-
-        tags = {
-            "petite_styling": "#PetiteStyle #StyleTips #ShortGirlFashion #LTKunder50",
-            "ootd": "#OOTD #PetiteStyle #QuietLuxury #4ft11 #LTKit",
-            "capsule_wardrobe": "#CapsuleWardrobe #MinimalistStyle #PetiteStyle",
-            "smart_shopping": "#AffordableStyle #SmartShopping #QuietLuxury",
-            "lifestyle": "#Explorer #LifeStyleCreator #IndependentWoman #GrowthMindset",
-            "ai_tech_hacks": "#AITech #TechTips #OutfitPlanner #TechGirl",
-            "psychology_of_style": "#FashionPsychology #Confidence #MentalHealth #Mindset",
-            "horticulture_and_growth": "#Horticulture #PlantTherapy #NatureLover #Growth",
-        }
+        # Pillars/tags come from the shared content_config (single source of truth)
+        pillars = pillars or cfg.PILLARS
 
         # Load dynamic products found by ProductHunter
         products = self.load_affiliate_products()
@@ -137,7 +114,7 @@ class ContentCreator(Agent):
                 "id": pid,
                 "pillar": p,
                 "caption": caption_text,
-                "hashtags": f"{tags.get(p,'')} #ElinaRadman #AIInfluencer",
+                "hashtags": f"{cfg.tags_for(p)} #ElinaRadman #AIInfluencer",
                 "platforms": target_platforms,
                 "status": "pending_approval",
                 "created_at": datetime.now().isoformat(),

@@ -5,23 +5,22 @@ Runs on GitHub Actions — $0/month
 """
 
 import os
+import sys
 import json
 from datetime import datetime, timedelta
 
-PILLARS = ["petite_styling", "ootd", "capsule_wardrobe", "smart_shopping", "lifestyle"]
+# Make the repo root importable so we can share config with the agents package
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from agents import content_config as cfg
 
-BRAND = "Elina Radman | Petite Quiet Luxury | 4'11\" (150cm) | 43kg"
-TONE = "warm, sophisticated, relatable, like a stylish best friend"
-AUDIENCE = "petite women 18-35 who want to look expensive on a budget"
-
-TAGS = {
-    "petite_styling": "#PetiteStyle #StyleTips #ShortGirlFashion #FashionHacks #LookTaller",
-    "ootd": "#OOTD #OutfitOfTheDay #PetiteStyle #QuietLuxury #4ft11",
-    "capsule_wardrobe": "#CapsuleWardrobe #MinimalistStyle #PetiteStyle #WardrobeEssentials",
-    "smart_shopping": "#AffordableStyle #SmartShopping #PetiteHaul #QuietLuxury",
-    "lifestyle": "#DayInMyLife #PetiteStyle #QuietLuxury #LifeStyleCreator",
-}
-BASE_TAGS = "#StyledByElina #PetiteFashion"
+# Shared, canonical brand/pillar/tag definitions (single source of truth)
+BRAND = cfg.BRAND
+TONE = cfg.TONE
+AUDIENCE = cfg.AUDIENCE
+# The daily job focuses on the first five core fashion pillars
+PILLARS = cfg.PILLARS[:5]
+TAGS = cfg.TAGS
+BASE_TAGS = cfg.BASE_TAGS
 
 
 def generate(pillar):
@@ -53,14 +52,7 @@ Caption:"""
             print(f"Gemini: {e}")
 
     if not caption:
-        fallbacks = {
-            "petite_styling": "3 style rules every petite needs 🕊️\n\n1. High-waisted everything — elongates legs\n2. Monochrome outfits — no visual break\n3. Tailor everything — $15 = looks like $500\n\nWhich rule do you already follow? 👇",
-            "ootd": "Today's OOTD: Quiet Luxury 🕊️\n\nCropped camel blazer + high-waist trousers\nEvery piece tailored for 4'11\" ✨\n\nWhat are you wearing today? 👇",
-            "capsule_wardrobe": "15 pieces = 30+ outfits 🤍\n\nMy petite capsule wardrobe system:\n3 bottoms + 4 tops + 2 blazers + 2 dresses\nAll neutral. Everything matches.\n\nComment CAPSULE for the list 📩",
-            "smart_shopping": "Look expensive without the price tag 💰\n\n1. Natural fabrics only\n2. Neutral color palette\n3. Tailor everything\n4. Less is more\n\nYour best budget style tip? 👇",
-            "lifestyle": "A day in my outfits ☕\n\nMorning coffee → afternoon stroll → evening dinner\nSame base pieces, three different looks\n\nThis is capsule wardrobe magic ✨",
-        }
-        caption = fallbacks.get(pillar, fallbacks["ootd"])
+        caption = cfg.fallback_for(pillar)
 
     pid = f"elina-{datetime.now().strftime('%Y%m%d')}-{pillar[:4]}"
     return {

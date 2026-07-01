@@ -153,13 +153,41 @@ for u in updates:
         resp = "❌ `/reject شناسه_محتوا`"
 
     elif text == "/trends":
-        resp = """🔥 *ترندهای فشن — ژوئن ۲۰۲۶*
+        send(chat, "🔥 *در حال جستجوی ترندهای واقعی...* ⏳", reply_to=mid)
+        try:
+            from agents.trend_hunter import TrendHunter
 
-• Photo Carousels — IG+TT | ⭐ کم‌زحمت
-• Bad News Wallet — IG+TT | ⭐ کم‌زحمت
-• Color Walk — TT | ⭐⭐ متوسط
-• GRWM Storytime — IG+TT | ⭐⭐
-• Brainwash Format — IG | ⭐ کم‌زحمت"""
+            th = TrendHunter()
+            th.run()
+            resp = "🔥 *ترندهای واقعی فشن (بر اساس محبوبیت واقعی)*\n\n"
+            live = [t for t in th.trends if not t.get("curated") and not t.get("mock")]
+            for t in live[:8]:
+                traffic = f" — 🔎 {t['approx_traffic']}" if t.get("approx_traffic") else ""
+                resp += f"• {t['name'][:70]}{traffic}\n  ↳ _{t['platform']}_\n"
+            if not live:
+                resp += "_(منابع زنده الان در دسترس نیستن، بعداً دوباره امتحان کن)_\n"
+            resp += "\n📸 برای عکس‌های پرویو: `/topimages`"
+        except Exception as e:
+            print("trends error:", e)
+            resp = "⚠️ خطا در دریافت ترندها. بعداً دوباره امتحان کن."
+
+    elif text == "/topimages":
+        send(chat, "📸 *در حال پیدا کردن عکس‌های پرویو...* ⏳", reply_to=mid)
+        try:
+            from agents.trend_hunter import TrendHunter
+
+            th = TrendHunter()
+            th.run()
+            tops = th.top_images(limit=5)
+            if not tops:
+                resp = "⚠️ الان عکس ترندی پیدا نشد (احتمالاً محدودیت نرخ). بعداً امتحان کن."
+            else:
+                resp = "📸 *عکس‌هایی که بیشترین ویو رو می‌گیرن:*\n\n"
+                for t in tops:
+                    resp += f"🖼 *{t['name'][:60]}*\n{t.get('url') or ''}\n{t.get('image') or ''}\n\n"
+        except Exception as e:
+            print("topimages error:", e)
+            resp = "⚠️ خطا در دریافت عکس‌ها. بعداً دوباره امتحان کن."
 
     elif text == "/agents":
         resp = """🤖 *ایجنت‌ها* (۴)
@@ -183,8 +211,8 @@ for u in updates:
 
 📊 /status | 🎨 /content | 📋 /list
 ✅ /approve | ❌ /reject
-🔥 /trends | 🤖 /agents
-🐙 /github | ➕ /addagent | ➖ /delagent
+🔥 /trends | 📸 /topimages | 🤖 /agents
+🐙 /github | 📝 /diary | 📤 /publish
 💬 *هر پیام = چت با Gemini*"""
 
     elif text == "/publish":

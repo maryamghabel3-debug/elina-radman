@@ -1,9 +1,18 @@
+# ── Core runtime (used by GitHub Actions: bot, content, publishing) ──
 requests>=2.32
 google-generativeai>=0.8
+
+# ── Dashboard (local Streamlit UI) ──
+streamlit>=1.20
+
+# ── Media / TTS / video tooling (optional, for local media generation) ──
 edge-tts
 gradio_client
 ffmpeg-python
+
+# ── Android app (KivyMD) — only needed when building app/ ──
 kivy>=2.34
 kivymd>=1.2
+
+# ── MCP server (expose tools to Claude Desktop / Cursor) ──
 mcp>=1.0.0
-streamlit>=1.20
