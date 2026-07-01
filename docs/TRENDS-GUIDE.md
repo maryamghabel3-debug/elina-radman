@@ -8,7 +8,19 @@
 |------|----------|-------|
 | **Reddit** — فیدهای `top/.rss?t=week` | پست‌های واقعی فشن مرتب‌شده بر اساس **upvote** (معیار محبوبیت/ویو) + **URL عکس** | ✅ کار می‌کنه |
 | **Google Trends RSS** | جستجوهای پرطرفدار (فیلترشده روی کلمات فشن) + تخمین ترافیک | ✅ کار می‌کنه |
+| **YouTube Data API v3** | ویدیوهای ترند واقعی با **تعداد ویو/لایک واقعی** + تصویر بندانگشتی | ✅ با `YOUTUBE_API_KEY` |
 | ~~Pinterest RSS~~ | ~~ترندهای پینترست~~ | ❌ پینترست این endpoint رو حذف کرده (404) |
+
+## کش (Cache)
+نتایج ترند به مدت **۶ ساعت** در `content/trends_cache.json` کش می‌شن تا از rate limit ردیت جلوگیری بشه و فراخوانی مجدد آنی باشه. برای دور زدن کش: `TrendHunter().run(use_cache=False)`.
+
+## تحلیل بصری ترند (TrendVisualAnalyzer)
+ایجنت `TrendVisualAnalyzer` عکس‌های پرویو رو دانلود می‌کنه، **پالت رنگ غالب** و لحن رنگی رو استخراج می‌کنه (`content/trend_visuals.json`)، و `PromptEngineer` هنگام ساخت prompt عکس‌های الینا، اون‌ها رو به سمت رنگ‌های ترند color-grade می‌کنه — یعنی عکس‌های الینا از نظر بصری شبیه چیزی می‌شن که همین الان ویو می‌گیره.
+
+```python
+from agents.trend_visual_analyzer import TrendVisualAnalyzer
+report = TrendVisualAnalyzer().run()   # {top_colors, dominant_tones, ...}
+```
 
 ### زیرردیت‌های استفاده‌شده (مرتبط با نیچ الینا)
 - `r/femalefashionadvice`
