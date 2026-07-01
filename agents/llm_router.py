@@ -15,20 +15,38 @@ class LLMRouter:
             "poe": "Aggregator (Various Models)",
         }
 
+    # Which env var holds each provider's API key.
+    _PROVIDER_KEYS = {
+        "groq": "GROQ_API_KEY",
+        "deepseek": "DEEPSEEK_API_KEY",
+        "openrouter": "OPENROUTER_API_KEY",
+        "gemini": "GEMINI_API_KEY",
+    }
+
+    # Preferred provider per task type (first choice), best-quality first.
+    _TASK_PREFERENCE = {
+        "coding": ["deepseek", "gemini", "openrouter", "groq"],
+        "creative_writing": ["openrouter", "gemini", "groq", "deepseek"],
+        "fast_response": ["groq", "gemini", "openrouter", "deepseek"],
+        "long_context": ["gemini", "openrouter", "groq", "deepseek"],
+        "general": ["gemini", "openrouter", "groq", "deepseek"],
+    }
+
     def get_best_provider(self, task_type):
-        """Smart routing based on task type"""
-        if task_type == "coding":
-            return "deepseek"
-        elif task_type == "creative_writing":
-            return "openrouter"  # Claude
-        elif task_type == "fast_response":
-            return "groq"
-        elif task_type == "long_context":
-            return "kimi"
-        elif task_type == "general":
-            return "github_models"
-        else:
-            return "gemini"
+        """Route to the best provider WHOSE API KEY IS ACTUALLY CONFIGURED.
+
+        The old version always sent creative_writing to OpenRouter/Claude, so a
+        user who only set GEMINI_API_KEY got the simulation stub (and captions
+        fell back to templates). Now we pick the first preferred provider that
+        has a key set, defaulting to Gemini.
+        """
+        prefs = self._TASK_PREFERENCE.get(task_type, ["gemini", "openrouter", "groq", "deepseek"])
+        for provider in prefs:
+            key_env = self._PROVIDER_KEYS.get(provider)
+            if key_env and os.environ.get(key_env):
+                return provider
+        # Nothing configured -> Gemini (its branch will simulate if key missing)
+        return "gemini"
 
     def smart_generate(self, prompt, task_type="general", system_prompt=""):
         """Generate content routing to the best model using REAL APIs"""
@@ -60,12 +78,25 @@ class LLMRouter:
                 
             elif provider == "openrouter" and os.environ.get("OPENROUTER_API_KEY"):
                 headers = {"Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}"}
+                # Model is configurable via OPENROUTER_MODEL so you can switch to
+                # a free model (e.g. "meta-llama/llama-3.1-8b-instruct:free") to
+                # stay $0, or a stronger paid Claude model for best captions.
+                model = os.environ.get("OPENROUTER_MODEL", "anthropic/claude-3-haiku")
                 data = {
-                    "model": "anthropic/claude-3-haiku", # Free/Cheap fast model
+                    "model": model,
                     "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt}]
                 }
-                r = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data).json()
-                response_text = r['choices'][0]['message']['content']
+                r = requests.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers=headers, json=data, timeout=30,
+                ).json()
+                if "choices" in r:
+                    response_text = r["choices"][0]["message"]["content"]
+                else:
+                    # Surface the API error (e.g. no credits) instead of crashing
+                    err = r.get("error", {})
+                    msg = err.get("message", str(r)[:150]) if isinstance(err, dict) else str(err)[:150]
+                    response_text = f"Error calling openrouter: {msg}"
                 
             elif provider == "gemini" and os.environ.get("GEMINI_API_KEY"):
                 import google.generativeai as genai
