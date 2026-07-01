@@ -228,12 +228,112 @@ def test_prompt_engineer_uses_palette(workdir):
 
     pe = PromptEngineerAgent()
     prompt = pe.generate_photo_prompt("in a cafe")
-    assert "currently-trending tones" in prompt
+    assert "trending tones" in prompt
     assert "cream/neutral" in prompt
 
     # And it should be omittable
     plain = pe.generate_photo_prompt("in a cafe", use_trending_palette=False)
-    assert "currently-trending tones" not in plain
+    assert "trending tones" not in plain
+
+
+def test_prompt_engineer_uses_deep_signals(workdir):
+    import json as _json
+
+    os.makedirs("content", exist_ok=True)
+    with open("content/trend_visuals.json", "w") as f:
+        _json.dump(
+            {
+                "dominant_tones": ["cream/neutral"],
+                "top_colors": ["#f5f0e8"],
+                "trending_aesthetics": ["quiet luxury", "old money"],
+                "trending_standout_products": ["camel wool trench coat"],
+                "trending_camera_angles": ["low angle"],
+                "sample_poses": ["walking away, glancing over shoulder"],
+            },
+            f,
+        )
+
+    from agents.prompt_engineer import PromptEngineerAgent
+
+    pe = PromptEngineerAgent()
+    prompt = pe.generate_photo_prompt("street style walk")
+    # Deep reverse-engineered signals should surface in the prompt
+    assert "quiet luxury" in prompt
+    assert "camel wool trench coat" in prompt
+    assert "low angle" in prompt
+
+
+# --------------------------------------------------------------------------- #
+# vision helper (offline: JSON extraction + no-key guard)
+# --------------------------------------------------------------------------- #
+def test_vision_json_extraction():
+    from agents import vision
+
+    assert vision._extract_json('```json\n{"a": 1}\n```') == {"a": 1}
+    assert vision._extract_json('noise {"b": 2, "c": [1,2]} tail') == {"b": 2, "c": [1, 2]}
+    assert vision._extract_json("not json at all") is None
+
+
+def test_vision_no_key_guard(monkeypatch):
+    from agents import vision
+
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    assert vision.gemini_available() is False
+    assert vision.analyze_image("http://x", "p")["available"] is False
+    assert vision.analyze_text("p")["available"] is False
+
+
+# --------------------------------------------------------------------------- #
+# TrendVideoAnalyzer (offline: heuristic teardown + engagement math)
+# --------------------------------------------------------------------------- #
+def test_video_analyzer_heuristic_fallback(workdir, monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    from agents.trend_video_analyzer import TrendVideoAnalyzer
+
+    tva = TrendVideoAnalyzer()
+    meta = {"title": "t", "views": 1_000_000, "likes": 50_000, "comments": 5_000, "video_id": "x"}
+    comments = [{"text": "where to buy", "likes": 100}]
+    res = tva.reverse_engineer(meta, comments)
+    assert res["engine"] == "heuristic"
+    # engagement = (50000+5000)/1000000 * 100 = 5.5
+    assert res["engagement_rate_pct"] == 5.5
+
+
+def test_content_creator_video_ideas_from_blueprints(workdir):
+    import json as _json
+
+    os.makedirs("content", exist_ok=True)
+    with open("content/trend_videos.json", "w") as f:
+        _json.dump(
+            {
+                "analyses": [
+                    {
+                        "meta": {"title": "viral GRWM"},
+                        "teardown": {
+                            "why_it_went_viral": ["relatable hook"],
+                            "elina_recreation": {
+                                "concept": "petite GRWM",
+                                "hook": "POV: you're 4'11 and...",
+                                "shot_list": ["mirror shot", "close up"],
+                                "caption": "getting ready with me 🤍",
+                            },
+                        },
+                    }
+                ]
+            },
+            f,
+        )
+
+    from agents.content_creator import ContentCreator
+
+    cc = ContentCreator()
+    pieces = cc.create_video_ideas(limit=3)
+    assert len(pieces) == 1
+    p = pieces[0]
+    assert p["format"] == "video"
+    assert p["hook"].startswith("POV")
+    assert p["inspired_by"] == "viral GRWM"
+    assert p["shot_list"] == ["mirror shot", "close up"]
 
 
 # --------------------------------------------------------------------------- #

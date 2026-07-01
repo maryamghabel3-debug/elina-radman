@@ -29,26 +29,48 @@ class PromptEngineerAgent(Agent):
             return "long wavy dark brown hair flowing naturally, minimal soft aesthetic, wearing effortless neutral-toned basics"
 
     def trending_palette_phrase(self):
-        """Turn the latest TrendVisualAnalyzer report into a prompt phrase.
+        """Turn the latest TrendVisualAnalyzer report into a rich prompt phrase.
 
-        Returns an empty string when no analysis is available, so the prompt is
+        Uses not just the colour palette but the reverse-engineered creative
+        direction (aesthetic, camera angle, hero product) when available.
+        Returns an empty string when no analysis exists, so the prompt is
         unchanged in that case.
         """
         try:
             from .trend_visual_analyzer import TrendVisualAnalyzer
 
             report = TrendVisualAnalyzer.load_latest_palette()
-            if not report or not report.get("dominant_tones"):
+            if not report:
                 return ""
-            tones = ", ".join(report["dominant_tones"][:3])
-            hexes = ", ".join(report.get("top_colors", [])[:3])
-            phrase = f"color-graded toward currently-trending tones ({tones}"
-            if hexes:
-                phrase += f"; palette {hexes}"
-            phrase += ")"
-            return phrase
+
+            parts = []
+            tones = report.get("dominant_tones", [])[:3]
+            hexes = report.get("top_colors", [])[:3]
+            if tones:
+                p = f"color-graded toward trending tones ({', '.join(tones)}"
+                if hexes:
+                    p += f"; palette {', '.join(hexes)}"
+                p += ")"
+                parts.append(p)
+
+            # Deep reverse-engineered signals (outfit/pose/camera)
+            aesthetics = report.get("trending_aesthetics", [])
+            if aesthetics:
+                parts.append(f"styled in the currently-trending {', '.join(aesthetics[:2])} aesthetic")
+            products = report.get("trending_standout_products", [])
+            if products:
+                parts.append(f"featuring on-trend pieces like {products[0]}")
+            angles = report.get("trending_camera_angles", [])
+            if angles:
+                parts.append(f"shot from a {angles[0]} angle popular in trending posts")
+            poses = report.get("sample_poses", [])
+            if poses:
+                # keep it short - poses can be long sentences
+                parts.append(f"pose inspired by trends: {str(poses[0])[:80]}")
+
+            return ", ".join(parts)
         except Exception as e:
-            self.log(f"Could not load trending palette: {e}", "error")
+            self.log(f"Could not load trending analysis: {e}", "error")
             return ""
 
     def generate_photo_prompt(self, base_concept, tone="Quiet Luxury", use_trending_palette=True):

@@ -96,17 +96,77 @@ class TrendVisualAnalyzer(Agent):
             for rgb, count in common
         ]
 
-    def analyze_image(self, url):
-        img = self._download_image(url)
+    def _deep_analyze(self, image_bytes, url):
+        """Use Gemini Vision to reverse-engineer a trending fashion photo:
+        outfit/products, pose, camera angle, lighting, setting, composition,
+        mood, and WHY it likely performs well. Returns {} if vision unavailable.
+        """
+        from . import vision
+
+        if not vision.gemini_available():
+            return {}
+
+        prompt = (
+            "You are an elite fashion photography director and visual analyst. "
+            "Reverse-engineer this trending fashion photo so it can be recreated. "
+            "Respond ONLY with a JSON object using EXACTLY these keys:\n"
+            "{\n"
+            '  "outfit": {"items": ["each garment with color/material/fit"], '
+            '"style_aesthetic": "e.g. quiet luxury, streetwear", "standout_piece": "the hero product"},\n'
+            '  "pose": "body position, hands, gaze, expression, energy",\n'
+            '  "camera": {"angle": "eye-level/low/high/dutch", "shot_size": "close-up/medium/full", '
+            '"lens_look": "wide/portrait/telephoto feel", "depth_of_field": "shallow/deep"},\n'
+            '  "lighting": "type, direction, mood (e.g. soft window light from left)",\n'
+            '  "setting": "location/background and props",\n'
+            '  "composition": "framing, rule-of-thirds, negative space, symmetry",\n'
+            '  "color_mood": "overall color grading feel",\n'
+            '  "why_it_works": "concise reason this image likely gets high engagement",\n'
+            '  "recreate_prompt": "a single vivid text-to-image prompt to recreate this look for a petite influencer"\n'
+            "}"
+        )
+        result = vision.analyze_image(url, prompt, image_bytes=image_bytes)
+        if result.get("available"):
+            result.pop("available", None)
+            return result
+        # Surface a soft error but don't fail the pipeline
+        if result.get("error"):
+            self.log(f"Vision analysis error: {result['error']}", "error")
+        return {}
+
+    def analyze_image(self, url, deep=True):
+        # Download once; reuse bytes for both palette (Pillow) and vision (Gemini)
+        image_bytes = None
+        try:
+            from . import vision
+
+            image_bytes = vision.download_image_bytes(url)
+        except Exception:
+            pass
+
+        img = None
+        if image_bytes:
+            try:
+                img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+            except OSError:
+                img = None
+        if img is None:
+            img = self._download_image(url)
         if img is None:
             return None
+
         w, h = img.size
         orientation = "portrait" if h > w * 1.1 else "landscape" if w > h * 1.1 else "square"
-        return {
+        analysis = {
             "url": url,
             "orientation": orientation,
             "palette": self._dominant_colors(img),
         }
+        # Layer the deep, AI-driven reverse-engineering on top (when available)
+        if deep:
+            deep_result = self._deep_analyze(image_bytes, url)
+            if deep_result:
+                analysis["deep"] = deep_result
+        return analysis
 
     # ------------------------------------------------------------------ #
     def run(self, images=None, limit=5):
@@ -148,11 +208,40 @@ class TrendVisualAnalyzer(Agent):
                 palette_counter[c["hex"]] += c["weight"]
                 name_counter[c["name"]] += c["weight"]
 
+        # Aggregate the AI-driven deep signals across all analysed photos so the
+        # PromptEngineer can mimic what's trending in outfit/pose/camera/lighting.
+        deep_analyses = [a["deep"] for a in analyses if a.get("deep")]
+        aesthetics = Counter()
+        poses = []
+        camera_angles = Counter()
+        lighting_styles = []
+        standout_products = []
+        for d in deep_analyses:
+            outfit = d.get("outfit", {}) if isinstance(d.get("outfit"), dict) else {}
+            if outfit.get("style_aesthetic"):
+                aesthetics[str(outfit["style_aesthetic"]).lower()] += 1
+            if outfit.get("standout_piece"):
+                standout_products.append(outfit["standout_piece"])
+            if d.get("pose"):
+                poses.append(d["pose"])
+            cam = d.get("camera", {}) if isinstance(d.get("camera"), dict) else {}
+            if cam.get("angle"):
+                camera_angles[str(cam["angle"]).lower()] += 1
+            if d.get("lighting"):
+                lighting_styles.append(d["lighting"])
+
         aggregate = {
             "generated_at": datetime.now().isoformat(),
             "images_analyzed": len(analyses),
+            "deep_analyzed": len(deep_analyses),
             "top_colors": [hex_ for hex_, _ in palette_counter.most_common(5)],
             "dominant_tones": [name for name, _ in name_counter.most_common(3)],
+            # Reverse-engineered creative direction learned from what's trending
+            "trending_aesthetics": [a for a, _ in aesthetics.most_common(3)],
+            "trending_camera_angles": [a for a, _ in camera_angles.most_common(3)],
+            "trending_standout_products": standout_products[:5],
+            "sample_poses": poses[:3],
+            "sample_lighting": lighting_styles[:3],
             "per_image": analyses,
         }
 

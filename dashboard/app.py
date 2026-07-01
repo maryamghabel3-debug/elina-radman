@@ -353,9 +353,9 @@ elif page == "Trends & Analytics":
     st.title("🔥 Trends & 📊 Analytics")
     st.markdown("Live fashion trends and real performance metrics driving Elina's content.")
 
-    col_a, col_b = st.columns(2)
+    col_a, col_b, col_c, col_d = st.columns(4)
     with col_a:
-        if st.button("🔥 Fetch Live Trends", use_container_width=True):
+        if st.button("🔥 Live Trends", use_container_width=True):
             with st.spinner("Scanning Reddit / Google / YouTube..."):
                 try:
                     from agents.trend_hunter import TrendHunter
@@ -366,7 +366,23 @@ elif page == "Trends & Analytics":
                 except Exception as e:
                     st.error(f"Trend error: {e}")
     with col_b:
-        if st.button("📊 Analyze Performance", use_container_width=True):
+        if st.button("🔬 Analyze Photos", use_container_width=True):
+            with st.spinner("Deep-analyzing outfits, poses, camera, lighting..."):
+                try:
+                    from agents.trend_visual_analyzer import TrendVisualAnalyzer
+                    st.session_state.visual = TrendVisualAnalyzer().run(limit=4)
+                except Exception as e:
+                    st.error(f"Visual error: {e}")
+    with col_c:
+        if st.button("🎬 Reverse Videos", use_container_width=True):
+            with st.spinner("Reverse-engineering viral videos..."):
+                try:
+                    from agents.trend_video_analyzer import TrendVideoAnalyzer
+                    st.session_state.videos = TrendVideoAnalyzer().run(limit=3)
+                except Exception as e:
+                    st.error(f"Video error: {e}")
+    with col_d:
+        if st.button("📊 Performance", use_container_width=True):
             with st.spinner("Pulling metrics..."):
                 try:
                     from agents.performance_analyzer import PerformanceAnalyzer
@@ -390,6 +406,49 @@ elif page == "Trends & Analytics":
             if t.get("curated") or t.get("mock"):
                 continue
             st.write(f"- **{t['name'][:80]}** — _{t.get('platform')}_")
+
+    if st.session_state.get("visual"):
+        v = st.session_state.visual
+        st.markdown("### 🔬 Deep photo analysis (reverse-engineered)")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Trending aesthetics", ", ".join(v.get("trending_aesthetics", [])) or "—")
+        c2.metric("Camera angles", ", ".join(v.get("trending_camera_angles", [])) or "—")
+        c3.metric("Dominant tones", ", ".join(v.get("dominant_tones", [])) or "—")
+        if v.get("trending_standout_products"):
+            st.write("**⭐ Standout products:** " + ", ".join(v["trending_standout_products"][:5]))
+        # Per-image deep breakdown
+        for a in v.get("per_image", []):
+            deep = a.get("deep")
+            if not deep:
+                continue
+            with st.expander(f"🖼 {a.get('title') or a.get('url','')[:50]}"):
+                st.json(deep)
+
+    if st.session_state.get("videos"):
+        st.markdown("### 🎬 Viral video teardowns")
+        for a in st.session_state.videos.get("analyses", []):
+            meta = a.get("meta", {})
+            td = a.get("teardown", {})
+            title = meta.get("title") or meta.get("video_id") or "video"
+            views = f" · {meta['views']:,} views" if meta.get("views") else ""
+            with st.expander(f"📹 {title[:60]}{views}"):
+                if td.get("hook"):
+                    st.write(f"**🪝 Hook:** {td['hook']}")
+                if td.get("why_it_went_viral"):
+                    st.write("**🔥 Why it went viral:**")
+                    for r in (td["why_it_went_viral"] if isinstance(td["why_it_went_viral"], list) else [td["why_it_went_viral"]]):
+                        st.write(f"- {r}")
+                if td.get("elina_recreation"):
+                    st.write("**🎥 Elina recreation blueprint:**")
+                    st.json(td["elina_recreation"])
+                st.caption(f"Engine: {td.get('engine','?')} · Engagement: {td.get('engagement_rate_pct','?')}%")
+        if st.button("🎥 Generate video ideas from these teardowns"):
+            try:
+                from agents.content_creator import ContentCreator
+                ideas = ContentCreator().create_video_ideas(limit=3)
+                st.success(f"Created {len(ideas)} video ideas in the content queue!")
+            except Exception as e:
+                st.error(f"Error: {e}")
 
     if st.session_state.get("strategy"):
         st.markdown("### 💡 Strategy recommendations")

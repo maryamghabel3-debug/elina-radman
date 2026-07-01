@@ -51,6 +51,71 @@ class ContentCreator(Agent):
             self.log(f"Could not load trends: {e}", "error")
             return []
 
+    def load_video_blueprints(self, limit: int = 3) -> List[dict]:
+        """Load reverse-engineered recreation blueprints from TrendVideoAnalyzer.
+
+        Returns a list of {source_title, concept, hook, shot_list, caption}
+        derived from the viral videos we tore down. Empty list on any failure.
+        """
+        try:
+            from .trend_video_analyzer import TrendVideoAnalyzer
+
+            report = TrendVideoAnalyzer.load_latest()
+            if not report:
+                return []
+            blueprints = []
+            for a in report.get("analyses", [])[:limit]:
+                td = a.get("teardown", {})
+                rec = td.get("elina_recreation") or {}
+                if rec:
+                    blueprints.append(
+                        {
+                            "source_title": a.get("meta", {}).get("title"),
+                            "why_viral": td.get("why_it_went_viral"),
+                            "concept": rec.get("concept"),
+                            "hook": rec.get("hook"),
+                            "shot_list": rec.get("shot_list"),
+                            "caption": rec.get("caption"),
+                        }
+                    )
+            return blueprints
+        except Exception as e:
+            self.log(f"Could not load video blueprints: {e}", "error")
+            return []
+
+    def create_video_ideas(self, limit: int = 3) -> List[dict]:
+        """Turn the latest viral-video teardowns into ready-to-shoot video content
+        pieces for Elina (concept + hook + shot list + caption), queued for approval."""
+        self.runs += 1
+        self.last_run = datetime.now().isoformat()
+        blueprints = self.load_video_blueprints(limit=limit)
+        pieces = []
+        for i, bp in enumerate(blueprints):
+            pid = f"elina-{datetime.now().strftime('%Y%m%d%H%M')}-vid{i}"
+            pieces.append(
+                {
+                    "id": pid,
+                    "pillar": "video_recreation",
+                    "format": "video",
+                    "caption": bp.get("caption") or "",
+                    "hook": bp.get("hook"),
+                    "shot_list": bp.get("shot_list"),
+                    "inspired_by": bp.get("source_title"),
+                    "why_source_went_viral": bp.get("why_viral"),
+                    "hashtags": f"{cfg.BASE_TAGS} #ElinaRadman #AIInfluencer",
+                    "platforms": ["tiktok", "instagram", "youtube"],
+                    "status": "pending_approval",
+                    "created_at": datetime.now().isoformat(),
+                }
+            )
+        if pieces:
+            os.makedirs("content/queue", exist_ok=True)
+            fp = f"content/queue/video-{datetime.now().strftime('%Y%m%d%H%M')}.json"
+            with open(fp, "w") as f:
+                json.dump(pieces, f, indent=2, ensure_ascii=False)
+            self.log(f"Created {len(pieces)} video ideas from viral teardowns → {fp}")
+        return pieces
+
     def generate_dynamic_caption(self, pillar: str, products: list, trends: Optional[List[str]] = None) -> str:
         """
         Calls the LLMRouter (e.g., Claude or Gemini) to generate a fresh,

@@ -202,6 +202,77 @@ for u in updates:
             print("topimages error:", e)
             resp = "⚠️ خطا در دریافت عکس‌ها. بعداً دوباره امتحان کن."
 
+    elif text == "/analyze":
+        send(chat, "🔬 *در حال تحلیل عمیق عکس‌های ترند...* ⏳\n(لباس، ژست، دوربین، نور)", reply_to=mid)
+        try:
+            from agents.trend_visual_analyzer import TrendVisualAnalyzer
+
+            rep = TrendVisualAnalyzer().run(limit=4)
+            deep_n = rep.get("deep_analyzed", 0)
+            resp = "🔬 *تحلیل عمیق عکس‌های ترند*\n\n"
+            resp += f"🖼 تحلیل‌شده: {rep.get('images_analyzed', 0)} عکس"
+            resp += f" ({deep_n} با AI بینایی)\n\n"
+            if rep.get("trending_aesthetics"):
+                resp += f"👗 *استایل‌های ترند:* {', '.join(rep['trending_aesthetics'])}\n"
+            if rep.get("trending_standout_products"):
+                resp += f"⭐ *محصولات شاخص:* {', '.join(rep['trending_standout_products'][:3])}\n"
+            if rep.get("trending_camera_angles"):
+                resp += f"🎥 *زاویه دوربین:* {', '.join(rep['trending_camera_angles'])}\n"
+            if rep.get("dominant_tones"):
+                resp += f"🎨 *رنگ‌های غالب:* {', '.join(rep['dominant_tones'])}\n"
+            if deep_n == 0:
+                resp += "\n_برای تحلیل کامل AI، `GEMINI_API_KEY` رو ست کن._"
+        except Exception as e:
+            print("analyze error:", e)
+            resp = "⚠️ خطا در تحلیل عکس‌ها. بعداً دوباره امتحان کن."
+
+    elif text == "/reverse":
+        send(chat, "🎬 *در حال مهندسی معکوس ویدیوهای وایرال...* ⏳", reply_to=mid)
+        try:
+            from agents.trend_video_analyzer import TrendVideoAnalyzer
+
+            rep = TrendVideoAnalyzer().run(limit=3)
+            n = rep.get("videos_analyzed", 0)
+            if n == 0:
+                resp = "⚠️ ویدیوی ترندی پیدا نشد. `YOUTUBE_API_KEY` رو ست کن تا فعال بشه."
+            else:
+                resp = f"🎬 *مهندسی معکوس {n} ویدیوی وایرال*\n\n"
+                for a in rep.get("analyses", []):
+                    meta = a.get("meta", {})
+                    td = a.get("teardown", {})
+                    resp += f"📹 *{(meta.get('title') or '')[:55]}*\n"
+                    if meta.get("views"):
+                        resp += f"👁 {meta['views']:,} بازدید | تعامل {td.get('engagement_rate_pct', '?')}%\n"
+                    if td.get("hook"):
+                        resp += f"🪝 هوک: {str(td['hook'])[:90]}\n"
+                    why = td.get("why_it_went_viral")
+                    if why:
+                        first = why[0] if isinstance(why, list) else why
+                        resp += f"🔥 چرا وایرال شد: {str(first)[:90]}\n"
+                    resp += "\n"
+                resp += "برای ساخت ویدیو بر اساس این‌ها: `/makevideos`"
+        except Exception as e:
+            print("reverse error:", e)
+            resp = "⚠️ خطا در مهندسی معکوس ویدیوها. بعداً دوباره امتحان کن."
+
+    elif text == "/makevideos":
+        send(chat, "🎥 *در حال ساخت ایده‌های ویدیو از تحلیل‌ها...* ⏳", reply_to=mid)
+        try:
+            from agents.content_creator import ContentCreator
+
+            pieces = ContentCreator().create_video_ideas(limit=3)
+            if not pieces:
+                resp = "⚠️ اول `/reverse` رو بزن تا ویدیوها تحلیل بشن."
+            else:
+                resp = f"🎥 *{len(pieces)} ایده ویدیو ساخته شد!*\n\n"
+                for p in pieces:
+                    resp += f"🆔 `{p['id']}`\n🪝 {str(p.get('hook') or '')[:70]}\n"
+                    resp += f"💡 الهام از: {str(p.get('inspired_by') or '')[:50]}\n\n"
+                resp += "برای تأیید: `/approve شناسه`"
+        except Exception as e:
+            print("makevideos error:", e)
+            resp = "⚠️ خطا در ساخت ویدیوها. بعداً دوباره امتحان کن."
+
     elif text == "/agents":
         agent_files = sorted(
             os.path.basename(a)[:-3]
@@ -234,8 +305,9 @@ for u in updates:
 
 📊 /status | 🎨 /content | 📋 /list
 ✅ /approve | ❌ /reject
-🔥 /trends | 📸 /topimages | 🤖 /agents
-🐙 /github | 📝 /diary | 📤 /publish
+🔥 /trends | 📸 /topimages
+🔬 /analyze | 🎬 /reverse | 🎥 /makevideos
+🤖 /agents | 🐙 /github | 📝 /diary | 📤 /publish
 💬 *هر پیام = چت با Gemini*"""
 
     elif text == "/publish":
