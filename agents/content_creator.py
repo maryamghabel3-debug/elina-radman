@@ -134,13 +134,15 @@ class ContentCreator(Agent):
             )
 
         prompt = (
-            f"Write a short Instagram caption (3-4 lines) for Elina Radman, a petite "
-            f"quiet-luxury fashion influencer. Content pillar: {pillar}. "
-            f"Tone: warm, confident, explorer, psychologist. "
-            f"Current emotional state: '{current_feeling}'. "
+            f"Write a short, original Instagram caption (3-4 lines) for Elina Radman, "
+            f"a petite quiet-luxury fashion influencer. Content pillar: {pillar}. "
+            f"Voice: warm, confident, explorer, psychologist. "
             f"{trend_line}"
-            f"Blend her current feelings subtly into the content. Use at most 2 emojis, "
-            f"end with an engaging question, and do NOT include hashtags."
+            f"Let this private mood gently color the WORDING only — do NOT state or "
+            f"quote it: '{current_feeling}'. "
+            f"Give concrete outfit/styling detail, use at most 2 emojis, end with an "
+            f"engaging question, and do NOT include hashtags or any preamble. "
+            f"Output ONLY the caption text."
         )
 
         generated_caption = ""
