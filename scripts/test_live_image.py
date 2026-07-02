@@ -60,7 +60,13 @@ def main():
                         files={"photo": fh},
                         timeout=60,
                     )
-                print("✅ Telegram photo sent successfully!")
+                prompt_msg = f"🎨 **پرامپت ساخت این عکس (برای کپی و تولید دستی):**\n```\n{result.get('prompt', '')}\n```"
+                requests.post(
+                    f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                    json={"chat_id": chat_id, "text": prompt_msg, "parse_mode": "Markdown"},
+                    timeout=20,
+                )
+                print("✅ Telegram photo and prompt sent successfully!")
             except Exception as e:
                 print(f"⚠️ Could not send Telegram photo: {e}")
     else:

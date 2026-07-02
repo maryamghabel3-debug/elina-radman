@@ -181,10 +181,19 @@ Caption:"""
 
 
 def add_images(pieces):
-    """Generate a real photo for each caption piece and attach its path.
+    """Generate a real photo for each caption piece and attach its path along with exact creation prompts."""
+    try:
+        from agents.prompt_engineer import PromptEngineerAgent
+        pe = PromptEngineerAgent()
+    except Exception:
+        pe = None
 
-    Uses ImageStudio (Gemini -> HF InstantID -> Pollinations fallback). Wrapped so a failure on
-    one piece never breaks the whole daily run. Skips if IMAGES_OFF=1."""
+    for p in pieces:
+        concept = (p.get("caption") or "").split("\n")[0][:180] or p.get("pillar", "fashion")
+        if pe and not p.get("image_prompt"):
+            p["image_prompt"] = pe.generate_photo_prompt(concept)
+            p["video_prompt"] = pe.generate_cinematic_json_script(concept)
+
     if os.environ.get("IMAGES_OFF") == "1":
         print("   ⏭  Image generation skipped (IMAGES_OFF=1)")
         return
@@ -195,7 +204,6 @@ def add_images(pieces):
         return
     studio = ImageStudio()
     for p in pieces:
-        # Use the caption's first line as the visual concept for the photo
         concept = (p.get("caption") or "").split("\n")[0][:180] or p.get("pillar", "fashion")
         try:
             r = studio.generate(concept)
@@ -204,6 +212,7 @@ def add_images(pieces):
                 p["image_provider"] = r.get("provider")
                 p["used_reference"] = r.get("used_reference", False)
                 p["image_warning"] = r.get("warning", "")
+                p["image_prompt"] = r.get("prompt", p.get("image_prompt", concept))
                 print(f"   🎨 image for {p['id']} via {r.get('provider')} (ref={p['used_reference']})")
             else:
                 print(f"   ⚠️  no image for {p['id']}")
@@ -223,8 +232,8 @@ def notify_telegram(pieces, video_ideas=None):
 
         n_photos = sum(1 for p in pieces if p.get("image"))
         msg = (
-            f"📋 *{len(pieces)} captions + {n_photos} photos + "
-            f"{len(video_ideas)} video ideas ready!*\n\n"
+            f"📋 *{len(pieces)} محتوای آماده + {n_photos} عکس + "
+            f"{len(video_ideas)} ایده ویدیویی!*\n\n"
         )
         for p in pieces:
             cam = "🖼" if p.get("image") else "📝"
@@ -240,16 +249,17 @@ def notify_telegram(pieces, video_ideas=None):
             json={"chat_id": chat_id, "text": msg, "parse_mode": "Markdown"},
             timeout=10,
         )
-        # Send the actual generated photos so you can preview them in Telegram
+        # Send actual generated photos with full prompts
         for p in pieces:
             img = p.get("image")
             if img and os.path.exists(img):
                 try:
-                    photo_cap = f"{p['id']} — {p['pillar']}"
+                    photo_cap = f"📸 پست: {p['id']} ({p['pillar']})\n"
                     if p.get("affiliate_item"):
-                        photo_cap += f"\n🛍 {p['affiliate_item']}\n🔗 {p.get('affiliate_link', '')}"
+                        photo_cap += f"🛍 محصول: {p['affiliate_item']}\n🔗 {p.get('affiliate_link', '')}\n"
                     if p.get("image_warning"):
-                        photo_cap += f"\n\n{p['image_warning']}"
+                        photo_cap += f"\n{p['image_warning']}"
+                    photo_cap += f"\n👉 تأیید و انتشار: `/approve {p['id']}`"
                     with open(img, "rb") as fh:
                         requests.post(
                             f"https://api.telegram.org/bot{token}/sendPhoto",
@@ -257,6 +267,17 @@ def notify_telegram(pieces, video_ideas=None):
                             files={"photo": fh},
                             timeout=60,
                         )
+                    # Send detailed prompts in a separate message so you can copy-paste them easily
+                    prompt_msg = f"🎨 **پرامپت‌های تولیدی برای پست `{p['id']}`:**\n\n"
+                    prompt_msg += f"🖼 **پرامپت ساخت عکس (برای تولید دستی یا تغییر):**\n```\n{p.get('image_prompt', '')}\n```\n\n"
+                    if p.get("video_prompt"):
+                        vp = p.get("video_prompt", "")[:600] + "..." if len(p.get("video_prompt", "")) > 600 else p.get("video_prompt", "")
+                        prompt_msg += f"🎬 **پرامپت ساخت ویدیو (سناریوی ریلز/تیک‌تاک):**\n```\n{vp}\n```"
+                    requests.post(
+                        f"https://api.telegram.org/bot{token}/sendMessage",
+                        json={"chat_id": chat_id, "text": prompt_msg[:4000], "parse_mode": "Markdown"},
+                        timeout=20,
+                    )
                 except Exception as e:
                     print(f"photo send error: {e}")
         print("Telegram sent")
