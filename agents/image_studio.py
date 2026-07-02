@@ -150,10 +150,10 @@ class ImageStudio(Agent):
         models_to_try = []
         for m in [
             self.model,
+            "gemini-3-pro-image-preview",
             "gemini-2.5-flash-image",
             "gemini-2.5-flash-image-preview",
             "gemini-2.0-flash-preview-image-generation",
-            "gemini-3-pro-image-preview",
         ]:
             if m and m not in models_to_try:
                 models_to_try.append(m)
@@ -265,8 +265,8 @@ class ImageStudio(Agent):
             res = client.predict(
                 f"candid 35mm editorial fashion photo of Elina Radman, 24yo woman, {prompt}",
                 handle_file(refs[0]),
-                0, 4.0, "-1", 1.0, 896, 1152, 28, 0.85,
-                "bad quality, worst quality, extra limbs, CGI, 3d render, illustration, plastic skin", 1, 512,
+                0, 4.0, "-1", 1.0, 896, 1152, 28, 1.0,
+                "bad quality, worst quality, extra limbs, CGI, 3d render, illustration, plastic skin, different face", 1, 512,
                 api_name="/generate_image"
             )
             img_path = res[0] if isinstance(res, (list, tuple)) else str(res)

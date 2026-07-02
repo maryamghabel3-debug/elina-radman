@@ -30,7 +30,7 @@ def main():
     concept = "sitting at a Parisian street cafe terrace, wearing chic camel wide-leg pleated trousers and tailored blazer, golden morning sunlight, candid lifestyle"
     print(f"\n🎨 Generating live image for concept: '{concept}'...")
     
-    result = studio.generate(concept=concept, prefer="hf")
+    result = studio.generate(concept=concept, prefer="auto")
     
     print("\n=== GENERATION REPORT ===")
     print(json.dumps(result, indent=2, ensure_ascii=False))
