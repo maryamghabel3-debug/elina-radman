@@ -490,6 +490,39 @@ def test_image_studio_writes_file(workdir, monkeypatch):
     assert os.path.exists(result["path"])
 
 
+def test_image_studio_uses_references_and_fullbody(workdir, monkeypatch):
+    """The prompt is full-body editorial and reference photos are discovered."""
+    from agents.image_studio import ImageStudio
+
+    # Create fake reference photos in images/
+    os.makedirs("images", exist_ok=True)
+    for i in range(2):
+        with open(f"images/elina-final-0{i}.jpg", "wb") as f:
+            f.write(b"x" * 5000)  # >1024 so it counts as valid
+
+    studio = ImageStudio()
+    refs = studio.reference_images()
+    assert len(refs) == 2  # both discovered
+
+    prompt = studio.build_prompt("in a cafe")
+    assert "Full-body" in prompt or "three-quarter" in prompt
+
+
+def test_image_studio_trend_driven_concept(workdir, monkeypatch):
+    """When no concept is given, it is derived from the trend analysis file."""
+    import json as _json
+    os.makedirs("content", exist_ok=True)
+    with open("content/trend_visuals.json", "w") as f:
+        _json.dump({
+            "trending_aesthetics": ["old money"],
+            "trending_standout_products": ["camel wool coat"],
+        }, f)
+
+    from agents.image_studio import ImageStudio
+    concept = ImageStudio().trend_concept()
+    assert "old money" in concept and "camel wool coat" in concept
+
+
 def test_base_agent_status_and_logging():
     from agents.base import Agent
 
