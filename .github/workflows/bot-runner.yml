@@ -21,6 +21,10 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          STRICT_FACE_ONLY: ${{ secrets.STRICT_FACE_ONLY }}
+          AMAZON_AFFILIATE_TAG: ${{ secrets.AMAZON_AFFILIATE_TAG }}
+          LTK_CREATOR_ID: ${{ secrets.LTK_CREATOR_ID }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           POSTIZ_URL: ${{ secrets.POSTIZ_URL }}
           POSTIZ_API_TOKEN: ${{ secrets.POSTIZ_API_TOKEN }}
