@@ -412,6 +412,7 @@ def test_daily_pipeline_runs_with_deep_skip(workdir, monkeypatch):
     import importlib
 
     monkeypatch.setenv("SKIP_DEEP_ANALYSIS", "1")
+    monkeypatch.setenv("IMAGES_OFF", "1")  # keep the test fully offline (no image API)
     for k in ("GEMINI_API_KEY", "YOUTUBE_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"):
         monkeypatch.delenv(k, raising=False)
 
@@ -454,6 +455,41 @@ def test_load_visual_signals_reads_report(workdir):
 # --------------------------------------------------------------------------- #
 # Base Agent
 # --------------------------------------------------------------------------- #
+def test_image_studio_prompt_and_fallback(workdir, monkeypatch):
+    """ImageStudio builds a rich prompt and falls back cleanly when providers
+    fail — all offline (both providers stubbed to fail)."""
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    from agents.image_studio import ImageStudio
+
+    studio = ImageStudio()
+    prompt = studio.build_prompt("wearing a camel blazer in a cafe")
+    assert "Iranian woman" in prompt  # identity lock baked in
+
+    # Stub both providers to fail -> graceful error, no crash
+    monkeypatch.setattr(studio, "_gemini_image", lambda p, o: False)
+    monkeypatch.setattr(studio, "_pollinations_image", lambda p, o: False)
+    result = studio.generate("test concept")
+    assert result.get("error") == "all_providers_failed"
+
+
+def test_image_studio_writes_file(workdir, monkeypatch):
+    """When a provider 'succeeds', the returned dict points at the written file."""
+    from agents.image_studio import ImageStudio
+
+    studio = ImageStudio()
+
+    def fake_poll(prompt, out_path, **kw):
+        with open(out_path, "wb") as f:
+            f.write(b"\xff\xd8\xff\xe0fakejpeg")
+        return True
+
+    monkeypatch.setattr(studio, "_gemini_image", lambda p, o: False)
+    monkeypatch.setattr(studio, "_pollinations_image", fake_poll)
+    result = studio.generate("test concept")
+    assert result.get("provider") == "pollinations"
+    assert os.path.exists(result["path"])
+
+
 def test_base_agent_status_and_logging():
     from agents.base import Agent
 

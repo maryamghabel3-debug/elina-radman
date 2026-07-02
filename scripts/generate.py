@@ -161,6 +161,35 @@ Caption:"""
     }
 
 
+def add_images(pieces):
+    """Generate a real photo for each caption piece and attach its path.
+
+    Uses ImageStudio (Gemini -> Pollinations fallback). Wrapped so a failure on
+    one piece never breaks the whole daily run. Skips if IMAGES_OFF=1."""
+    if os.environ.get("IMAGES_OFF") == "1":
+        print("   ⏭  Image generation skipped (IMAGES_OFF=1)")
+        return
+    try:
+        from agents.image_studio import ImageStudio
+    except Exception as e:
+        print(f"   ⚠️  ImageStudio unavailable: {e}")
+        return
+    studio = ImageStudio()
+    for p in pieces:
+        # Use the caption's first line as the visual concept for the photo
+        concept = (p.get("caption") or "").split("\n")[0][:180] or p.get("pillar", "fashion")
+        try:
+            r = studio.generate(concept)
+            if r.get("path"):
+                p["image"] = r["path"]
+                p["image_provider"] = r.get("provider")
+                print(f"   🎨 image for {p['id']} via {r.get('provider')}")
+            else:
+                print(f"   ⚠️  no image for {p['id']}")
+        except Exception as e:
+            print(f"   ⚠️  image error for {p['id']}: {e}")
+
+
 def notify_telegram(pieces, video_ideas=None):
     video_ideas = video_ideas or []
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -171,9 +200,14 @@ def notify_telegram(pieces, video_ideas=None):
     try:
         import requests
 
-        msg = f"📋 *{len(pieces)} captions + {len(video_ideas)} video ideas ready!*\n\n"
+        n_photos = sum(1 for p in pieces if p.get("image"))
+        msg = (
+            f"📋 *{len(pieces)} captions + {n_photos} photos + "
+            f"{len(video_ideas)} video ideas ready!*\n\n"
+        )
         for p in pieces:
-            msg += f"🆔 `{p['id']}`\n🏷 {p['pillar']}\n📝 {p['caption'][:80]}...\n\n"
+            cam = "🖼" if p.get("image") else "📝"
+            msg += f"🆔 `{p['id']}`\n🏷 {p['pillar']}\n{cam} {p['caption'][:80]}...\n\n"
         for v in video_ideas:
             hook = (v.get("hook") or "")[:70]
             inspired = (v.get("inspired_by") or "")[:50]
@@ -184,6 +218,20 @@ def notify_telegram(pieces, video_ideas=None):
             json={"chat_id": chat_id, "text": msg, "parse_mode": "Markdown"},
             timeout=10,
         )
+        # Send the actual generated photos so you can preview them in Telegram
+        for p in pieces:
+            img = p.get("image")
+            if img and os.path.exists(img):
+                try:
+                    with open(img, "rb") as fh:
+                        requests.post(
+                            f"https://api.telegram.org/bot{token}/sendPhoto",
+                            data={"chat_id": chat_id, "caption": f"{p['id']} — {p['pillar']}"},
+                            files={"photo": fh},
+                            timeout=60,
+                        )
+                except Exception as e:
+                    print(f"photo send error: {e}")
         print("Telegram sent")
     except Exception as e:
         print(f"Telegram error: {e}")
@@ -213,6 +261,10 @@ def main():
     ]
     for p in pieces:
         print(f"   ✅ {p['id']} — {p['pillar']}")
+
+    # 4) Generate a real photo for each piece
+    print("🎨 Generating photos...")
+    add_images(pieces)
 
     fp = f"content/queue/{datetime.now().strftime('%Y%m%d')}.json"
     with open(fp, "w") as f:

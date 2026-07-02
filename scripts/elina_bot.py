@@ -41,6 +41,20 @@ def send(chat, text, parse="Markdown", reply_to=None):
     return tg("sendMessage", d)
 
 
+def send_photo(chat, photo_path, caption=""):
+    """Upload a local image file to the chat."""
+    try:
+        with open(photo_path, "rb") as f:
+            files = {"photo": f}
+            data = {"chat_id": chat, "caption": caption[:1000]}
+            return requests.post(
+                f"{BASE}/sendPhoto", data=data, files=files, timeout=60
+            ).json()
+    except Exception as e:
+        print("send_photo error:", e)
+        return {"ok": False}
+
+
 # Read offset
 OFFSET_FILE = "content/bot_offset.txt"
 try:
@@ -202,6 +216,25 @@ for u in updates:
             print("topimages error:", e)
             resp = "⚠️ خطا در دریافت عکس‌ها. بعداً دوباره امتحان کن."
 
+    elif text.startswith("/photo"):
+        # /photo [concept]  → generates a real photo of Elina
+        concept = text.replace("/photo", "", 1).strip()
+        if not concept:
+            concept = "wearing a tailored camel blazer in a sunlit cafe, editorial fashion"
+        send(chat, f"🎨 *در حال ساخت عکس الینا...* ⏳\n_{concept[:80]}_", reply_to=mid)
+        try:
+            from agents.image_studio import ImageStudio
+
+            r = ImageStudio().generate(concept)
+            if r.get("path"):
+                send_photo(chat, r["path"], caption=f"🖼 {concept[:200]}\n\n(via {r.get('provider')})")
+                resp = None
+            else:
+                resp = "⚠️ ساخت عکس ناموفق بود. دوباره امتحان کن."
+        except Exception as e:
+            print("photo error:", e)
+            resp = "⚠️ خطا در ساخت عکس. بعداً دوباره امتحان کن."
+
     elif text == "/analyze":
         send(chat, "🔬 *در حال تحلیل عمیق عکس‌های ترند...* ⏳\n(لباس، ژست، دوربین، نور)", reply_to=mid)
         try:
@@ -306,7 +339,7 @@ for u in updates:
 📊 /status | 🎨 /content | 📋 /list
 ✅ /approve | ❌ /reject
 🔥 /trends | 📸 /topimages
-🔬 /analyze | 🎬 /reverse | 🎥 /makevideos
+🎨 /photo | 🔬 /analyze | 🎬 /reverse | 🎥 /makevideos
 🤖 /agents | 🐙 /github | 📝 /diary | 📤 /publish
 💬 *هر پیام = چت با Gemini*"""
 
