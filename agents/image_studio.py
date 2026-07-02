@@ -65,24 +65,24 @@ class ImageStudio(Agent):
     # Prompt building (trend-aware, full editorial)
     # ------------------------------------------------------------------ #
     def build_prompt(self, concept: str, tone: str = "Quiet Luxury") -> str:
-        """Rich editorial prompt via PromptEngineer (5-part formula + trending
-        palette/aesthetic), forced to a full-body styled fashion shot."""
+        """Rich editorial prompt via PromptEngineer with live trend signals,
+        forced to ultra-photorealistic candid lifestyle photography."""
         base = ""
         try:
             from .prompt_engineer import PromptEngineerAgent
-
             base = PromptEngineerAgent().generate_photo_prompt(concept, tone=tone)
         except Exception as e:
             self.log(f"PromptEngineer unavailable ({e}); basic prompt", "error")
             base = f"{_IDENTITY}, {concept}, editorial fashion photography, quiet luxury"
 
-        # Force full-body styled fashion framing (not a face close-up)
+        # Force photorealistic candid 35mm lifestyle framing with exact location atmosphere
         framing = (
-            "Full-body or three-quarter length editorial fashion photograph showing "
-            "the complete styled outfit, shoes and accessories, natural confident "
-            "model pose, realistic body proportions, Instagram fashion-influencer look"
+            "Candid 35mm lifestyle photograph, full-body or three-quarter fashion shot showing "
+            "complete styled outfit in realistic location and atmosphere, natural sunlight, "
+            "Kodak Portra 400 film grain, ultra realistic detailed skin texture, Vogue editorial quality, "
+            "natural pose, vibrant detailed background setting."
         )
-        return f"{base} {framing}."
+        return f"{base} {framing}"
 
     def trend_concept(self) -> str:
         """Derive a photo concept from the latest trend analysis so the image is
@@ -223,16 +223,16 @@ class ImageStudio(Agent):
             client = Client("InstantX/InstantID", token=hf_token)
             res = client.predict(
                 handle_file(ref_img),
-                handle_file(ref_img),
-                f"Elina Radman, 24yo Iranian woman, {prompt}",
-                "anime, cartoon, deformed, bad anatomy, bad face, extra limbs",
+                None,
+                f"candid 35mm photograph of Elina Radman, 24yo Iranian woman, {prompt}",
+                "anime, cartoon, deformed, bad anatomy, bad face, extra limbs, plastic skin, CGI, 3d render",
                 "(No style)",
                 30,
                 0.8,
-                0.8,
-                0.4,
-                0.4,
-                ["depth"],
+                0.75,
+                0.0,
+                0.0,
+                [],
                 5.0,
                 42,
                 "EulerDiscreteScheduler",
@@ -263,10 +263,10 @@ class ImageStudio(Agent):
             from gradio_client import Client, handle_file
             client = Client("yanze/PuLID-FLUX", token=hf_token)
             res = client.predict(
-                f"Elina Radman, 24yo woman, {prompt}",
+                f"candid 35mm editorial fashion photo of Elina Radman, 24yo woman, {prompt}",
                 handle_file(refs[0]),
-                0, 4.0, "-1", 1.0, 896, 1152, 28, 1.0,
-                "bad quality, worst quality, extra limbs", 1, 512,
+                0, 4.0, "-1", 1.0, 896, 1152, 28, 0.85,
+                "bad quality, worst quality, extra limbs, CGI, 3d render, illustration, plastic skin", 1, 512,
                 api_name="/generate_image"
             )
             img_path = res[0] if isinstance(res, (list, tuple)) else str(res)
@@ -365,9 +365,10 @@ class ImageStudio(Agent):
 
         order = {
             "gemini": ["gemini"],
-            "hf": ["hf_instantid", "hf_pulid_flux", "hf_pulid_sdxl"],
+            "flux": ["hf_pulid_flux"],
+            "hf": ["hf_pulid_flux", "hf_instantid", "hf_pulid_sdxl"],
             "nvidia": ["nvidia_nim"],
-        }.get(prefer, ["gemini", "hf_instantid", "hf_pulid_flux", "hf_pulid_sdxl", "nvidia_nim"])
+        }.get(prefer, ["gemini", "hf_pulid_flux", "hf_instantid", "hf_pulid_sdxl", "nvidia_nim"])
 
         for provider in order:
             if provider == "gemini":

@@ -27,10 +27,10 @@ def main():
     if refs:
         print(f"Primary reference: {refs[0]}")
         
-    concept = "wearing a tailored camel trench coat, Parisian cafe terrace, smiling softly, natural morning sunlight"
+    concept = "sitting at a Parisian street cafe terrace, wearing chic camel wide-leg pleated trousers and tailored blazer, golden morning sunlight, candid lifestyle"
     print(f"\n🎨 Generating live image for concept: '{concept}'...")
     
-    result = studio.generate(concept=concept)
+    result = studio.generate(concept=concept, prefer="hf")
     
     print("\n=== GENERATION REPORT ===")
     print(json.dumps(result, indent=2, ensure_ascii=False))
