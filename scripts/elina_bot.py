@@ -217,23 +217,40 @@ for u in updates:
             resp = "⚠️ خطا در دریافت عکس‌ها. بعداً دوباره امتحان کن."
 
     elif text.startswith("/photo"):
-        # /photo [concept]  → generates a real photo of Elina
+        # /photo [gemini] [concept]  → generates a real photo of Elina.
+        # Add the word 'gemini' to force Gemini-only (no Pollinations fallback),
+        # which is the way to verify face consistency.
         concept = text.replace("/photo", "", 1).strip()
+        force_gemini = False
+        if concept.lower().startswith("gemini"):
+            force_gemini = True
+            concept = concept[6:].strip()
         if not concept:
             concept = "wearing a tailored camel blazer in a sunlit cafe, editorial fashion"
-        send(chat, f"🎨 *در حال ساخت عکس الینا...* ⏳\n_{concept[:80]}_", reply_to=mid)
+        mode = " (Gemini only)" if force_gemini else ""
+        send(chat, f"🎨 *در حال ساخت عکس الینا...*{mode} ⏳\n_{concept[:80]}_", reply_to=mid)
         try:
             from agents.image_studio import ImageStudio
 
-            r = ImageStudio().generate(concept)
+            r = ImageStudio().generate(
+                concept, prefer="gemini" if force_gemini else "auto",
+                allow_pollinations=not force_gemini,
+            )
             if r.get("path"):
-                send_photo(chat, r["path"], caption=f"🖼 {concept[:200]}\n\n(via {r.get('provider')})")
+                prov = r.get("provider")
+                extra = ""
+                if prov == "gemini":
+                    extra = f"\n✅ چهره از عکس مرجع (مدل: {r.get('working_model')})"
+                elif r.get("gemini_error"):
+                    extra = f"\n⚠️ Gemini کار نکرد → Pollinations. علت:\n{str(r['gemini_error'])[:300]}"
+                send_photo(chat, r["path"], caption=f"🖼 {concept[:180]}\n(via {prov}){extra}")
                 resp = None
             else:
-                resp = "⚠️ ساخت عکس ناموفق بود. دوباره امتحان کن."
+                ge = r.get("gemini_error", "")
+                resp = f"⚠️ ساخت عکس ناموفق بود.\nGemini: {str(ge)[:400]}"
         except Exception as e:
             print("photo error:", e)
-            resp = "⚠️ خطا در ساخت عکس. بعداً دوباره امتحان کن."
+            resp = f"⚠️ خطا در ساخت عکس: {str(e)[:200]}"
 
     elif text == "/analyze":
         send(chat, "🔬 *در حال تحلیل عمیق عکس‌های ترند...* ⏳\n(لباس، ژست، دوربین، نور)", reply_to=mid)

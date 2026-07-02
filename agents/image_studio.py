@@ -45,6 +45,8 @@ class ImageStudio(Agent):
         self.gemini_key = os.environ.get("GEMINI_API_KEY", "")
         self.model = os.environ.get("GEMINI_IMAGE_MODEL", _DEFAULT_MODEL)
         self.session = requests.Session()
+        self.last_error = ""       # last Gemini failure reason (for debugging)
+        self.working_model = ""    # model id that actually produced an image
 
     # ------------------------------------------------------------------ #
     # Reference faces
@@ -138,37 +140,66 @@ class ImageStudio(Agent):
         )
         parts.append({"text": instruction})
 
-        url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{self.model}:generateContent"
-        )
         payload = {
             "contents": [{"parts": parts}],
             "generationConfig": {"responseModalities": ["IMAGE", "TEXT"]},
         }
-        try:
-            r = self.session.post(
-                url,
-                headers={"x-goog-api-key": self.gemini_key, "Content-Type": "application/json"},
-                json=payload,
-                timeout=120,
+
+        # Try the configured model first, then known image-capable fallbacks.
+        # Different keys/regions expose different model ids, so we probe a few.
+        models_to_try = []
+        for m in [
+            self.model,
+            "gemini-2.5-flash-image",
+            "gemini-2.5-flash-image-preview",
+            "gemini-2.0-flash-preview-image-generation",
+            "gemini-3-pro-image-preview",
+        ]:
+            if m and m not in models_to_try:
+                models_to_try.append(m)
+
+        for model_id in models_to_try:
+            url = (
+                f"https://generativelanguage.googleapis.com/v1beta/models/"
+                f"{model_id}:generateContent"
             )
+            try:
+                r = self.session.post(
+                    url,
+                    headers={"x-goog-api-key": self.gemini_key, "Content-Type": "application/json"},
+                    json=payload,
+                    timeout=120,
+                )
+            except (requests.RequestException, ValueError) as e:
+                self.last_error = f"{model_id}: {e}"
+                self.log(f"Gemini image error ({model_id}): {e}", "error")
+                continue
+
             if r.status_code != 200:
-                self.log(f"Gemini image HTTP {r.status_code}: {r.text[:200]}", "error")
-                return False
-            data = r.json()
+                self.last_error = f"{model_id}: HTTP {r.status_code} {r.text[:200]}"
+                self.log(f"Gemini image HTTP {r.status_code} ({model_id}): {r.text[:200]}", "error")
+                # 404 = model not found for this key -> try next model
+                continue
+
+            try:
+                data = r.json()
+            except ValueError as e:
+                self.last_error = f"{model_id}: bad json {e}"
+                continue
+
             for cand in data.get("candidates", []):
                 for part in cand.get("content", {}).get("parts", []):
                     inline = part.get("inline_data") or part.get("inlineData")
                     if inline and inline.get("data"):
                         with open(out_path, "wb") as f:
                             f.write(base64.b64decode(inline["data"]))
+                        self.working_model = model_id
                         return True
-            self.log(f"Gemini returned no image part: {str(data)[:200]}", "error")
-            return False
-        except (requests.RequestException, ValueError) as e:
-            self.log(f"Gemini image error: {e}", "error")
-            return False
+
+            self.last_error = f"{model_id}: no image part ({str(data)[:150]})"
+            self.log(f"Gemini no image part ({model_id}): {str(data)[:150]}", "error")
+
+        return False
 
     def _pollinations_image(self, prompt: str, out_path: str,
                             width: int = 832, height: int = 1216) -> bool:
@@ -230,10 +261,18 @@ class ImageStudio(Agent):
                     "provider": provider,
                     "concept": concept,
                     "used_reference": provider == "gemini" and bool(self.reference_images()),
+                    "working_model": self.working_model,
+                    # Surface why Gemini was skipped even when Pollinations saved us
+                    "gemini_error": self.last_error if provider != "gemini" else "",
                     "prompt": prompt,
                 }
 
-        return {"error": "all_providers_failed", "concept": concept, "prompt": prompt}
+        return {
+            "error": "all_providers_failed",
+            "concept": concept,
+            "gemini_error": self.last_error,
+            "prompt": prompt,
+        }
 
     def run(self, concept: str = None, tone: str = "Quiet Luxury", prefer: str = "auto") -> dict:
         return self.generate(concept, tone=tone, prefer=prefer)
