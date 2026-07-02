@@ -236,42 +236,75 @@ class ImageStudio(Agent):
             self.log(f"HF InstantID error: {e}", "error")
         return False
 
-    def _pollinations_image(self, prompt: str, out_path: str,
-                            width: int = 832, height: int = 1216) -> bool:
-        """Emergency fallback only (NO face consistency)."""
-        full = f"{_IDENTITY}, {prompt}"
-        url = (
-            "https://image.pollinations.ai/prompt/"
-            + urllib.parse.quote(full)
-            + f"?width={width}&height={height}&nologo=true"
-        )
+    def _hf_pulid_flux_image(self, prompt: str, out_path: str) -> bool:
+        """Free cloud GPU generation via yanze/PuLID-FLUX using Elina's
+        reference photo for exact face consistency."""
+        hf_token = os.environ.get("HF_TOKEN", "")
+        if not hf_token:
+            return False
+        refs = self.reference_images(limit=1)
+        if not refs:
+            return False
         try:
-            r = self.session.get(url, timeout=120)
-            if r.status_code == 200 and r.content[:3] == b"\xff\xd8\xff":
-                with open(out_path, "wb") as f:
-                    f.write(r.content)
+            from gradio_client import Client, handle_file
+            client = Client("yanze/PuLID-FLUX", hf_token=hf_token)
+            result = client.predict(
+                prompt=f"Elina Radman, 24yo woman, {prompt}",
+                id_image=handle_file(refs[0]),
+                id_weight=1.0,
+                true_cfg=1.0,
+                api_name="/generate_image"
+            )
+            img_path = result[0] if isinstance(result, (list, tuple)) else result
+            if isinstance(img_path, str) and os.path.exists(img_path):
+                import shutil
+                shutil.copy(img_path, out_path)
+                self.working_model = "yanze/PuLID-FLUX"
                 return True
-            self.log(f"Pollinations HTTP {r.status_code}", "error")
+        except Exception as e:
+            self.log(f"HF PuLID-FLUX error: {e}", "error")
+        return False
+
+    def _hf_pulid_sdxl_image(self, prompt: str, out_path: str) -> bool:
+        """Free cloud GPU generation via yanze/PuLID (SDXL) using Elina's
+        reference photo for exact face consistency."""
+        hf_token = os.environ.get("HF_TOKEN", "")
+        if not hf_token:
             return False
-        except requests.RequestException as e:
-            self.log(f"Pollinations error: {e}", "error")
+        refs = self.reference_images(limit=1)
+        if not refs:
             return False
+        try:
+            from gradio_client import Client, handle_file
+            client = Client("yanze/PuLID", hf_token=hf_token)
+            result = client.predict(
+                prompt=f"Elina Radman, 24yo woman, {prompt}",
+                id_image=handle_file(refs[0]),
+                api_name="/predict"
+            )
+            img_path = result[0] if isinstance(result, (list, tuple)) else result
+            if isinstance(img_path, str) and os.path.exists(img_path):
+                import shutil
+                shutil.copy(img_path, out_path)
+                self.working_model = "yanze/PuLID"
+                return True
+        except Exception as e:
+            self.log(f"HF PuLID SDXL error: {e}", "error")
+        return False
 
     # ------------------------------------------------------------------ #
     # Public API
     # ------------------------------------------------------------------ #
     def generate(self, concept: str = None, tone: str = "Quiet Luxury",
-                 prefer: str = "auto", allow_pollinations: bool = True) -> dict:
+                 prefer: str = "auto", **kwargs) -> dict:
         """Generate one on-brand, face-consistent photo of Elina.
 
         concept=None -> derive from the latest trend analysis (trend-driven).
-        prefer: 'auto' (Gemini -> HF InstantID -> Pollinations).
+        prefer: 'auto' (Gemini -> HF InstantID -> HF PuLID-FLUX -> HF PuLID SDXL).
+        Note: Pollinations text-to-image fallback was completely removed to guarantee face consistency.
         """
         self.runs += 1
         self.last_run = datetime.now().isoformat()
-
-        if os.environ.get("STRICT_FACE_ONLY") == "1":
-            allow_pollinations = False
 
         if not concept:
             concept = self.trend_concept()
@@ -282,27 +315,24 @@ class ImageStudio(Agent):
 
         order = {
             "gemini": ["gemini"],
-            "hf": ["hf_instantid"],
-            "pollinations": ["pollinations"]
-        }.get(prefer, ["gemini", "hf_instantid", "pollinations"])
-
-        if not allow_pollinations:
-            order = [p for p in order if p != "pollinations"]
+            "hf": ["hf_instantid", "hf_pulid_flux", "hf_pulid_sdxl"]
+        }.get(prefer, ["gemini", "hf_instantid", "hf_pulid_flux", "hf_pulid_sdxl"])
 
         for provider in order:
             if provider == "gemini":
                 ok = self._gemini_image(prompt, out_path)
             elif provider == "hf_instantid":
                 ok = self._hf_instantid_image(prompt, out_path)
+            elif provider == "hf_pulid_flux":
+                ok = self._hf_pulid_flux_image(prompt, out_path)
+            elif provider == "hf_pulid_sdxl":
+                ok = self._hf_pulid_sdxl_image(prompt, out_path)
             else:
-                ok = self._pollinations_image(prompt, out_path)
+                ok = False
 
             if ok:
                 self.log(f"Image generated via {provider}: {out_path}")
-                used_ref = provider in ("gemini", "hf_instantid") and bool(self.reference_images())
-                warning = ""
-                if not used_ref and provider == "pollinations":
-                    warning = "⚠️ توجه: این عکس بدون Face Reference ساخته شده و ممکن است چهره متفاوت باشد. (برای تطبیق دقیق چهره، GEMINI_API_KEY یا HF_TOKEN تنظیم شود یا STRICT_FACE_ONLY=1 قرار دهید)."
+                used_ref = bool(self.reference_images())
                 return {
                     "path": out_path,
                     "provider": provider,
@@ -310,7 +340,7 @@ class ImageStudio(Agent):
                     "used_reference": used_ref,
                     "working_model": self.working_model or provider,
                     "gemini_error": self.last_error if provider != "gemini" else "",
-                    "warning": warning,
+                    "warning": "",
                     "prompt": prompt,
                 }
 

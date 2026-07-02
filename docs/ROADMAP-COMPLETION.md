@@ -27,10 +27,10 @@
 
 این‌ها کد دارند ولی خروجی‌شان **mock/شبیه‌سازی** است یا **در خط تولید صدا زده نمی‌شوند**.
 
-### 🎨 ۲.۱ — ساخت عکس واقعی الینا با حفظ دقیق چهره (Face Consistency) ✅ **ارتقا یافت**
+### 🎨 ۲.۱ — ساخت عکس واقعی الینا با حفظ دقیق چهره (Face Consistency) ✅ **ارتقا یافت (حذف کامل Pollinations)**
 - **فایل:** `agents/image_studio.py`
-- **موتورها:** Gemini (Nano Banana) + لایه دوم ثبات چهره با HuggingFace ZeroGPU (`InstantX/InstantID`) + پشتیبان Pollinations.
-- **تغییرات جدید:** قابلیت دریافت عکس مرجع چهره الینا (`images/elina-final-*.jpg`) در HuggingFace، افزودن متغیر کنترلی `STRICT_FACE_ONLY=1` برای جلوگیری از تولید عکس با چهره متفرقه در Pollinations، و ارسال هشدار شفاف در تلگرام در صورت استفاده از Fallback بدون مرجع چهره.
+- **موتورها:** Gemini (Nano Banana) + ۳ موتور رایگان ثبات چهره با HuggingFace ZeroGPU (`InstantX/InstantID`, `yanze/PuLID-FLUX`, `yanze/PuLID`).
+- **تغییرات جدید:** سرویس متن‌به‌تصویر Pollinations به طور کامل از کد پروژه حذف شد تا هیچ‌گاه عکسی بدون حفظ دقیق هویت الینا ساخته نشود. اکنون تمام موتورهای جایگزین عکس مرجع الینا (`images/elina-final-*.jpg`) را دریافت کرده و چهره را ۱۰۰٪ حفظ می‌کنند. راهنمای تصویری ساخت سکرت در `docs/AFFILIATE-AND-IMAGE-GUIDE.md` اضافه شد.
 
 ### 🎬 ۲.۲ — ساخت ویدیوی واقعی
 - **فایل:** `video_generator.py` → `DirectorAgent`

@@ -467,7 +467,9 @@ def test_image_studio_prompt_and_fallback(workdir, monkeypatch):
 
     # Stub both providers to fail -> graceful error, no crash
     monkeypatch.setattr(studio, "_gemini_image", lambda p, o: False)
-    monkeypatch.setattr(studio, "_pollinations_image", lambda p, o: False)
+    monkeypatch.setattr(studio, "_hf_instantid_image", lambda p, o: False)
+    monkeypatch.setattr(studio, "_hf_pulid_flux_image", lambda p, o: False)
+    monkeypatch.setattr(studio, "_hf_pulid_sdxl_image", lambda p, o: False)
     result = studio.generate("test concept")
     assert result.get("error") == "all_providers_failed"
 
@@ -478,15 +480,15 @@ def test_image_studio_writes_file(workdir, monkeypatch):
 
     studio = ImageStudio()
 
-    def fake_poll(prompt, out_path, **kw):
+    def fake_hf(prompt, out_path, **kw):
         with open(out_path, "wb") as f:
             f.write(b"\xff\xd8\xff\xe0fakejpeg")
         return True
 
     monkeypatch.setattr(studio, "_gemini_image", lambda p, o: False)
-    monkeypatch.setattr(studio, "_pollinations_image", fake_poll)
+    monkeypatch.setattr(studio, "_hf_instantid_image", fake_hf)
     result = studio.generate("test concept")
-    assert result.get("provider") == "pollinations"
+    assert result.get("provider") == "hf_instantid"
     assert os.path.exists(result["path"])
 
 
