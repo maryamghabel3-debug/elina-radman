@@ -98,6 +98,7 @@ for u in updates:
 
 من سیستم مدیریت محتوات هستم:
 
+🚀 */run_all* — اجرای کامل چرخه روزانه (ترند، افیلیت، عکس، ویدیو، پرامپت و کپشن دوزبانه)
 📊 */status* — وضعیت
 🎨 */content* — پست جدید
 📋 */list* — صف محتوا
@@ -137,6 +138,16 @@ for u in updates:
             resp += f"🆔 `{p['id']}`\n🏷 {p['pillar']}\n📝 {p['caption'][:80]}...\n\n"
         resp += "برای تأیید: `/approve شناسه`"
         send(chat, resp)
+
+    elif text == "/run_all":
+        send(chat, "🚀 *در حال اجرای کامل خط تولید الینا...* ⏳\n_(جستجوی ترند، یافتن لباس افیلیت، تولید عکس، و نگارش کپشن و پرامپت دوزبانه)_", reply_to=mid)
+        try:
+            import scripts.generate as gen_mod
+            gen_mod.main()
+            resp = "✅ *خط تولید روزانه کامل اجرا شد و تمام محتواها همراه با پرامپت‌های انگلیسی و توضیحات فارسی در تلگرام ارسال گردید!*"
+        except Exception as e:
+            print("run_all error:", e)
+            resp = f"⚠️ خطا در اجرای کامل خط تولید: {str(e)[:200]}"
 
     elif text == "/list":
         files = sorted(g.glob("content/queue/*.json"))
@@ -353,6 +364,7 @@ for u in updates:
     elif text == "/help":
         resp = """🕊️ *راهنما*
 
+🚀 /run_all (اجرای کامل خط تولید و ارسال گزارش‌های دوزبانه)
 📊 /status | 🎨 /content | 📋 /list
 ✅ /approve | ❌ /reject
 🔥 /trends | 📸 /topimages

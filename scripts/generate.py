@@ -162,11 +162,25 @@ Caption:"""
     except Exception as e:
         print(f"ProductHunter skipped: {e}")
 
+    caption_fa = ""
+    if api_key and caption:
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=api_key)
+            model_fa = genai.GenerativeModel("gemini-2.5-flash")
+            resp_fa = model_fa.generate_content(f"Translate and adapt this fashion influencer caption into warm, elegant Persian (Farsi) matching Elina Radman's voice:\n{caption}\nPersian:")
+            caption_fa = resp_fa.text.strip()
+        except Exception:
+            pass
+    if not caption_fa:
+        caption_fa = f"استایل امروز الینا در تم {pillar} 🤍✨ نظر شما درباره این ست چیه؟"
+
     pid = f"elina-{datetime.now().strftime('%Y%m%d')}-{pillar[:4]}"
     return {
         "id": pid,
         "pillar": pillar,
         "caption": caption,
+        "caption_fa": caption_fa,
         "hashtags": f"{TAGS.get(pillar, '')} {BASE_TAGS}",
         "platforms": ["instagram", "tiktok", "pinterest"],
         "trends_used": (trends or [])[:5],
@@ -193,6 +207,8 @@ def add_images(pieces):
         if pe and not p.get("image_prompt"):
             p["image_prompt"] = pe.generate_photo_prompt(concept)
             p["video_prompt"] = pe.generate_cinematic_json_script(concept)
+        p["image_prompt_fa"] = f"عکاسی لایف‌استایل و مجله‌ای در فضای {concept[:80]} با نورپردازی طبیعی و حفظ دقیق چهره الینا."
+        p["video_prompt_fa"] = f"سناریوی ریلز ۱۵ ثانیه‌ای درباره {concept[:80]} با افکت‌های زوم سینمایی و کات سریع."
 
     if os.environ.get("IMAGES_OFF") == "1":
         print("   ⏭  Image generation skipped (IMAGES_OFF=1)")
@@ -249,17 +265,20 @@ def notify_telegram(pieces, video_ideas=None):
             json={"chat_id": chat_id, "text": msg, "parse_mode": "Markdown"},
             timeout=10,
         )
-        # Send actual generated photos with full prompts
+        # Send actual generated photos with full bilingual captions & prompts
         for p in pieces:
             img = p.get("image")
             if img and os.path.exists(img):
                 try:
-                    photo_cap = f"📸 پست: {p['id']} ({p['pillar']})\n"
+                    photo_cap = f"📸 پست روزانه: `{p['id']}` ({p['pillar']})\n\n"
+                    if p.get("caption_fa"):
+                        photo_cap += f"🇮🇷 **کپشن فارسی:**\n{p['caption_fa'][:250]}\n\n"
+                    photo_cap += f"🇬🇧 **Caption (English):**\n{p['caption'][:250]}\n\n"
                     if p.get("affiliate_item"):
-                        photo_cap += f"🛍 محصول: {p['affiliate_item']}\n🔗 {p.get('affiliate_link', '')}\n"
+                        photo_cap += f"🛍 محصول افیلیت: {p['affiliate_item']}\n🔗 {p.get('affiliate_link', '')}\n"
                     if p.get("image_warning"):
                         photo_cap += f"\n{p['image_warning']}"
-                    photo_cap += f"\n👉 تأیید و انتشار: `/approve {p['id']}`"
+                    photo_cap += f"\n👉 انتشار: `/approve {p['id']}`"
                     with open(img, "rb") as fh:
                         requests.post(
                             f"https://api.telegram.org/bot{token}/sendPhoto",
@@ -267,12 +286,14 @@ def notify_telegram(pieces, video_ideas=None):
                             files={"photo": fh},
                             timeout=60,
                         )
-                    # Send detailed prompts in a separate message so you can copy-paste them easily
-                    prompt_msg = f"🎨 **پرامپت‌های تولیدی برای پست `{p['id']}`:**\n\n"
-                    prompt_msg += f"🖼 **پرامپت ساخت عکس (برای تولید دستی یا تغییر):**\n```\n{p.get('image_prompt', '')}\n```\n\n"
+                    # Send detailed bilingual prompts in a separate message so you can copy-paste easily
+                    prompt_msg = f"🎨 **گزارش و پرامپت‌های تولیدی پست `{p['id']}` (دوزبانه):**\n\n"
+                    prompt_msg += f"🇮🇷 **توضیح فارسی پرامپت عکس:**\n{p.get('image_prompt_fa', '')}\n\n"
+                    prompt_msg += f"🖼 **پرامپت انگلیسی عکس (آماده کپی برای سایت‌های AI):**\n```\n{p.get('image_prompt', '')}\n```\n\n"
                     if p.get("video_prompt"):
-                        vp = p.get("video_prompt", "")[:600] + "..." if len(p.get("video_prompt", "")) > 600 else p.get("video_prompt", "")
-                        prompt_msg += f"🎬 **پرامپت ساخت ویدیو (سناریوی ریلز/تیک‌تاک):**\n```\n{vp}\n```"
+                        vp = p.get("video_prompt", "")[:500] + "..." if len(p.get("video_prompt", "")) > 500 else p.get("video_prompt", "")
+                        prompt_msg += f"🇮🇷 **توضیح فارسی ویدیو:**\n{p.get('video_prompt_fa', '')}\n\n"
+                        prompt_msg += f"🎬 **پرامپت انگلیسی ویدیو (سناریوی ریلز/تیک‌تاک):**\n```\n{vp}\n```"
                     requests.post(
                         f"https://api.telegram.org/bot{token}/sendMessage",
                         json={"chat_id": chat_id, "text": prompt_msg[:4000], "parse_mode": "Markdown"},
