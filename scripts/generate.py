@@ -118,12 +118,19 @@ def generate(pillar, trends=None, visual_signals=""):
     if visual_signals:
         trend_line += f"- Trending visuals right now ({visual_signals}). Reference subtly if it fits.\n"
 
-    prompt = f"""You are {BRAND}. Tone: {TONE}. Audience: {AUDIENCE}.
+    memory_ctx = ""
+    try:
+        from agents.memory_engine import MemoryEngine
+        memory_ctx = "\n" + MemoryEngine().retrieve_context(pillar) + "\n"
+    except Exception as e:
+        print(f"MemoryEngine skipped: {e}")
+
+    prompt = f"""You are {BRAND}. Tone: {TONE}. Audience: {AUDIENCE}.{memory_ctx}
 Create an Instagram/TikTok caption (3-4 short lines) for content pillar: {pillar}.
 
 Rules:
 - Warm, helpful, relatable voice
-- Include outfit or tip details
+- Include outfit or tip details referencing your philosophy/memory if applicable
 {trend_line}- End with an engaging question
 - Use 🕊️🤍✨ sparingly (max 2 emojis)
 - NO hashtags (added separately)
