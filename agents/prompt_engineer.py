@@ -105,10 +105,17 @@ class PromptEngineerAgent(Agent):
         palette_phrase = self.trending_palette_phrase() if use_trending_palette else ""
         palette_part = f", {palette_phrase}" if palette_phrase else ""
 
-        return (
-            f"{subject_with_style}, {base_concept}, {style_desc}, {camera_lens}, "
-            f"{lighting}{palette_part}. Photorealistic, high-resolution, magazine quality."
+        # 4-Layer Monetization-Ready Prompt Architecture (2026 Standard)
+        layer_0_identity = f"{self.base_subject}, {dynamic_styling}, maintaining exact facial features and natural proportions"
+        layer_1_scene = f"Candid lifestyle fashion photograph: {base_concept}. Authentic environment with realistic background depth and location atmosphere."
+        layer_2_style = f"Styled in {style_desc}{palette_part}."
+        layer_3_camera = (
+            f"{camera_lens}, {lighting}. Real-world photography characteristics: natural detailed skin texture, "
+            f"visible micro-pores, soft organic facial highlights, Kodak Portra 400 film grain, shallow depth of field. "
+            f"Unfiltered UGC influencer aesthetic with zero CGI, 3D render, or artificial beauty airbrushing."
         )
+
+        return f"{layer_0_identity}. {layer_1_scene} {layer_2_style} {layer_3_camera}"
 
     def generate_cinematic_json_script(self, base_concept, tone="dark"):
         """
