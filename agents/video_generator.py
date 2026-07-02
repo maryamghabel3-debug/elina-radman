@@ -161,7 +161,7 @@ class DirectorAgent(Agent):
             hf_token = os.environ.get("HF_TOKEN", "")
             if hf_token and plan['primary_model'] == "HunyuanVideo":
                 try:
-                    client = Client("tencent/HunyuanVideo", hf_token=hf_token)
+                    client = Client("tencent/HunyuanVideo", token=hf_token)
                     result = client.predict(prompt=user_vision, api_name="/predict")
                     if isinstance(result, str) and os.path.exists(result):
                         shutil.copy(result, output_video)

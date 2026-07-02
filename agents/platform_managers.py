@@ -84,7 +84,7 @@ class VisualCreatorAgent:
         try:
             # We connect to a free public Space for Face Consistency (e.g., InstantID)
             # The client handles the API queue and returns the image!
-            client = Client("InstantX/InstantID", hf_token=self.hf_token)
+            client = Client("InstantX/InstantID", token=self.hf_token)
             
             # This simulates passing the reference image and prompt to the cloud UI
             print(f"🚀 [VisualCreator] Sending face reference and prompt to HuggingFace ZeroGPU...")

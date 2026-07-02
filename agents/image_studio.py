@@ -220,7 +220,7 @@ class ImageStudio(Agent):
             return False
 
         try:
-            client = Client("InstantX/InstantID", hf_token=hf_token)
+            client = Client("InstantX/InstantID", token=hf_token)
             res = client.predict(
                 handle_file(ref_img),
                 handle_file(ref_img),
@@ -261,7 +261,7 @@ class ImageStudio(Agent):
             return False
         try:
             from gradio_client import Client, handle_file
-            client = Client("yanze/PuLID-FLUX", hf_token=hf_token)
+            client = Client("yanze/PuLID-FLUX", token=hf_token)
             res = client.predict(
                 f"Elina Radman, 24yo woman, {prompt}",
                 handle_file(refs[0]),
@@ -290,7 +290,7 @@ class ImageStudio(Agent):
             return False
         try:
             from gradio_client import Client, handle_file
-            client = Client("yanze/PuLID", hf_token=hf_token)
+            client = Client("yanze/PuLID", token=hf_token)
             res = client.predict(
                 handle_file(refs[0]), handle_file(refs[0]), handle_file(refs[0]), handle_file(refs[0]),
                 f"Elina Radman, 24yo woman, {prompt}",
