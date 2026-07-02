@@ -201,6 +201,41 @@ class ImageStudio(Agent):
 
         return False
 
+    def _hf_instantid_image(self, prompt: str, out_path: str) -> bool:
+        """Free cloud GPU generation via HuggingFace InstantID using Elina's
+        reference photo for strict face consistency."""
+        hf_token = os.environ.get("HF_TOKEN", "")
+        if not hf_token:
+            return False
+
+        refs = self.reference_images(limit=1)
+        if not refs:
+            return False
+
+        ref_img = refs[0]
+        try:
+            from gradio_client import Client, handle_file
+        except ImportError:
+            self.log("gradio_client not installed for HF InstantID", "error")
+            return False
+
+        try:
+            client = Client("InstantX/InstantID", hf_token=hf_token)
+            result = client.predict(
+                face_image=handle_file(ref_img),
+                prompt=f"Elina Radman, 24yo Iranian woman, {prompt}",
+                negative_prompt="anime, cartoon, deformed, bad anatomy, bad face, extra limbs",
+                api_name="/generate_image"
+            )
+            if isinstance(result, str) and os.path.exists(result):
+                import shutil
+                shutil.copy(result, out_path)
+                self.working_model = "InstantX/InstantID"
+                return True
+        except Exception as e:
+            self.log(f"HF InstantID error: {e}", "error")
+        return False
+
     def _pollinations_image(self, prompt: str, out_path: str,
                             width: int = 832, height: int = 1216) -> bool:
         """Emergency fallback only (NO face consistency)."""
@@ -230,10 +265,13 @@ class ImageStudio(Agent):
         """Generate one on-brand, face-consistent photo of Elina.
 
         concept=None -> derive from the latest trend analysis (trend-driven).
-        prefer: 'auto' (Gemini then Pollinations), 'gemini', or 'pollinations'.
+        prefer: 'auto' (Gemini -> HF InstantID -> Pollinations).
         """
         self.runs += 1
         self.last_run = datetime.now().isoformat()
+
+        if os.environ.get("STRICT_FACE_ONLY") == "1":
+            allow_pollinations = False
 
         if not concept:
             concept = self.trend_concept()
@@ -242,28 +280,37 @@ class ImageStudio(Agent):
         ts = datetime.now().strftime("%Y%m%d%H%M%S")
         out_path = os.path.join(_OUT_DIR, f"elina_{ts}.jpg")
 
-        order = {"gemini": ["gemini"], "pollinations": ["pollinations"]}.get(
-            prefer, ["gemini", "pollinations"]
-        )
+        order = {
+            "gemini": ["gemini"],
+            "hf": ["hf_instantid"],
+            "pollinations": ["pollinations"]
+        }.get(prefer, ["gemini", "hf_instantid", "pollinations"])
+
         if not allow_pollinations:
             order = [p for p in order if p != "pollinations"]
 
         for provider in order:
-            ok = (
-                self._gemini_image(prompt, out_path)
-                if provider == "gemini"
-                else self._pollinations_image(prompt, out_path)
-            )
+            if provider == "gemini":
+                ok = self._gemini_image(prompt, out_path)
+            elif provider == "hf_instantid":
+                ok = self._hf_instantid_image(prompt, out_path)
+            else:
+                ok = self._pollinations_image(prompt, out_path)
+
             if ok:
                 self.log(f"Image generated via {provider}: {out_path}")
+                used_ref = provider in ("gemini", "hf_instantid") and bool(self.reference_images())
+                warning = ""
+                if not used_ref and provider == "pollinations":
+                    warning = "⚠️ توجه: این عکس بدون Face Reference ساخته شده و ممکن است چهره متفاوت باشد. (برای تطبیق دقیق چهره، GEMINI_API_KEY یا HF_TOKEN تنظیم شود یا STRICT_FACE_ONLY=1 قرار دهید)."
                 return {
                     "path": out_path,
                     "provider": provider,
                     "concept": concept,
-                    "used_reference": provider == "gemini" and bool(self.reference_images()),
-                    "working_model": self.working_model,
-                    # Surface why Gemini was skipped even when Pollinations saved us
+                    "used_reference": used_ref,
+                    "working_model": self.working_model or provider,
                     "gemini_error": self.last_error if provider != "gemini" else "",
+                    "warning": warning,
                     "prompt": prompt,
                 }
 

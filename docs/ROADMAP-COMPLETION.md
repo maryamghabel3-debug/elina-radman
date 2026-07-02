@@ -27,22 +27,18 @@
 
 این‌ها کد دارند ولی خروجی‌شان **mock/شبیه‌سازی** است یا **در خط تولید صدا زده نمی‌شوند**.
 
-### 🎨 ۲.۱ — ساخت عکس واقعی الینا ✅ **انجام شد**
-- **فایل جدید:** `agents/image_studio.py` (جایگزین VisualCreator وابسته به HF)
-- **موتور:** Gemini (Nano Banana) به‌عنوان اصلی + Pollinations.ai رایگان به‌عنوان پشتیبان + PromptEngineer برای پرامپت حرفه‌ای (فرمول ۵ بخشی + پالت ترند).
-- **اتصالات:** دستور `/photo [توضیح]` در تلگرام + تولید خودکار عکس برای هر پست در خط روزانه (`generate.py::add_images`) + ارسال عکس‌ها در تلگرام.
-- **کلید فرار:** `IMAGES_OFF=1` برای خاموش کردن. مدل عکس Gemini قابل‌تنظیم با `GEMINI_IMAGE_MODEL`.
-- **تست:** زنده تأیید شد (JPEG واقعی ~۵۷KB با کیفیت عالی).
+### 🎨 ۲.۱ — ساخت عکس واقعی الینا با حفظ دقیق چهره (Face Consistency) ✅ **ارتقا یافت**
+- **فایل:** `agents/image_studio.py`
+- **موتورها:** Gemini (Nano Banana) + لایه دوم ثبات چهره با HuggingFace ZeroGPU (`InstantX/InstantID`) + پشتیبان Pollinations.
+- **تغییرات جدید:** قابلیت دریافت عکس مرجع چهره الینا (`images/elina-final-*.jpg`) در HuggingFace، افزودن متغیر کنترلی `STRICT_FACE_ONLY=1` برای جلوگیری از تولید عکس با چهره متفرقه در Pollinations، و ارسال هشدار شفاف در تلگرام در صورت استفاده از Fallback بدون مرجع چهره.
 
 ### 🎬 ۲.۲ — ساخت ویدیوی واقعی
 - **فایل:** `video_generator.py` → `DirectorAgent`
-- **وضعیت:** فقط «مدیر پروژه» تصمیم می‌گیرد؛ همه خروجی‌ها `mock_*.mp4`. یک باگ: `test_media.py` تابع `generate_video_shot` را صدا می‌زند که وجود ندارد.
-- **کاری که لازم است:** وصل به یک ابزار faceless-video واقعی (مثل FreeFaceless: script→TTS→زیرنویس→ffmpeg→خروجی) یا HF Space واقعی.
+- **وضعیت:** متد `generate_video_shot` اضافه شد و باگ تست‌ها برطرف گردید. کارهای بعدی: وصل به یک ابزار faceless-video واقعی (مثل FreeFaceless: script→TTS→زیرنویس→ffmpeg→خروجی) یا HF Space واقعی.
 
-### 💰 ۲.۳ — افیلیت مارکتینگ واقعی
-- **فایل:** `product_hunter.py`
-- **وضعیت:** لیست محصولات و لینک‌ها ثابت/mock هستند (`mock-trench`, `shopltk.com/mock...`).
-- **کاری که لازم است:** لینک‌های واقعی افیلیت (Amazon Associates / LTK / ShopStyle) + تزریق درست در کپشن‌ها با CTA.
+### 💰 ۲.۳ — افیلیت مارکتینگ واقعی ✅ **انجام شد**
+- **فایل:** `agents/product_hunter.py` و اتصال به `scripts/generate.py`
+- **وضعیت:** لینک‌های واقعی افیلیت آمازون (`AMAZON_AFFILIATE_TAG`)، LTK (`LTK_CREATOR_ID`) و ShopStyle Collective (`SHOPSTYLE_ID`) جایگزین Mock شدند. اکنون در خط تولید روزانه (`scripts/generate.py`)، برای هر پست به صورت خودکار محصول مرتبط به همراه لینک و CTA به کپشن‌ها و صف تأیید تلگرام اضافه می‌شود. راهنمای ثبت‌نام در `docs/AFFILIATE-AND-IMAGE-GUIDE.md` اضافه شد.
 
 ### 👗 ۲.۴ — پیدا کردن لباس واقعی
 - **فایل:** `fashion_stylist.py` + `product_hunter.py`

@@ -146,6 +146,15 @@ Caption:"""
     if not caption:
         caption = cfg.fallback_for(pillar)
 
+    # Fetch affiliate item recommendation for monetization
+    affiliate_data = {}
+    try:
+        from agents.product_hunter import ProductHunter
+        hunter = ProductHunter()
+        affiliate_data = hunter.get_recommendation(pillar=pillar)
+    except Exception as e:
+        print(f"ProductHunter skipped: {e}")
+
     pid = f"elina-{datetime.now().strftime('%Y%m%d')}-{pillar[:4]}"
     return {
         "id": pid,
@@ -154,6 +163,9 @@ Caption:"""
         "hashtags": f"{TAGS.get(pillar, '')} {BASE_TAGS}",
         "platforms": ["instagram", "tiktok", "pinterest"],
         "trends_used": (trends or [])[:5],
+        "affiliate_item": affiliate_data.get("name", ""),
+        "affiliate_link": affiliate_data.get("affiliate_link", ""),
+        "affiliate_cta": affiliate_data.get("cta", ""),
         "status": "pending_approval",
         "created_at": datetime.now().isoformat(),
         "scheduled_for": (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
@@ -164,7 +176,7 @@ Caption:"""
 def add_images(pieces):
     """Generate a real photo for each caption piece and attach its path.
 
-    Uses ImageStudio (Gemini -> Pollinations fallback). Wrapped so a failure on
+    Uses ImageStudio (Gemini -> HF InstantID -> Pollinations fallback). Wrapped so a failure on
     one piece never breaks the whole daily run. Skips if IMAGES_OFF=1."""
     if os.environ.get("IMAGES_OFF") == "1":
         print("   ⏭  Image generation skipped (IMAGES_OFF=1)")
@@ -183,7 +195,9 @@ def add_images(pieces):
             if r.get("path"):
                 p["image"] = r["path"]
                 p["image_provider"] = r.get("provider")
-                print(f"   🎨 image for {p['id']} via {r.get('provider')}")
+                p["used_reference"] = r.get("used_reference", False)
+                p["image_warning"] = r.get("warning", "")
+                print(f"   🎨 image for {p['id']} via {r.get('provider')} (ref={p['used_reference']})")
             else:
                 print(f"   ⚠️  no image for {p['id']}")
         except Exception as e:
@@ -207,7 +221,8 @@ def notify_telegram(pieces, video_ideas=None):
         )
         for p in pieces:
             cam = "🖼" if p.get("image") else "📝"
-            msg += f"🆔 `{p['id']}`\n🏷 {p['pillar']}\n{cam} {p['caption'][:80]}...\n\n"
+            aff = f"\n🛍 افیلیت: `{p.get('affiliate_item', '')}`" if p.get("affiliate_item") else ""
+            msg += f"🆔 `{p['id']}`\n🏷 {p['pillar']}\n{cam} {p['caption'][:80]}...{aff}\n\n"
         for v in video_ideas:
             hook = (v.get("hook") or "")[:70]
             inspired = (v.get("inspired_by") or "")[:50]
@@ -223,10 +238,15 @@ def notify_telegram(pieces, video_ideas=None):
             img = p.get("image")
             if img and os.path.exists(img):
                 try:
+                    photo_cap = f"{p['id']} — {p['pillar']}"
+                    if p.get("affiliate_item"):
+                        photo_cap += f"\n🛍 {p['affiliate_item']}\n🔗 {p.get('affiliate_link', '')}"
+                    if p.get("image_warning"):
+                        photo_cap += f"\n\n{p['image_warning']}"
                     with open(img, "rb") as fh:
                         requests.post(
                             f"https://api.telegram.org/bot{token}/sendPhoto",
-                            data={"chat_id": chat_id, "caption": f"{p['id']} — {p['pillar']}"},
+                            data={"chat_id": chat_id, "caption": photo_cap[:1000]},
                             files={"photo": fh},
                             timeout=60,
                         )
