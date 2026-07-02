@@ -44,8 +44,28 @@ def main():
             print("🌟 VERIFIED: The image was generated using Elina's reference face!")
         else:
             print("⚠️ WARNING: The image was generated without a face reference.")
+
+        # Send to Telegram if configured
+        bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+        chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+        if bot_token and chat_id:
+            try:
+                import requests
+                print("\n📤 Sending test photo directly to your Telegram...")
+                with open(result["path"], "rb") as fh:
+                    cap = f"🖼 تست زنده عکس الینا (Provider: {result.get('provider')})\nثبات چهره مرجع: {'✅ بله' if result.get('used_reference') else '⚠️ خیر'}"
+                    requests.post(
+                        f"https://api.telegram.org/bot{bot_token}/sendPhoto",
+                        data={"chat_id": chat_id, "caption": cap},
+                        files={"photo": fh},
+                        timeout=60,
+                    )
+                print("✅ Telegram photo sent successfully!")
+            except Exception as e:
+                print(f"⚠️ Could not send Telegram photo: {e}")
     else:
         print(f"\n❌ FAILURE: Could not generate image. Error: {result.get('error')}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

@@ -24,7 +24,22 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           STRICT_FACE_ONLY: ${{ secrets.STRICT_FACE_ONLY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python scripts/test_live_image.py
+      - name: Push generated test photo to repo
+        if: success()
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          git config user.name "ElinaOS"
+          git config user.email "elinaradman24@gmail.com"
+          git remote set-url origin "https://ElinaOS:${GH_PAT}@github.com/${GITHUB_REPOSITORY}.git"
+          git add content/images/ || true
+          if ! git diff --staged --quiet; then
+            git commit -m "🎨 Live test photo generated [$(date +%Y-%m-%d-%H%M)]"
+            git push || echo "Push skipped if GH_PAT not set"
+          fi
       - name: Upload Generated Image as Artifact
         if: always()
         uses: actions/upload-artifact@v4
