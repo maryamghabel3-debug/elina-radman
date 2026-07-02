@@ -292,6 +292,40 @@ class ImageStudio(Agent):
             self.log(f"HF PuLID SDXL error: {e}", "error")
         return False
 
+    def _nvidia_nim_image(self, prompt: str, out_path: str) -> bool:
+        """Free high-quality image generation via NVIDIA NIM (build.nvidia.com)."""
+        api_key = os.environ.get("NVIDIA_API_KEY") or os.environ.get("NIM_API_KEY", "")
+        if not api_key:
+            return False
+
+        url = "https://ai.api.nvidia.com/v1/genai/stabilityai/stable-diffusion-xl"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "prompt": f"Elina Radman, 24yo Iranian woman, petite frame, warm wheat skin, {prompt}",
+            "negative_prompt": "deformed, bad anatomy, anime, cartoon, blurry, low resolution, different face",
+            "samples": 1,
+            "steps": 30,
+        }
+        try:
+            r = self.session.post(url, headers=headers, json=payload, timeout=60)
+            if r.status_code == 200:
+                data = r.json()
+                b64_str = data.get("artifacts", [{}])[0].get("base64") or data.get("b64_json") or ""
+                if b64_str:
+                    with open(out_path, "wb") as f:
+                        f.write(base64.b64decode(b64_str))
+                    self.working_model = "NVIDIA-NIM/SDXL"
+                    return True
+            else:
+                self.log(f"NVIDIA NIM error HTTP {r.status_code}: {r.text[:150]}")
+        except Exception as e:
+            self.log(f"NVIDIA NIM exception: {e}", "error")
+        return False
+
     # ------------------------------------------------------------------ #
     # Public API
     # ------------------------------------------------------------------ #
@@ -300,7 +334,7 @@ class ImageStudio(Agent):
         """Generate one on-brand, face-consistent photo of Elina.
 
         concept=None -> derive from the latest trend analysis (trend-driven).
-        prefer: 'auto' (Gemini -> HF InstantID -> HF PuLID-FLUX -> HF PuLID SDXL).
+        prefer: 'auto' (Gemini -> HF InstantID -> HF PuLID-FLUX -> HF PuLID SDXL -> NVIDIA NIM).
         Note: Pollinations text-to-image fallback was completely removed to guarantee face consistency.
         """
         self.runs += 1
@@ -315,8 +349,9 @@ class ImageStudio(Agent):
 
         order = {
             "gemini": ["gemini"],
-            "hf": ["hf_instantid", "hf_pulid_flux", "hf_pulid_sdxl"]
-        }.get(prefer, ["gemini", "hf_instantid", "hf_pulid_flux", "hf_pulid_sdxl"])
+            "hf": ["hf_instantid", "hf_pulid_flux", "hf_pulid_sdxl"],
+            "nvidia": ["nvidia_nim"],
+        }.get(prefer, ["gemini", "hf_instantid", "hf_pulid_flux", "hf_pulid_sdxl", "nvidia_nim"])
 
         for provider in order:
             if provider == "gemini":
@@ -327,12 +362,14 @@ class ImageStudio(Agent):
                 ok = self._hf_pulid_flux_image(prompt, out_path)
             elif provider == "hf_pulid_sdxl":
                 ok = self._hf_pulid_sdxl_image(prompt, out_path)
+            elif provider == "nvidia_nim":
+                ok = self._nvidia_nim_image(prompt, out_path)
             else:
                 ok = False
 
             if ok:
                 self.log(f"Image generated via {provider}: {out_path}")
-                used_ref = bool(self.reference_images())
+                used_ref = provider != "nvidia_nim" and bool(self.reference_images())
                 return {
                     "path": out_path,
                     "provider": provider,
@@ -340,7 +377,7 @@ class ImageStudio(Agent):
                     "used_reference": used_ref,
                     "working_model": self.working_model or provider,
                     "gemini_error": self.last_error if provider != "gemini" else "",
-                    "warning": "",
+                    "warning": "" if used_ref else "⚠️ توجه: این عکس با NVIDIA NIM (بدون مرجع چهره مستقیم) ساخته شده است.",
                     "prompt": prompt,
                 }
 
