@@ -1,0 +1,48 @@
+name: Test Live Video Generation
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: 'Scene description for Elina video'
+        required: false
+        default: 'Elina walking gracefully down a Parisian street wearing a tailored camel trench coat'
+
+permissions:
+  contents: write
+
+jobs:
+  verify_video:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install -r requirements-core.txt
+      - name: Run Live Video Verification
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python scripts/test_live_video.py
+      - name: Push generated test video to repo
+        if: success()
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          git config user.name "ElinaOS"
+          git config user.email "elinaradman24@gmail.com"
+          git remote set-url origin "https://ElinaOS:${GH_PAT}@github.com/${GITHUB_REPOSITORY}.git"
+          git add content/videos/ || true
+          if ! git diff --staged --quiet; then
+            git commit -m "🎬 Live test video generated [$(date +%Y-%m-%d-%H%M)]"
+            git push || echo "Push skipped if GH_PAT not set"
+          fi
+      - name: Upload Generated Video as Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: elina-test-video
+          path: content/videos/*.mp4
+          retention-days: 7
