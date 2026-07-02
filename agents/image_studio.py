@@ -221,15 +221,29 @@ class ImageStudio(Agent):
 
         try:
             client = Client("InstantX/InstantID", hf_token=hf_token)
-            result = client.predict(
-                face_image=handle_file(ref_img),
-                prompt=f"Elina Radman, 24yo Iranian woman, {prompt}",
-                negative_prompt="anime, cartoon, deformed, bad anatomy, bad face, extra limbs",
+            res = client.predict(
+                handle_file(ref_img),
+                handle_file(ref_img),
+                f"Elina Radman, 24yo Iranian woman, {prompt}",
+                "anime, cartoon, deformed, bad anatomy, bad face, extra limbs",
+                "(No style)",
+                30,
+                0.8,
+                0.8,
+                0.4,
+                0.4,
+                ["depth"],
+                5.0,
+                42,
+                "EulerDiscreteScheduler",
+                False,
+                True,
                 api_name="/generate_image"
             )
-            if isinstance(result, str) and os.path.exists(result):
+            img_path = res[0] if isinstance(res, (list, tuple)) else str(res)
+            if isinstance(img_path, str) and os.path.exists(img_path):
                 import shutil
-                shutil.copy(result, out_path)
+                shutil.copy(img_path, out_path)
                 self.working_model = "InstantX/InstantID"
                 return True
         except Exception as e:
@@ -248,14 +262,14 @@ class ImageStudio(Agent):
         try:
             from gradio_client import Client, handle_file
             client = Client("yanze/PuLID-FLUX", hf_token=hf_token)
-            result = client.predict(
-                prompt=f"Elina Radman, 24yo woman, {prompt}",
-                id_image=handle_file(refs[0]),
-                id_weight=1.0,
-                true_cfg=1.0,
+            res = client.predict(
+                f"Elina Radman, 24yo woman, {prompt}",
+                handle_file(refs[0]),
+                0, 4.0, "-1", 1.0, 896, 1152, 28, 1.0,
+                "bad quality, worst quality, extra limbs", 1, 512,
                 api_name="/generate_image"
             )
-            img_path = result[0] if isinstance(result, (list, tuple)) else result
+            img_path = res[0] if isinstance(res, (list, tuple)) else str(res)
             if isinstance(img_path, str) and os.path.exists(img_path):
                 import shutil
                 shutil.copy(img_path, out_path)
@@ -277,12 +291,14 @@ class ImageStudio(Agent):
         try:
             from gradio_client import Client, handle_file
             client = Client("yanze/PuLID", hf_token=hf_token)
-            result = client.predict(
-                prompt=f"Elina Radman, 24yo woman, {prompt}",
-                id_image=handle_file(refs[0]),
-                api_name="/predict"
+            res = client.predict(
+                handle_file(refs[0]), handle_file(refs[0]), handle_file(refs[0]), handle_file(refs[0]),
+                f"Elina Radman, 24yo woman, {prompt}",
+                "lowres, bad anatomy, bad quality",
+                1.2, 4.0, 42, 4.0, 1024, 768, 0.8, "fidelity", False,
+                api_name="/run"
             )
-            img_path = result[0] if isinstance(result, (list, tuple)) else result
+            img_path = res[0] if isinstance(res, (list, tuple)) else str(res)
             if isinstance(img_path, str) and os.path.exists(img_path):
                 import shutil
                 shutil.copy(img_path, out_path)
