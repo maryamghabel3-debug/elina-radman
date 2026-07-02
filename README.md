@@ -88,7 +88,10 @@ elina-radman/
 │   ├── elina_bot.py            ← ربات تلگرام (۱۸ فرمان)
 │   ├── generate.py             ← تولید محتوا با Gemini
 │   └── publish.py              ← انتشار با Postiz API
-├── docs/                       ← مستندات کامل استراتژی (۱۳ فایل)
+├── docs/                       ← مستندات استراتژی و دایرکتوری‌های جامع (۱۷ فایل)
+│   ├── FREE-AI-CHARACTER-TOOLS-2026.md  ← ۲۵ وب‌سایت و ابزار حفظ هویت چهره
+│   ├── TOP-USABLE-AI-AGENTS-GITHUB-2026.md ← ۲۰ ایجنت متن‌باز و آماده اجرا
+│   └── AFFILIATE-AND-IMAGE-GUIDE.md     ← راهنمای افیلیت و سکرت‌ها
 ├── images/                     ← عکس‌های برند (۱۱ فایل)
 ├── content/queue/              ← صف محتوا
 ├── dashboard.html              ← داشبورد مدیریت
