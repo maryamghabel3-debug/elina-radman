@@ -525,6 +525,32 @@ def test_image_studio_trend_driven_concept(workdir, monkeypatch):
     assert "old money" in concept and "camel wool coat" in concept
 
 
+def test_image_studio_gemini_429_stops_after_first_model(workdir, monkeypatch):
+    """A 429 is an account-level image-generation quota limit (confirmed via
+    scripts/list_gemini_models.py against a real key: every image model 429s
+    together), so we must not burn through all fallback model ids on 429 -
+    only on 404 (model not found) should we keep probing."""
+    from agents.image_studio import ImageStudio
+
+    studio = ImageStudio()
+    studio.gemini_key = "fake"
+
+    class FakeResp:
+        status_code = 429
+        text = '{"error": {"code": 429, "message": "quota"}}'
+
+    calls = []
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        calls.append(url)
+        return FakeResp()
+
+    monkeypatch.setattr(studio.session, "post", fake_post)
+    ok = studio._gemini_image("test prompt", "/tmp/elina_test_out.jpg")
+    assert ok is False
+    assert len(calls) == 1  # stopped immediately, did not try the other 5 model ids
+
+
 def test_image_studio_strict_face_only_excludes_no_reference_providers(workdir, monkeypatch):
     """STRICT_FACE_ONLY=1 must remove providers that never see Elina's face
     reference (nvidia_nim/fal_ai/together_ai), instead of being a documented

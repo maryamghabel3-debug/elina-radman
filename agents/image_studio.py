@@ -146,13 +146,20 @@ class ImageStudio(Agent):
 
         # Try the configured model first, then known image-capable fallbacks.
         # Different keys/regions expose different model ids, so we probe a few.
+        # This list was verified against a real key via scripts/list_gemini_models.py
+        # on 2026-07-03: "gemini-2.5-flash-image-preview" and
+        # "gemini-2.0-flash-preview-image-generation" do NOT exist for current
+        # keys (404) and only wasted a request/log line; removed. The models
+        # below are the ones Google's ListModels actually returns today.
         models_to_try = []
         for m in [
             self.model,
-            "gemini-3-pro-image-preview",
             "gemini-2.5-flash-image",
-            "gemini-2.5-flash-image-preview",
-            "gemini-2.0-flash-preview-image-generation",
+            "gemini-3-pro-image",
+            "gemini-3-pro-image-preview",
+            "gemini-3.1-flash-image",
+            "gemini-3.1-flash-image-preview",
+            "gemini-3.1-flash-lite-image",
         ]:
             if m and m not in models_to_try:
                 models_to_try.append(m)
@@ -177,6 +184,15 @@ class ImageStudio(Agent):
             if r.status_code != 200:
                 self.last_error = f"{model_id}: HTTP {r.status_code} {r.text[:200]}"
                 self.log(f"Gemini image HTTP {r.status_code} ({model_id}): {r.text[:200]}", "error")
+                if r.status_code == 429:
+                    # Confirmed via scripts/list_gemini_models.py: 429 on the
+                    # free tier is an account/project-level image-generation
+                    # quota, not a per-model limit — every image model 429s
+                    # together. Trying 5 more models just wastes requests and
+                    # time, so stop immediately and fall through to the next
+                    # provider (NVIDIA/Fal/Together/HF).
+                    self.log("Gemini image quota exhausted for all models; skipping remaining Gemini attempts", "info")
+                    break
                 # 404 = model not found for this key -> try next model
                 continue
 
