@@ -321,12 +321,13 @@ def notify_telegram(pieces, video_ideas=None):
                     vpath = p.get("video_path")
                     if vpath and os.path.exists(vpath):
                         with open(vpath, "rb") as vh:
-                            requests.post(
+                            v_res = requests.post(
                                 f"https://api.telegram.org/bot{token}/sendVideo",
                                 data={"chat_id": chat_id, "caption": f"🎬 ویدیوی ریلز تولیدشده برای پست `{p['id']}`"},
                                 files={"video": vh},
                                 timeout=120,
-                            )
+                            ).json()
+                            print(f"   📤 sendVideo result for {p['id']}: {v_res.get('ok')}")
                     # Send detailed styling logic and 5-shot carousel prompts
                     prompt_msg = f"🎨 **گزارش تخصصی استایلینگ و ۵ پرامپت کاروسل برای پست `{p['id']}`:**\n\n"
                     prompt_msg += f"{p.get('styling_logic_fa', '')}\n\n"

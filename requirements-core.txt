@@ -8,3 +8,4 @@ Pillow>=10.0
 numpy>=1.26
 gradio_client>=1.0
 opencv-python-headless>=4.8
+edge-tts>=6.1
