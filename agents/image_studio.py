@@ -341,6 +341,72 @@ class ImageStudio(Agent):
             self.log(f"NVIDIA NIM exception: {e}", "error")
         return False
 
+    def _fal_ai_image(self, prompt: str, out_path: str) -> bool:
+        """Fast & low-cost FLUX PuLID image generation via Fal.ai API."""
+        fal_key = os.environ.get("FAL_KEY") or os.environ.get("FAL_API_KEY", "")
+        if not fal_key:
+            return False
+
+        refs = self.reference_images(limit=1)
+        if not refs:
+            return False
+
+        try:
+            with open(refs[0], "rb") as f:
+                b64_img = base64.b64encode(f.read()).decode()
+            data_uri = f"data:image/jpeg;base64,{b64_img}"
+
+            url = "https://fal.run/fal-ai/flux-pulid"
+            headers = {"Authorization": f"Key {fal_key}", "Content-Type": "application/json"}
+            payload = {
+                "prompt": f"candid 35mm editorial fashion photo of Elina Radman, 24yo woman, {prompt}",
+                "reference_image_url": data_uri,
+                "id_scale": 1.0,
+                "num_inference_steps": 28,
+            }
+            r = self.session.post(url, headers=headers, json=payload, timeout=60)
+            if r.status_code == 200:
+                img_url = r.json().get("images", [{}])[0].get("url")
+                if img_url:
+                    img_data = self.session.get(img_url, timeout=30).content
+                    with open(out_path, "wb") as f:
+                        f.write(img_data)
+                    self.working_model = "fal-ai/flux-pulid"
+                    return True
+        except Exception as e:
+            self.log(f"Fal.ai image error: {e}", "error")
+        return False
+
+    def _together_ai_image(self, prompt: str, out_path: str) -> bool:
+        """Fast & low-cost FLUX.1-dev image generation via Together AI."""
+        api_key = os.environ.get("TOGETHER_API_KEY") or os.environ.get("TOGETHER_KEY", "")
+        if not api_key:
+            return False
+
+        url = "https://api.together.xyz/v1/images/generations"
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        payload = {
+            "model": "black-forest-labs/FLUX.1-dev",
+            "prompt": f"candid 35mm editorial fashion photo of Elina Radman, 24yo woman, {prompt}",
+            "width": 896,
+            "height": 1152,
+            "steps": 28,
+            "n": 1,
+            "response_format": "b64_json"
+        }
+        try:
+            r = self.session.post(url, headers=headers, json=payload, timeout=60)
+            if r.status_code == 200:
+                b64_str = r.json().get("data", [{}])[0].get("b64_json", "")
+                if b64_str:
+                    with open(out_path, "wb") as f:
+                        f.write(base64.b64decode(b64_str))
+                    self.working_model = "TogetherAI/FLUX.1-dev"
+                    return True
+        except Exception as e:
+            self.log(f"Together AI image error: {e}", "error")
+        return False
+
     # ------------------------------------------------------------------ #
     # Public API
     # ------------------------------------------------------------------ #
@@ -349,8 +415,7 @@ class ImageStudio(Agent):
         """Generate one on-brand, face-consistent photo of Elina.
 
         concept=None -> derive from the latest trend analysis (trend-driven).
-        prefer: 'auto' (Gemini -> HF InstantID -> HF PuLID-FLUX -> HF PuLID SDXL -> NVIDIA NIM).
-        Note: Pollinations text-to-image fallback was completely removed to guarantee face consistency.
+        prefer: 'auto' (Gemini -> NVIDIA NIM -> Fal.ai -> Together AI -> HF PuLID-FLUX).
         """
         self.runs += 1
         self.last_run = datetime.now().isoformat()
@@ -364,22 +429,28 @@ class ImageStudio(Agent):
 
         order = {
             "gemini": ["gemini"],
-            "flux": ["hf_pulid_flux"],
-            "hf": ["hf_pulid_flux", "nvidia_nim", "hf_pulid_sdxl", "hf_instantid"],
             "nvidia": ["nvidia_nim"],
-        }.get(prefer, ["gemini", "hf_pulid_flux", "nvidia_nim", "hf_pulid_sdxl", "hf_instantid"])
+            "fal": ["fal_ai"],
+            "together": ["together_ai"],
+            "flux": ["nvidia_nim", "fal_ai", "together_ai", "hf_pulid_flux"],
+            "hf": ["hf_pulid_flux", "hf_pulid_sdxl", "hf_instantid"],
+        }.get(prefer, ["gemini", "nvidia_nim", "fal_ai", "together_ai", "hf_pulid_flux", "hf_pulid_sdxl"])
 
         for provider in order:
             if provider == "gemini":
                 ok = self._gemini_image(prompt, out_path)
+            elif provider == "nvidia_nim":
+                ok = self._nvidia_nim_image(prompt, out_path)
+            elif provider == "fal_ai":
+                ok = self._fal_ai_image(prompt, out_path)
+            elif provider == "together_ai":
+                ok = self._together_ai_image(prompt, out_path)
             elif provider == "hf_instantid":
                 ok = self._hf_instantid_image(prompt, out_path)
             elif provider == "hf_pulid_flux":
                 ok = self._hf_pulid_flux_image(prompt, out_path)
             elif provider == "hf_pulid_sdxl":
                 ok = self._hf_pulid_sdxl_image(prompt, out_path)
-            elif provider == "nvidia_nim":
-                ok = self._nvidia_nim_image(prompt, out_path)
             else:
                 ok = False
 
