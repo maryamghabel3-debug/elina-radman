@@ -48,6 +48,11 @@ jobs:
           git config user.email "elinaradman24@gmail.com"
           git remote set-url origin "https://ElinaOS:${GH_PAT}@github.com/${GITHUB_REPOSITORY}.git"
           git add content/ || true
+          # content/images/ and content/videos/ are gitignored (auto-generated
+          # media is usually too heavy to keep), but manually-uploaded photos
+          # /videos via /setphoto & /setvideo ARE meant to persist — force-add
+          # just those so they survive past this ephemeral runner.
+          git add -f content/images/manual_*.jpg content/videos/manual_*.mp4 2>/dev/null || true
           if ! git diff --staged --quiet; then
             git commit -m "🤖 Bot updates [$(date +%Y-%m-%d)]"
             for i in 1 2 3 4 5; do

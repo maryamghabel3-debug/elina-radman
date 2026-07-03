@@ -18,10 +18,16 @@ build/
 dist/
 
 # Generated media & local state (keep the queue in git, ignore heavy media)
-content/videos/
-content/images/
+content/videos/*
+content/images/*
 content/trends_cache.json
 content/gemini_models_report.json
+
+# Exception: manually-uploaded photos/videos via the Telegram bot's
+# /setphoto and /setvideo commands ARE meant to persist in git (they are the
+# real, human-curated media, not auto-generated drafts).
+!content/images/manual_*.jpg
+!content/videos/manual_*.mp4
 
 # OS
 .DS_Store

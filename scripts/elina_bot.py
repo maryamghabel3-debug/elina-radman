@@ -55,6 +55,43 @@ def send_photo(chat, photo_path, caption=""):
         return {"ok": False}
 
 
+def download_telegram_file(file_id: str, out_path: str) -> bool:
+    """Download a file Telegram is hosting (photo/video) to a local path."""
+    try:
+        info = tg("getFile", {"file_id": file_id})
+        if not info.get("ok"):
+            print("getFile failed:", info)
+            return False
+        file_path = info["result"]["file_path"]
+        url = f"https://api.telegram.org/file/bot{TOKEN}/{file_path}"
+        r = requests.get(url, timeout=60)
+        if r.status_code != 200:
+            print(f"file download HTTP {r.status_code}")
+            return False
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        with open(out_path, "wb") as f:
+            f.write(r.content)
+        return True
+    except Exception as e:
+        print("download_telegram_file error:", e)
+        return False
+
+
+def find_queue_piece(piece_id: str):
+    """Search every content/queue/*.json for a piece with this id.
+    Returns (filepath, pieces_list, index) or (None, None, None)."""
+    for fp in sorted(g.glob("content/queue/*.json")):
+        try:
+            with open(fp) as f:
+                pieces = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            continue
+        for i, p in enumerate(pieces):
+            if p.get("id") == piece_id:
+                return fp, pieces, i
+    return None, None, None
+
+
 def setup_bot_commands():
     """Register the bot command menu with Telegram so users see all commands when tapping the '/' button."""
     commands = [
@@ -71,6 +108,8 @@ def setup_bot_commands():
         {"command": "agents", "description": "🤖 نمایش لیست ایجنت‌های هوشمند"},
         {"command": "github", "description": "🐙 وضعیت مخزن و گیت‌هاب اکشنز"},
         {"command": "diary", "description": "📝 ثبت احساس و خاطره امروز الینا"},
+        {"command": "setphoto", "description": "🖼 ثبت عکس دستی برای یک پست (بفرست + caption: /setphoto شناسه)"},
+        {"command": "setvideo", "description": "🎬 ثبت ویدیوی دستی برای یک پست (بفرست + caption: /setvideo شناسه)"},
         {"command": "publish", "description": "📤 انتشار محتواهای تأییدشده"},
         {"command": "help", "description": "🕊️ نمایش راهنمای کامل دستورات"}
     ]
@@ -113,15 +152,61 @@ for u in updates:
     offset = u["update_id"] + 1
     save_offset(offset)  # persist progress immediately (crash-safe)
     msg = u.get("message", {})
-    text = msg.get("text", "")
+    text = msg.get("text", "") or msg.get("caption", "")
+    photos = msg.get("photo") or []
+    video = msg.get("video") or msg.get("document")
     chat = str(msg.get("chat", {}).get("id", ""))
     mid = msg.get("message_id", 0)
     user = msg.get("from", {}).get("first_name", "")
-    print(f"   [{user}] {text[:60]}")
+    print(f"   [{user}] {text[:60]}{' [photo]' if photos else ''}{' [video]' if video else ''}")
 
     resp = None
 
-    if text == "/start":
+    # ------------------------------------------------------------------ #
+    # Manual photo/video upload: reply to / caption a photo or video with
+    # `/setphoto <piece_id>` or `/setvideo <piece_id>` (or just send it with
+    # that as the caption) to attach a manually-made image/video (e.g. made
+    # by hand on Gemini/another site) to a queued post instead of relying on
+    # the automated (and currently quota-limited) ImageStudio/FacelessStudio.
+    # ------------------------------------------------------------------ #
+    if (photos or video) and text and (text.startswith("/setphoto") or text.startswith("/setvideo")):
+        is_video = text.startswith("/setvideo")
+        piece_id = text.split(maxsplit=1)[1].strip() if len(text.split(maxsplit=1)) > 1 else ""
+        if not piece_id:
+            resp = (
+                "❌ فرمت درست: عکس/ویدیو رو بفرست و در قسمت caption بنویس:\n"
+                "`/setphoto شناسه_پست` یا `/setvideo شناسه_پست`\n\n"
+                "شناسه پست رو از `/list` می‌تونی ببینی."
+            )
+        else:
+            fp, pieces, idx = find_queue_piece(piece_id)
+            if fp is None:
+                resp = f"❌ پستی با شناسه `{piece_id}` پیدا نشد. `/list` رو بزن."
+            else:
+                ext = ".mp4" if is_video else ".jpg"
+                out_dir = "content/videos" if is_video else "content/images"
+                out_path = os.path.join(out_dir, f"manual_{piece_id}{ext}")
+                file_id = (
+                    (video or {}).get("file_id")
+                    if is_video
+                    else photos[-1]["file_id"]  # largest resolution is last
+                )
+                ok = download_telegram_file(file_id, out_path)
+                if ok:
+                    field = "video_path" if is_video else "image"
+                    pieces[idx][field] = out_path
+                    if not is_video:
+                        pieces[idx]["image_provider"] = "manual_upload"
+                        pieces[idx]["used_reference"] = True
+                        pieces[idx]["image_warning"] = ""
+                    with open(fp, "w") as f:
+                        json.dump(pieces, f, indent=2, ensure_ascii=False)
+                    kind = "ویدیو" if is_video else "عکس"
+                    resp = f"✅ {kind} دستی برای پست `{piece_id}` ثبت شد!\nبرای انتشار: `/approve {piece_id}`"
+                else:
+                    resp = "⚠️ دانلود فایل از تلگرام ناموفق بود. دوباره امتحان کن."
+
+    elif text == "/start":
         resp = """🕊️ *الینا جان، به ElinaOS خوش اومدی!*
 
 من سیستم مدیریت محتوات هستم:
@@ -397,6 +482,8 @@ for u in updates:
 ✅ /approve | ❌ /reject
 🔥 /trends | 📸 /topimages
 🎨 /photo | 🔬 /analyze | 🎬 /reverse | 🎥 /makevideos
+🖼 /setphoto شناسه (عکس دستی رو بفرست + این رو caption بذار)
+🎬 /setvideo شناسه (ویدیوی دستی رو بفرست + این رو caption بذار)
 🤖 /agents | 🐙 /github | 📝 /diary | 📤 /publish
 💬 *هر پیام = چت با Gemini*"""
 
