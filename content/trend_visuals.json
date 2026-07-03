@@ -1,0 +1,200 @@
+{
+  "generated_at": "2026-07-03T00:29:10.199506",
+  "images_analyzed": 3,
+  "deep_analyzed": 3,
+  "top_colors": [
+    "#101010",
+    "#303030",
+    "#505050",
+    "#d0d0d0",
+    "#909070"
+  ],
+  "dominant_tones": [
+    "charcoal/neutral",
+    "cream/neutral",
+    "yellow"
+  ],
+  "trending_aesthetics": [
+    "y2k revival, streetwear, edgy grunge luxe",
+    "casual chic, minimalist comfort, everyday fashion hack",
+    "modern minimalist, elevated casual, effortless chic, quiet luxury undertones"
+  ],
+  "trending_camera_angles": [
+    "eye-level with the petite model, capturing the tall model bending.",
+    "eye-level (relative to the subject's torso)",
+    "eye-level"
+  ],
+  "trending_standout_products": [
+    "Dark wash baggy wide-leg cargo jeans",
+    "The grey knit top with its unique front knot detail and layered white hem",
+    "The versatile black sleeveless vest (left) and the elegant black maxi dress (right)"
+  ],
+  "sample_poses": [
+    "Petite model stands upright, shoulders slightly back, arms relaxed with hands slightly outward, palms forward. Gaze is direct at the camera with a wide-eyed, slightly open-mouthed 'surprised' or 'exaggerated reaction' expression. Tall model leans forward and inward, hands on the petite model's waist/hips, looking down and slightly smiling or engaging with the fit. Her body is angled to show her form bending.",
+    "Standing body position, torso to mid-thigh visible, facing slightly right of center. Left hand raised to chest height, index finger pointing directly downwards at the front knot of the top. Right arm is mostly out of frame. Head is slightly tilted down, but face is cropped; expression is implied as informative and calm. Energy is subtle and instructional.",
+    "Left: Standing confidently with a slight body angle, left hand casually in jean pocket, right arm casually holding a draped jacket. Gaze is relaxed and direct, with a subtle head tilt. Right: Standing gracefully with a slight body turn to the right, hands lightly on hips. Head is turned, gazing pensively out a window/off-camera. Both poses convey approachable confidence and poise."
+  ],
+  "sample_lighting": [
+    "Soft, diffused, bright key light from the front-left, likely a large softbox or natural window light, creating minimal shadows and even illumination across faces and outfits. Ambient fill light ensures no harsh fall-off.",
+    "Soft, diffused ambient light, likely from an unseen window or large softbox, positioned slightly to the front-right of the subject. The mood is clean, natural, and bright enough for clarity without harsh shadows.",
+    "Soft, diffused natural daylight coming from the front-side, creating even, flattering illumination with subtle, gentle shadows. The mood is bright, fresh, and serene."
+  ],
+  "per_image": [
+    {
+      "url": "https://i.ytimg.com/vi/Q5L6_TNcNAg/hqdefault.jpg",
+      "orientation": "landscape",
+      "palette": [
+        {
+          "hex": "#303030",
+          "name": "charcoal/neutral",
+          "weight": 0.357
+        },
+        {
+          "hex": "#505050",
+          "name": "charcoal/neutral",
+          "weight": 0.313
+        },
+        {
+          "hex": "#101010",
+          "name": "charcoal/neutral",
+          "weight": 0.217
+        },
+        {
+          "hex": "#d0d0d0",
+          "name": "cream/neutral",
+          "weight": 0.113
+        }
+      ],
+      "deep": {
+        "outfit": {
+          "items": [
+            "Petite model: Black lace-up corset-style crop top (mesh/satin with metal eyelets and lacing), dark wash baggy wide-leg cargo jeans (distressed wash, multiple large pockets), black strappy open-toe high-heel sandals.",
+            "Tall model: Black strapless tube top (form-fitting, seamless look), dark wash baggy wide-leg cargo jeans (distressed wash, multiple large pockets), black strappy open-toe high-heel sandals."
+          ],
+          "style_aesthetic": "Y2K Revival, Streetwear, Edgy Grunge Luxe",
+          "standout_piece": "Dark wash baggy wide-leg cargo jeans"
+        },
+        "pose": "Petite model stands upright, shoulders slightly back, arms relaxed with hands slightly outward, palms forward. Gaze is direct at the camera with a wide-eyed, slightly open-mouthed 'surprised' or 'exaggerated reaction' expression. Tall model leans forward and inward, hands on the petite model's waist/hips, looking down and slightly smiling or engaging with the fit. Her body is angled to show her form bending.",
+        "camera": {
+          "angle": "Eye-level with the petite model, capturing the tall model bending.",
+          "shot_size": "Full body for the petite model, three-quarter for the tall model due to her stance.",
+          "lens_look": "Standard portrait lens (e.g., 50mm equivalent) for a natural perspective, minimizing distortion.",
+          "depth_of_field": "Shallow, with subjects sharply in focus and the background subtly blurred to isolate the models."
+        },
+        "lighting": "Soft, diffused, bright key light from the front-left, likely a large softbox or natural window light, creating minimal shadows and even illumination across faces and outfits. Ambient fill light ensures no harsh fall-off.",
+        "setting": "Minimalist clean indoor studio or room with plain, off-white or light grey textured walls and a light concrete or polished grey floor. No discernible props beyond the subjects.",
+        "composition": "Vertical framing optimized for social media. Petite model is positioned slightly left of center, tall model interacting from the right, creating a dynamic, balanced composition. Ample negative space at the top and sides highlights the subjects. The interaction between the models creates a diagonal line leading the eye.",
+        "color_mood": "Muted, cool-toned palette with desaturated blues/greys from the denim, contrasted by warm skin tones. Overall, a clean, modern, and slightly desaturated aesthetic.",
+        "why_it_works": "The image effectively demonstrates a trending garment on two different body types, addressing a common fit concern. The petite model's relatable 'surprised' expression combined with the clear visual comparison drives engagement and relatability for a wide audience interested in fashion fit advice.",
+        "recreate_prompt": "Studio shot of a petite influencer (5'2\") with long dark hair, wearing a black lace-up corset crop top and baggy dark-wash cargo jeans with black strappy heels, standing confidently with a wide-eyed, slightly surprised expression, directly facing the camera in a clean, minimalist off-white studio with a concrete floor. Soft, bright front-left diffused lighting, shallow depth of field, full body shot."
+      },
+      "title": "Same Pants in Petite & Tall \ud83d\udda4\u2060"
+    },
+    {
+      "url": "https://i.ytimg.com/vi/Rx5cJ3nQBOU/hqdefault.jpg",
+      "orientation": "landscape",
+      "palette": [
+        {
+          "hex": "#101010",
+          "name": "charcoal/neutral",
+          "weight": 0.461
+        },
+        {
+          "hex": "#303030",
+          "name": "charcoal/neutral",
+          "weight": 0.288
+        },
+        {
+          "hex": "#505050",
+          "name": "charcoal/neutral",
+          "weight": 0.162
+        },
+        {
+          "hex": "#707070",
+          "name": "charcoal/neutral",
+          "weight": 0.09
+        }
+      ],
+      "deep": {
+        "outfit": {
+          "items": [
+            "Grey marled knit V-neck long-sleeve top with an asymmetric front knot detail at the waist",
+            "White v-neck collarless undershirt or camisole, layered beneath and peeking out at the hem",
+            "Charcoal grey relaxed-fit trousers, likely soft material with a slight pleat or wide leg"
+          ],
+          "style_aesthetic": "casual chic, minimalist comfort, everyday fashion hack",
+          "standout_piece": "The grey knit top with its unique front knot detail and layered white hem"
+        },
+        "pose": "Standing body position, torso to mid-thigh visible, facing slightly right of center. Left hand raised to chest height, index finger pointing directly downwards at the front knot of the top. Right arm is mostly out of frame. Head is slightly tilted down, but face is cropped; expression is implied as informative and calm. Energy is subtle and instructional.",
+        "camera": {
+          "angle": "Eye-level (relative to the subject's torso)",
+          "shot_size": "Medium shot (from chest to mid-thigh)",
+          "lens_look": "Standard portrait lens feel, natural perspective",
+          "depth_of_field": "Moderately shallow, with the background softly blurred"
+        },
+        "lighting": "Soft, diffused ambient light, likely from an unseen window or large softbox, positioned slightly to the front-right of the subject. The mood is clean, natural, and bright enough for clarity without harsh shadows.",
+        "setting": "Simple, light-toned indoor wall, possibly a subtle doorframe or architectural detail visible on the right. The background is uncluttered and minimalist, suggesting a home environment.",
+        "composition": "The subject is centrally framed within the right panel of a vertical split-screen layout. The pointing finger creates a strong leading line, drawing the viewer's eye directly to the outfit's key detail (the front knot). The vertical format is optimized for social media feeds.",
+        "color_mood": "Monochromatic and neutral palette dominated by greys and white, with a soft, slightly desaturated, natural and warm undertone. Clean and understated.",
+        "why_it_works": "It clearly and concisely demonstrates a popular, replicable styling trick (the front knot with layering), offering immediate value and inspiration for everyday fashion, making it highly shareable and engaging.",
+        "recreate_prompt": "A petite female influencer, captured in a medium shot from chest to mid-thigh, standing indoors against a simple light-toned wall. She wears a grey marled knit V-neck top with an asymmetric front knot, layered over a white v-neck undershirt, paired with charcoal grey relaxed-fit trousers. Her left hand is raised, index finger pointing directly downwards at the outfit's front knot. Shot with a standard lens at eye-level, moderately shallow depth of field, soft frontal lighting, and a clean, monochromatic color palette. The image conveys a casual, instructional mood and is optimized for a vertical social media format."
+      },
+      "title": "Soft Quiet Luxury Look | Elegant Neutral Coat Styling \ud83e\udd0d\u2728 #shorts"
+    },
+    {
+      "url": "https://i.ytimg.com/vi/klKVm1FALhs/hqdefault.jpg",
+      "orientation": "landscape",
+      "palette": [
+        {
+          "hex": "#101010",
+          "name": "charcoal/neutral",
+          "weight": 0.709
+        },
+        {
+          "hex": "#909070",
+          "name": "yellow",
+          "weight": 0.098
+        },
+        {
+          "hex": "#d0d0d0",
+          "name": "cream/neutral",
+          "weight": 0.097
+        },
+        {
+          "hex": "#909090",
+          "name": "charcoal/neutral",
+          "weight": 0.097
+        }
+      ],
+      "deep": {
+        "outfit": {
+          "items": [
+            "Left: Fitted black button-down sleeveless vest (knit/cotton blend)",
+            "Left: Light wash, high-waisted, wide-leg floor-length denim jeans",
+            "Left: Black sleek small shoulder bag",
+            "Left: Black leather jacket (draped over arm)",
+            "Right: Black v-neck spaghetti strap empire-waist maxi dress (flowy fabric)",
+            "Both: Delicate gold pendant necklace",
+            "Both: Small gold hoop earrings"
+          ],
+          "style_aesthetic": "Modern minimalist, elevated casual, effortless chic, quiet luxury undertones",
+          "standout_piece": "The versatile black sleeveless vest (left) and the elegant black maxi dress (right)"
+        },
+        "pose": "Left: Standing confidently with a slight body angle, left hand casually in jean pocket, right arm casually holding a draped jacket. Gaze is relaxed and direct, with a subtle head tilt. Right: Standing gracefully with a slight body turn to the right, hands lightly on hips. Head is turned, gazing pensively out a window/off-camera. Both poses convey approachable confidence and poise.",
+        "camera": {
+          "angle": "Eye-level",
+          "shot_size": "Full-body (within a split-screen crop)",
+          "lens_look": "Normal focal length (neither wide-angle distortion nor telephoto compression)",
+          "depth_of_field": "Shallow to medium, subject sharp with gently blurred backgrounds"
+        },
+        "lighting": "Soft, diffused natural daylight coming from the front-side, creating even, flattering illumination with subtle, gentle shadows. The mood is bright, fresh, and serene.",
+        "setting": "Left: A bright, minimalist home interior featuring light wood flooring, white walls, and elegant arched doorways in the background. Right: A serene, modern bedroom with warm wood accents (headboard), crisp white linens, and a large mirror reflecting an outdoor view (foliage/ocean).",
+        "composition": "The image is a split-screen composition. Left: Subject is centrally framed within an architectural archway, utilizing leading lines. Right: Subject is positioned slightly to the left, looking towards the right, creating a balanced visual flow. Both frames use negative space effectively to highlight the subject and outfit details. The overall impression is clean and intentional.",
+        "color_mood": "A clean, natural, and sophisticated palette dominated by neutrals: deep blacks, light denim blue, warm wood tones, and crisp whites. The overall mood is calm, earthy, and refined.",
+        "why_it_works": "The split-screen format effectively showcases two distinct yet complementary 'elevated' looks, maximizing styling inspiration in a single image. Natural lighting and confident, relaxed poses contribute to an authentic, aspirational, and achievable aesthetic that highly resonates with modern fashion content consumers.",
+        "recreate_prompt": "A full-body split-screen fashion photograph of a petite influencer showcasing two distinct, minimalist elevated looks, captured with soft, diffused natural daylight. On the left panel, the influencer stands confidently in a bright, clean hallway with arched doorways, wearing a fitted black sleeveless vest, high-waisted wide-leg light-wash jeans, a black sleek shoulder bag, and a black leather jacket draped over her arm, with a hand casually in her pocket. On the right panel, the influencer poses elegantly in a serene, modern bedroom with warm wood details and a large mirror, wearing a flowy black v-neck spaghetti strap maxi dress, with hands lightly on her hips, gazing pensively. Both shots are eye-level with a shallow depth of field, conveying an aspirational, effortless chic aesthetic with natural, clean color grading."
+      },
+      "title": "How to Make Your Outfits Better (Avoid These Styling Mistakes!)"
+    }
+  ]
+}
