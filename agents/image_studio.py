@@ -52,13 +52,13 @@ class ImageStudio(Agent):
     # Reference faces
     # ------------------------------------------------------------------ #
     def reference_images(self, limit: int = 3) -> list:
-        """Return paths to Elina's real reference photos (largest first = best)."""
-        files = [
-            f for f in glob.glob(os.path.join(_REF_DIR, "*.jpg"))
-            if os.path.getsize(f) > 1024
-        ]
-        # Prefer the curated 'final' shots, biggest (highest quality) first
-        files.sort(key=lambda f: (("final" not in f), -os.path.getsize(f)))
+        """Return paths to Elina's real reference photos (newest / largest first = best)."""
+        files = []
+        for ext in ("*.jpg", "*.jpeg", "*.png"):
+            files.extend(glob.glob(os.path.join(_REF_DIR, ext)))
+        files = [f for f in files if os.path.getsize(f) > 1024]
+        # Sort by newest modification time and largest file size so uploaded photos take priority
+        files.sort(key=lambda f: (-os.path.getmtime(f), -os.path.getsize(f)))
         return files[:limit]
 
     # ------------------------------------------------------------------ #
@@ -365,9 +365,9 @@ class ImageStudio(Agent):
         order = {
             "gemini": ["gemini"],
             "flux": ["hf_pulid_flux"],
-            "hf": ["hf_pulid_flux", "hf_instantid", "hf_pulid_sdxl"],
+            "hf": ["hf_pulid_flux", "nvidia_nim", "hf_pulid_sdxl", "hf_instantid"],
             "nvidia": ["nvidia_nim"],
-        }.get(prefer, ["gemini", "hf_pulid_flux", "hf_instantid", "hf_pulid_sdxl", "nvidia_nim"])
+        }.get(prefer, ["gemini", "hf_pulid_flux", "nvidia_nim", "hf_pulid_sdxl", "hf_instantid"])
 
         for provider in order:
             if provider == "gemini":

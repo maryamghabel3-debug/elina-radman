@@ -237,12 +237,12 @@ def add_images(pieces):
         print(f"   ⚠️  ImageStudio unavailable: {e}")
         return
     studio = ImageStudio()
-    for p in pieces:
+    for p_idx, p in enumerate(pieces):
         concept = (p.get("caption") or "").split("\n")[0][:180] or p.get("pillar", "fashion")
         p["carousel_paths"] = []
         try:
-            # Generate 3 distinct shots from the carousel (full_body, portrait_detail, flat_lay)
-            shots = p.get("carousel_prompts", [])[:3]
+            # For the first post piece, generate all 5 shots (full_body, portrait_detail, flat_lay, street_movement, candid_lifestyle)
+            shots = p.get("carousel_prompts", [])[:5] if p_idx == 0 else p.get("carousel_prompts", [])[:3]
             if not shots:
                 shots = [{"title_fa": "نمای اصلی", "prompt": concept}]
             for idx, shot in enumerate(shots):
@@ -254,7 +254,7 @@ def add_images(pieces):
                         p["image_provider"] = r.get("provider")
                         p["used_reference"] = r.get("used_reference", False)
                         p["image_warning"] = r.get("warning", "")
-                    print(f"   🎨 shot {idx+1} ({shot['title_fa'][:20]}) via {r.get('provider')}")
+                    print(f"   🎨 shot {idx+1}/{len(shots)} ({shot['title_fa'][:20]}) via {r.get('provider')}")
         except Exception as e:
             print(f"   ⚠️  carousel generation error for {p['id']}: {e}")
 
