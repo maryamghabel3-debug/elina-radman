@@ -55,6 +55,34 @@ def send_photo(chat, photo_path, caption=""):
         return {"ok": False}
 
 
+def setup_bot_commands():
+    """Register the bot command menu with Telegram so users see all commands when tapping the '/' button."""
+    commands = [
+        {"command": "run_all", "description": "🚀 اجرای کامل خط تولید (ترند، افیلیت، عکس، ویدیو، پرامپت و کپشن)"},
+        {"command": "status", "description": "📊 نمایش وضعیت سیستم و صف محتوا"},
+        {"command": "content", "description": "🎨 ساخت ۳ پست جدید در صف تأیید"},
+        {"command": "list", "description": "📋 مشاهده لیست محتواهای در انتظار"},
+        {"command": "trends", "description": "🔥 جستجو و نمایش ترندهای روز فشن"},
+        {"command": "topimages", "description": "📸 نمایش پرویو عکس‌های وایرال"},
+        {"command": "photo", "description": "🎨 ساخت عکس جدید از الینا"},
+        {"command": "analyze", "description": "🔬 تحلیل عمیق بصری و استایلینگ عکس‌ها"},
+        {"command": "reverse", "description": "🎬 مهندسی معکوس ویدیوهای وایرال"},
+        {"command": "makevideos", "description": "🎥 ساخت ایده‌های ویدیویی جدید"},
+        {"command": "agents", "description": "🤖 نمایش لیست ایجنت‌های هوشمند"},
+        {"command": "github", "description": "🐙 وضعیت مخزن و گیت‌هاب اکشنز"},
+        {"command": "diary", "description": "📝 ثبت احساس و خاطره امروز الینا"},
+        {"command": "publish", "description": "📤 انتشار محتواهای تأییدشده"},
+        {"command": "help", "description": "🕊️ نمایش راهنمای کامل دستورات"}
+    ]
+    res = tg("setMyCommands", {"commands": commands})
+    if res.get("ok"):
+        print("✅ Telegram bot menu commands updated successfully")
+    else:
+        print("⚠️ Could not update bot menu commands:", res)
+
+setup_bot_commands()
+
+
 # Read offset
 OFFSET_FILE = "content/bot_offset.txt"
 try:
