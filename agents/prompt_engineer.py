@@ -77,12 +77,33 @@ class PromptEngineerAgent(Agent):
             self.log(f"Could not load trending analysis: {e}", "error")
             return ""
 
+    def extract_rich_styling_and_location(self, base_concept):
+        """Converts abstract concepts or question captions into specific, rich high-fashion outfit items and European locations."""
+        c = base_concept.lower()
+        if "trouser" in c or "pant" in c or "rise" in c or "petite" in c:
+            outfit = "tailored high-waisted pleated camel wool wide-leg trousers paired with a structured double-breasted ivory silk blouse and pointed-toe nude leather slingback heels"
+            location = "a sunlit luxury Parisian boutique terrace overlooking cobblestone streets"
+            acc = "minimalist 18k gold croissant hoop earrings and a structured designer leather crossbody bag"
+        elif "trench" in c or "coat" in c or "outerwear" in c:
+            outfit = "a tailored petite camel double-breasted trench coat draped over a fine white ribbed cashmere turtleneck and cream wide-leg tailored trousers"
+            location = "an elegant Parisian street cafe terrace during morning golden hour"
+            acc = "subtle gold hoop earrings and leather driving gloves"
+        elif "knit" in c or "sweater" in c or "cozy" in c:
+            outfit = "an oversized luxury beige cashmere knit sweater styled over tailored ivory lounging trousers"
+            location = "a minimalist sunlit Scandinavian apartment living room"
+            acc = "delicate layered 18k gold necklaces"
+        else:
+            outfit = "a structured oversized camel wool blazer paired with wide-leg pleated cream trousers and pointed-toe heels"
+            location = "a vibrant sunlit boulevard in Paris during Fashion Week"
+            acc = "minimalist 18k gold jewelry and a designer leather clutch"
+        return outfit, location, acc
+
     def generate_photo_prompt(self, base_concept, tone="Quiet Luxury", use_trending_palette=True):
         """Aduni's 5-Part Formula for stunning AI photos"""
-        self.log(f"Engineering 5-Part photo prompt for: {base_concept}")
+        self.log(f"Engineering 5-Part photo prompt for: {base_concept[:50]}")
         
         dynamic_styling = self.determine_dynamic_styling(base_concept)
-        subject_with_style = f"{self.base_subject}, {dynamic_styling}"
+        outfit, location, acc = self.extract_rich_styling_and_location(base_concept)
         
         # Style logic
         style_desc = "editorial fashion photography style with magazine-cover composition"
@@ -96,7 +117,7 @@ class PromptEngineerAgent(Agent):
         camera_lens = random.choice([
             "shot on a medium format camera with 85mm lens at f/2.8, shallow depth of field, creamy bokeh",
             "shot on an anamorphic lens at f/2.0, cinematic aspect ratio",
-            "shot on 35mm lens, lifestyle documentary feel"
+            "shot on Canon EOS R5 35mm lens, lifestyle documentary feel"
         ])
         
         lighting = random.choice([
@@ -105,13 +126,12 @@ class PromptEngineerAgent(Agent):
             "single dramatic spotlight from above cutting through shadow, deep cinematic shadows"
         ])
 
-        # Inject the palette learned from what's currently going viral
         palette_phrase = self.trending_palette_phrase() if use_trending_palette else ""
         palette_part = f", {palette_phrase}" if palette_phrase else ""
 
         # 4-Layer Monetization-Ready Prompt Architecture (2026 Standard)
         layer_0_identity = f"{self.base_subject}, {dynamic_styling}, maintaining exact facial features and natural proportions"
-        layer_1_scene = f"Wide-angle full-body candid fashion shot from head to toe: {base_concept}. Framed from a distance so her complete outfit, trousers length, and shoes are 100% visible without cropping. Authentic environment with realistic background depth."
+        layer_1_scene = f"Wide-angle full-body candid fashion shot from head to toe in {location}. She is wearing {outfit} styled with {acc}. Framed from a distance so her complete outfit, trousers length, and shoes are 100% visible without cropping."
         layer_2_style = f"High-fashion styling: {style_desc}{palette_part}. Impeccable tailoring creating an elongated, elegant silhouette."
         layer_3_camera = (
             f"{camera_lens}, {lighting}. Real-world photography characteristics: natural detailed skin texture, "
@@ -127,6 +147,7 @@ class PromptEngineerAgent(Agent):
         incorporating styling logic and magnetic facial allure.
         """
         dynamic_styling = self.determine_dynamic_styling(base_concept)
+        outfit, location, acc = self.extract_rich_styling_and_location(base_concept)
         logic_str = f" Fashion styling rationale applied: {styling_logic}." if styling_logic else ""
         
         prompts = [
@@ -134,8 +155,8 @@ class PromptEngineerAgent(Agent):
                 "type": "full_body",
                 "title_fa": "۱. نمای تمام‌قد (Head-to-Toe Wide Shot)",
                 "prompt": (
-                    f"{self.base_subject}, {dynamic_styling}. Wide-angle full-body candid fashion shot from head to toe in {base_concept}. "
-                    f"Framed from a distance showing entire outfit, trousers length, and shoes on the ground without cropping.{logic_str} "
+                    f"{self.base_subject}, {dynamic_styling}. Wide-angle full-body candid fashion shot from head to toe in {location}. "
+                    f"She is wearing {outfit} styled with {acc}. Framed from a distance showing entire outfit, trousers length, and shoes on the ground without cropping.{logic_str} "
                     f"Shot on Canon EOS R5 35mm f/2.0, natural daylight, detailed skin texture, Kodak Portra grain."
                 )
             },
@@ -143,8 +164,8 @@ class PromptEngineerAgent(Agent):
                 "type": "portrait_detail",
                 "title_fa": "۲. پرتره و فکوس روی بافت لباس (Portrait & Fabric Detail)",
                 "prompt": (
-                    f"{self.base_subject}, {dynamic_styling}. Captivating medium close-up editorial portrait focusing on upper outfit tailoring, "
-                    f"luxury fabric weave, jewelry, and magnetic serene facial allure in {base_concept}. Subtle alluring gaze looking toward camera. "
+                    f"{self.base_subject}, {dynamic_styling}. Captivating medium close-up editorial portrait in {location}. Focusing on upper outfit tailoring of {outfit}, "
+                    f"luxury fabric weave, {acc}, and magnetic serene facial allure. Subtle alluring gaze looking toward camera. "
                     f"Shot on 85mm f/1.4 lens, creamy bokeh, natural micro-pores, magazine Vogue cover quality."
                 )
             },
@@ -152,8 +173,8 @@ class PromptEngineerAgent(Agent):
                 "type": "flat_lay",
                 "title_fa": "۳. چیدمان ست لباس‌ها بدون مدل (Flat Lay / Outfit Layout Grid)",
                 "prompt": (
-                    f"High-end fashion flat lay photography composition showing ONLY the styled clothing pieces and accessories for {base_concept}. "
-                    f"Tailored coat, pleated wide-leg trousers, shoes, handbag, and minimalist jewelry neatly arranged side-by-side on a clean textured neutral linen background. "
+                    f"High-end fashion flat lay photography composition showing ONLY the styled clothing pieces and accessories: {outfit}, along with {acc}. "
+                    f"Neatly arranged side-by-side on a clean textured neutral linen background. "
                     f"NO human model, NO person, NO face visible. Crisp studio lighting, top-down 90-degree architectural view, editorial luxury product layout."
                 )
             },
@@ -161,7 +182,7 @@ class PromptEngineerAgent(Agent):
                 "type": "street_movement",
                 "title_fa": "۴. حرکت و استایل خیابانی (Dynamic Street Movement)",
                 "prompt": (
-                    f"{self.base_subject}, {dynamic_styling}. Full-body dynamic candid shot of Elina walking confidently across {base_concept}. "
+                    f"{self.base_subject}, {dynamic_styling}. Full-body dynamic candid shot walking confidently across {location}, wearing {outfit}. "
                     f"Capturing elegant fabric movement, coat flowing in the breeze, and elongated vertical silhouette.{logic_str} "
                     f"Shot on 50mm f/1.8, natural lifestyle motion sharpness, unfiltered influencer aesthetic."
                 )
@@ -170,7 +191,7 @@ class PromptEngineerAgent(Agent):
                 "type": "candid_lifestyle",
                 "title_fa": "۵. تعامل لایف‌استایل در محیط (Atmospheric Candid Interaction)",
                 "prompt": (
-                    f"{self.base_subject}, {dynamic_styling}. Atmospheric candid lifestyle capture sitting or relaxing naturally in {base_concept}. "
+                    f"{self.base_subject}, {dynamic_styling}. Atmospheric candid lifestyle capture sitting or relaxing naturally in {location}, wearing {outfit} with {acc}. "
                     f"Serene magnetic expression, warm natural sunlight beams, shallow depth of field, genuine everyday Parisian elegance. "
                     f"Real skin micro-details, zero CGI or plastic airbrushing."
                 )
