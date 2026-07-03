@@ -12,7 +12,11 @@ class PromptEngineerAgent(Agent):
     def __init__(self):
         super().__init__("PromptEngineer", "Expert Prompt Engineer for Cinematic AI Media")
         # Base identity locks (Never change)
-        self.base_subject = "A 24-year-old Iranian woman with warm wheat skin, soft dark brown eyes, petite frame, and full lips with subtle nude lip color"
+        self.base_subject = (
+            "A 24-year-old Iranian woman with warm wheat skin, captivating dark brown almond eyes, "
+            "refined symmetrical facial structure, full lips with subtle nude lip color, petite 150cm frame, "
+            "and magnetic high-fashion editorial allure with a serene, mysterious, and sophisticated expression (no cheesy or broad smiling)"
+        )
 
     def determine_dynamic_styling(self, base_concept):
         """Intelligently changes Elina's hair and style based on the prompt context"""
@@ -116,6 +120,63 @@ class PromptEngineerAgent(Agent):
         )
 
         return f"{layer_0_identity}. {layer_1_scene} {layer_2_style} {layer_3_camera}"
+
+    def generate_5_shot_carousel_prompts(self, base_concept, styling_logic="", tone="Quiet Luxury") -> list:
+        """
+        Generates 5 distinct photographic angles/compositions for a complete outfit set,
+        incorporating styling logic and magnetic facial allure.
+        """
+        dynamic_styling = self.determine_dynamic_styling(base_concept)
+        logic_str = f" Fashion styling rationale applied: {styling_logic}." if styling_logic else ""
+        
+        prompts = [
+            {
+                "type": "full_body",
+                "title_fa": "۱. نمای تمام‌قد (Head-to-Toe Wide Shot)",
+                "prompt": (
+                    f"{self.base_subject}, {dynamic_styling}. Wide-angle full-body candid fashion shot from head to toe in {base_concept}. "
+                    f"Framed from a distance showing entire outfit, trousers length, and shoes on the ground without cropping.{logic_str} "
+                    f"Shot on Canon EOS R5 35mm f/2.0, natural daylight, detailed skin texture, Kodak Portra grain."
+                )
+            },
+            {
+                "type": "portrait_detail",
+                "title_fa": "۲. پرتره و فکوس روی بافت لباس (Portrait & Fabric Detail)",
+                "prompt": (
+                    f"{self.base_subject}, {dynamic_styling}. Captivating medium close-up editorial portrait focusing on upper outfit tailoring, "
+                    f"luxury fabric weave, jewelry, and magnetic serene facial allure in {base_concept}. Subtle alluring gaze looking toward camera. "
+                    f"Shot on 85mm f/1.4 lens, creamy bokeh, natural micro-pores, magazine Vogue cover quality."
+                )
+            },
+            {
+                "type": "flat_lay",
+                "title_fa": "۳. چیدمان ست لباس‌ها بدون مدل (Flat Lay / Outfit Layout Grid)",
+                "prompt": (
+                    f"High-end fashion flat lay photography composition showing ONLY the styled clothing pieces and accessories for {base_concept}. "
+                    f"Tailored coat, pleated wide-leg trousers, shoes, handbag, and minimalist jewelry neatly arranged side-by-side on a clean textured neutral linen background. "
+                    f"NO human model, NO person, NO face visible. Crisp studio lighting, top-down 90-degree architectural view, editorial luxury product layout."
+                )
+            },
+            {
+                "type": "street_movement",
+                "title_fa": "۴. حرکت و استایل خیابانی (Dynamic Street Movement)",
+                "prompt": (
+                    f"{self.base_subject}, {dynamic_styling}. Full-body dynamic candid shot of Elina walking confidently across {base_concept}. "
+                    f"Capturing elegant fabric movement, coat flowing in the breeze, and elongated vertical silhouette.{logic_str} "
+                    f"Shot on 50mm f/1.8, natural lifestyle motion sharpness, unfiltered influencer aesthetic."
+                )
+            },
+            {
+                "type": "candid_lifestyle",
+                "title_fa": "۵. تعامل لایف‌استایل در محیط (Atmospheric Candid Interaction)",
+                "prompt": (
+                    f"{self.base_subject}, {dynamic_styling}. Atmospheric candid lifestyle capture sitting or relaxing naturally in {base_concept}. "
+                    f"Serene magnetic expression, warm natural sunlight beams, shallow depth of field, genuine everyday Parisian elegance. "
+                    f"Real skin micro-details, zero CGI or plastic airbrushing."
+                )
+            }
+        ]
+        return prompts
 
     def generate_cinematic_json_script(self, base_concept, tone="dark"):
         """
