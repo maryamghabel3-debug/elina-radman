@@ -195,7 +195,7 @@ Caption:"""
 
 
 def add_images(pieces):
-    """Generate a real photo for each caption piece and attach its path along with exact creation prompts."""
+    """Generate multiple real photos & short videos for each piece with high fashion styling logic."""
     try:
         from agents.prompt_engineer import PromptEngineerAgent
         pe = PromptEngineerAgent()
@@ -207,8 +207,25 @@ def add_images(pieces):
         if pe and not p.get("image_prompt"):
             p["image_prompt"] = pe.generate_photo_prompt(concept)
             p["video_prompt"] = pe.generate_cinematic_json_script(concept)
-        p["image_prompt_fa"] = f"عکاسی لایف‌استایل و مجله‌ای در فضای {concept[:80]} با نورپردازی طبیعی و حفظ دقیق چهره الینا."
-        p["video_prompt_fa"] = f"سناریوی ریلز ۱۵ ثانیه‌ای درباره {concept[:80]} با افکت‌های زوم سینمایی و کات سریع."
+        p["styling_logic_fa"] = (
+            f"👗 **منطق استایلینگ فشن (چرا این ست؟):** انتخابی مینیمال در سبک Quiet Luxury متناسب با حوزه `{p['pillar']}`. "
+            f"برش‌های دقیق، شلوار فاق‌بلند یا دمپاگشاد و رنگ‌های خنثی باعث می‌شود اندام پتیت الینا (۱۵۰ سانتی‌متر) کشیده‌تر و باابهت‌تر دیده شود. "
+            f"هماهنگی کفش و کت، تعادلی بی‌نقص بین راحتی و وقار ایجاد می‌کند."
+        )
+        p["image_prompt_fa"] = f"عکس تمام‌قد (Head-to-Toe) در فضای {concept[:60]} با نمایش کامل شلوار و کفش و حفظ دقیق چهره الینا."
+        p["video_prompt_fa"] = f"سناریوی ویدیویی ریلز درباره {concept[:60]} با افکت‌های زوم و زیرنویس."
+
+    # Also generate a real faceless short video clip for the first piece
+    try:
+        from agents.faceless_studio import FacelessStudio
+        fs = FacelessStudio()
+        for p in pieces[:1]:
+            v_res = fs.run(p.get("pillar", "Quiet Luxury"))
+            if v_res.get("video_path") and os.path.exists(v_res["video_path"]):
+                p["video_path"] = v_res["video_path"]
+                print(f"   🎬 Generated video short for {p['id']}")
+    except Exception as e:
+        print(f"   ⚠️ FacelessStudio skipped: {e}")
 
     if os.environ.get("IMAGES_OFF") == "1":
         print("   ⏭  Image generation skipped (IMAGES_OFF=1)")
@@ -222,6 +239,7 @@ def add_images(pieces):
     for p in pieces:
         concept = (p.get("caption") or "").split("\n")[0][:180] or p.get("pillar", "fashion")
         try:
+            # Generate primary wide full-body shot
             r = studio.generate(concept)
             if r.get("path"):
                 p["image"] = r["path"]
@@ -229,9 +247,12 @@ def add_images(pieces):
                 p["used_reference"] = r.get("used_reference", False)
                 p["image_warning"] = r.get("warning", "")
                 p["image_prompt"] = r.get("prompt", p.get("image_prompt", concept))
-                print(f"   🎨 image for {p['id']} via {r.get('provider')} (ref={p['used_reference']})")
-            else:
-                print(f"   ⚠️  no image for {p['id']}")
+                print(f"   🎨 photo 1 for {p['id']} via {r.get('provider')}")
+            # Generate second angle / alternate outfit shot
+            r2 = studio.generate(f"{concept}, three-quarter street style dynamic movement angle")
+            if r2.get("path"):
+                p["image_alt"] = r2["path"]
+                print(f"   🎨 photo 2 for {p['id']} via {r2.get('provider')}")
         except Exception as e:
             print(f"   ⚠️  image error for {p['id']}: {e}")
 
@@ -265,19 +286,17 @@ def notify_telegram(pieces, video_ideas=None):
             json={"chat_id": chat_id, "text": msg, "parse_mode": "Markdown"},
             timeout=10,
         )
-        # Send actual generated photos with full bilingual captions & prompts
+        # Send actual generated photos & videos with full styling logic and prompts
         for p in pieces:
             img = p.get("image")
             if img and os.path.exists(img):
                 try:
                     photo_cap = f"📸 پست روزانه: `{p['id']}` ({p['pillar']})\n\n"
                     if p.get("caption_fa"):
-                        photo_cap += f"🇮🇷 **کپشن فارسی:**\n{p['caption_fa'][:250]}\n\n"
-                    photo_cap += f"🇬🇧 **Caption (English):**\n{p['caption'][:250]}\n\n"
+                        photo_cap += f"🇮🇷 **کپشن فارسی:**\n{p['caption_fa'][:220]}\n\n"
+                    photo_cap += f"🇬🇧 **Caption (EN):**\n{p['caption'][:220]}\n\n"
                     if p.get("affiliate_item"):
                         photo_cap += f"🛍 محصول افیلیت: {p['affiliate_item']}\n🔗 {p.get('affiliate_link', '')}\n"
-                    if p.get("image_warning"):
-                        photo_cap += f"\n{p['image_warning']}"
                     photo_cap += f"\n👉 انتشار: `/approve {p['id']}`"
                     with open(img, "rb") as fh:
                         requests.post(
@@ -286,14 +305,33 @@ def notify_telegram(pieces, video_ideas=None):
                             files={"photo": fh},
                             timeout=60,
                         )
-                    # Send detailed bilingual prompts in a separate message so you can copy-paste easily
-                    prompt_msg = f"🎨 **گزارش و پرامپت‌های تولیدی پست `{p['id']}` (دوزبانه):**\n\n"
-                    prompt_msg += f"🇮🇷 **توضیح فارسی پرامپت عکس:**\n{p.get('image_prompt_fa', '')}\n\n"
-                    prompt_msg += f"🖼 **پرامپت انگلیسی عکس (آماده کپی برای سایت‌های AI):**\n```\n{p.get('image_prompt', '')}\n```\n\n"
+                    # Send second photo angle if exists
+                    img2 = p.get("image_alt")
+                    if img2 and os.path.exists(img2):
+                        with open(img2, "rb") as fh2:
+                            requests.post(
+                                f"https://api.telegram.org/bot{token}/sendPhoto",
+                                data={"chat_id": chat_id, "caption": f"🖼 زاویه دوم / تنوع استایل برای پست `{p['id']}`"},
+                                files={"photo": fh2},
+                                timeout=60,
+                            )
+                    # Send generated short video if exists
+                    vpath = p.get("video_path")
+                    if vpath and os.path.exists(vpath):
+                        with open(vpath, "rb") as vh:
+                            requests.post(
+                                f"https://api.telegram.org/bot{token}/sendVideo",
+                                data={"chat_id": chat_id, "caption": f"🎬 ویدیوی ریلز تولیدشده برای پست `{p['id']}`"},
+                                files={"video": vh},
+                                timeout=120,
+                            )
+                    # Send detailed bilingual prompts and styling logic
+                    prompt_msg = f"🎨 **گزارش تخصصی استایلینگ و پرامپت‌های پست `{p['id']}`:**\n\n"
+                    prompt_msg += f"{p.get('styling_logic_fa', '')}\n\n"
+                    prompt_msg += f"🖼 **پرامپت انگلیسی عکس (تولید دستی):**\n```\n{p.get('image_prompt', '')}\n```\n\n"
                     if p.get("video_prompt"):
-                        vp = p.get("video_prompt", "")[:500] + "..." if len(p.get("video_prompt", "")) > 500 else p.get("video_prompt", "")
-                        prompt_msg += f"🇮🇷 **توضیح فارسی ویدیو:**\n{p.get('video_prompt_fa', '')}\n\n"
-                        prompt_msg += f"🎬 **پرامپت انگلیسی ویدیو (سناریوی ریلز/تیک‌تاک):**\n```\n{vp}\n```"
+                        vp = p.get("video_prompt", "")[:450] + "..." if len(p.get("video_prompt", "")) > 450 else p.get("video_prompt", "")
+                        prompt_msg += f"🎬 **پرامپت انگلیسی ویدیو:**\n```\n{vp}\n```"
                     requests.post(
                         f"https://api.telegram.org/bot{token}/sendMessage",
                         json={"chat_id": chat_id, "text": prompt_msg[:4000], "parse_mode": "Markdown"},

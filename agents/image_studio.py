@@ -75,12 +75,11 @@ class ImageStudio(Agent):
             self.log(f"PromptEngineer unavailable ({e}); basic prompt", "error")
             base = f"{_IDENTITY}, {concept}, editorial fashion photography, quiet luxury"
 
-        # Force photorealistic candid 35mm lifestyle framing with exact location atmosphere
+        # Force wide head-to-toe full-body framing showing shoes and trousers completely
         framing = (
-            "Candid 35mm lifestyle photograph, full-body or three-quarter fashion shot showing "
-            "complete styled outfit in realistic location and atmosphere, natural sunlight, "
-            "Kodak Portra 400 film grain, ultra realistic detailed skin texture, Vogue editorial quality, "
-            "natural pose, vibrant detailed background setting."
+            "Wide-angle Full-body candid fashion photograph shot from head to toe, showing the complete styled outfit "
+            "including trousers length and shoes on the ground without cropping. Realistic location atmosphere, natural sunlight, "
+            "Kodak Portra 400 film grain, ultra realistic detailed skin texture, Vogue editorial quality."
         )
         return f"{base} {framing}"
 

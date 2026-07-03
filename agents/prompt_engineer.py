@@ -107,8 +107,8 @@ class PromptEngineerAgent(Agent):
 
         # 4-Layer Monetization-Ready Prompt Architecture (2026 Standard)
         layer_0_identity = f"{self.base_subject}, {dynamic_styling}, maintaining exact facial features and natural proportions"
-        layer_1_scene = f"Candid lifestyle fashion photograph: {base_concept}. Authentic environment with realistic background depth and location atmosphere."
-        layer_2_style = f"Styled in {style_desc}{palette_part}."
+        layer_1_scene = f"Wide-angle full-body candid fashion shot from head to toe: {base_concept}. Framed from a distance so her complete outfit, trousers length, and shoes are 100% visible without cropping. Authentic environment with realistic background depth."
+        layer_2_style = f"High-fashion styling: {style_desc}{palette_part}. Impeccable tailoring creating an elongated, elegant silhouette."
         layer_3_camera = (
             f"{camera_lens}, {lighting}. Real-world photography characteristics: natural detailed skin texture, "
             f"visible micro-pores, soft organic facial highlights, Kodak Portra 400 film grain, shallow depth of field. "
