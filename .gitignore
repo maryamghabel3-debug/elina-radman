@@ -21,6 +21,7 @@ dist/
 content/videos/
 content/images/
 content/trends_cache.json
+content/gemini_models_report.json
 
 # OS
 .DS_Store

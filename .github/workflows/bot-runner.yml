@@ -6,6 +6,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: git-push-main
+  cancel-in-progress: false
+
 jobs:
   bot:
     runs-on: ubuntu-latest
@@ -46,5 +50,14 @@ jobs:
           git add content/ || true
           if ! git diff --staged --quiet; then
             git commit -m "🤖 Bot updates [$(date +%Y-%m-%d)]"
-            git push
+            for i in 1 2 3 4 5; do
+              if git push; then
+                echo "✅ Pushed successfully"
+                break
+              fi
+              echo "⚠️ Push rejected (attempt $i/5), rebasing onto latest main..."
+              git fetch origin main
+              git rebase origin/main
+              sleep $((RANDOM % 5 + 2))
+            done
           fi

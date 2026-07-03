@@ -525,6 +525,29 @@ def test_image_studio_trend_driven_concept(workdir, monkeypatch):
     assert "old money" in concept and "camel wool coat" in concept
 
 
+def test_image_studio_strict_face_only_excludes_no_reference_providers(workdir, monkeypatch):
+    """STRICT_FACE_ONLY=1 must remove providers that never see Elina's face
+    reference (nvidia_nim/fal_ai/together_ai), instead of being a documented
+    no-op flag that silently does nothing."""
+    monkeypatch.setenv("STRICT_FACE_ONLY", "1")
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    from agents.image_studio import ImageStudio
+
+    studio = ImageStudio()
+    calls = []
+    for name in ("_gemini_image", "_hf_instantid_image", "_hf_pulid_flux_image", "_hf_pulid_sdxl_image"):
+        monkeypatch.setattr(studio, name, lambda p, o, _n=name: (calls.append(_n) or False))
+    for name in ("_nvidia_nim_image", "_fal_ai_image", "_together_image"):
+        monkeypatch.setattr(studio, name, lambda p, o, _n=name: (calls.append(_n) or True))
+
+    result = studio.generate("test concept")
+    # Providers without a face reference must never even be called
+    assert "_nvidia_nim_image" not in calls
+    assert "_fal_ai_image" not in calls
+    assert "_together_image" not in calls
+    assert result.get("error") == "all_providers_failed"
+
+
 def test_base_agent_status_and_logging():
     from agents.base import Agent
 
@@ -534,3 +557,42 @@ def test_base_agent_status_and_logging():
     status = a.status()
     assert status["name"] == "Tester"
     assert status["errors"] == 1
+
+
+# --------------------------------------------------------------------------- #
+# ProductHunter — real affiliate links (regression: dead/broken _ltk_url)
+# --------------------------------------------------------------------------- #
+def test_product_hunter_ltk_url_is_callable(workdir, monkeypatch):
+    """_ltk_url() used to be defined without `self` and was never called,
+    duplicating the URL inline instead. It must now be a real bound method."""
+    from agents.product_hunter import ProductHunter
+
+    monkeypatch.setenv("LTK_CREATOR_ID", "test_creator")
+    hunter = ProductHunter()
+    assert hunter._ltk_url() == "https://www.shopltk.com/explore/test_creator"
+
+    products = hunter.run()
+    assert any(p.get("ltk_link") == "https://www.shopltk.com/explore/test_creator" for p in products)
+
+
+# --------------------------------------------------------------------------- #
+# FashionStylist wiring into the daily pipeline (regression: never called)
+# --------------------------------------------------------------------------- #
+def test_ensure_weekly_moodboard_creates_file_once(workdir, monkeypatch):
+    import importlib
+    import scripts.generate as gen
+
+    importlib.reload(gen)
+    assert not os.path.exists("content/weekly_moodboard.json")
+
+    gen.ensure_weekly_moodboard()
+    assert os.path.exists("content/weekly_moodboard.json")
+
+    with open("content/weekly_moodboard.json") as f:
+        first = json.load(f)
+
+    # Calling again in the same ISO week must NOT regenerate (same theme/content)
+    gen.ensure_weekly_moodboard()
+    with open("content/weekly_moodboard.json") as f:
+        second = json.load(f)
+    assert first == second

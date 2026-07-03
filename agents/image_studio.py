@@ -427,6 +427,13 @@ class ImageStudio(Agent):
             "hf": ["hf_pulid_flux", "hf_pulid_sdxl", "hf_instantid"]
         }.get(prefer, ["gemini", "nvidia_nim", "fal_ai", "together_ai", "hf_pulid_flux", "hf_pulid_sdxl", "hf_instantid"])
 
+        # STRICT_FACE_ONLY=1 removes providers that never receive Elina's
+        # reference photo (nvidia_nim/fal_ai/together_ai only get a text
+        # prompt), so a "success" never silently produces an unrelated face.
+        if os.environ.get("STRICT_FACE_ONLY") == "1":
+            no_ref_providers = {"nvidia_nim", "fal_ai", "together_ai"}
+            order = [p for p in order if p not in no_ref_providers]
+
         for provider in order:
             if provider == "gemini":
                 ok = self._gemini_image(prompt, out_path)

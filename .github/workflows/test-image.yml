@@ -10,6 +10,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: git-push-main
+  cancel-in-progress: false
+
 jobs:
   verify_image:
     runs-on: ubuntu-latest
@@ -41,7 +45,16 @@ jobs:
           git add content/images/ || true
           if ! git diff --staged --quiet; then
             git commit -m "🎨 Live test photo generated [$(date +%Y-%m-%d-%H%M)]"
-            git push || echo "Push skipped if GH_PAT not set"
+            for i in 1 2 3 4 5; do
+              if git push; then
+                echo "✅ Pushed successfully"
+                break
+              fi
+              echo "⚠️ Push rejected (attempt $i/5), rebasing onto latest main..."
+              git fetch origin main
+              git rebase origin/main
+              sleep $((RANDOM % 5 + 2))
+            done
           fi
       - name: Upload Generated Image as Artifact
         if: always()

@@ -38,8 +38,9 @@ class ProductHunter(Agent):
         q = urllib.parse.quote_plus(keyword)
         return f"https://www.shopstyle.com/browse?fts={q}"
 
-    def _ltk_url() -> str:
-        pass
+    def _ltk_url(self) -> str:
+        """LTK (LikeToKnow.it) creator storefront URL."""
+        return f"https://www.shopltk.com/explore/{self.ltk_id}"
 
     def simulate_web_scraping(self):
         """
@@ -60,7 +61,7 @@ class ProductHunter(Agent):
                 "price": "$85",
                 "source_type": "Affiliate (Amazon/LTK)",
                 "affiliate_link": self._amazon_affiliate_url("petite camel trench coat women quiet luxury"),
-                "ltk_link": f"https://www.shopltk.com/explore/{self.ltk_id}",
+                "ltk_link": self._ltk_url(),
                 "why_it_fits": "Hits right at the knee for 150cm girls, elongates the frame."
             },
             {
