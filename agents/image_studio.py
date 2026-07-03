@@ -342,69 +342,59 @@ class ImageStudio(Agent):
         return False
 
     def _fal_ai_image(self, prompt: str, out_path: str) -> bool:
-        """Fast & low-cost FLUX PuLID image generation via Fal.ai API."""
+        """Lightning-fast low-cost API generation via Fal.ai ($0.002 per image)."""
         fal_key = os.environ.get("FAL_KEY") or os.environ.get("FAL_API_KEY", "")
         if not fal_key:
             return False
-
-        refs = self.reference_images(limit=1)
-        if not refs:
-            return False
-
+        url = "https://queue.fal.run/fal-ai/flux/dev"
+        headers = {"Authorization": f"Key {fal_key}", "Content-Type": "application/json"}
+        payload = {
+            "prompt": f"Candid 35mm editorial photo of Elina Radman, 24yo Iranian woman, {prompt}",
+            "image_size": "portrait_4_5",
+            "num_inference_steps": 28,
+            "guidance_scale": 3.5
+        }
         try:
-            with open(refs[0], "rb") as f:
-                b64_img = base64.b64encode(f.read()).decode()
-            data_uri = f"data:image/jpeg;base64,{b64_img}"
-
-            url = "https://fal.run/fal-ai/flux-pulid"
-            headers = {"Authorization": f"Key {fal_key}", "Content-Type": "application/json"}
-            payload = {
-                "prompt": f"candid 35mm editorial fashion photo of Elina Radman, 24yo woman, {prompt}",
-                "reference_image_url": data_uri,
-                "id_scale": 1.0,
-                "num_inference_steps": 28,
-            }
             r = self.session.post(url, headers=headers, json=payload, timeout=60)
-            if r.status_code == 200:
-                img_url = r.json().get("images", [{}])[0].get("url")
+            if r.status_code in (200, 201):
+                res = r.json()
+                img_url = res.get("images", [{}])[0].get("url")
                 if img_url:
                     img_data = self.session.get(img_url, timeout=30).content
                     with open(out_path, "wb") as f:
                         f.write(img_data)
-                    self.working_model = "fal-ai/flux-pulid"
+                    self.working_model = "fal-ai/flux-dev"
                     return True
         except Exception as e:
-            self.log(f"Fal.ai image error: {e}", "error")
+            self.log(f"Fal.ai error: {e}", "error")
         return False
 
-    def _together_ai_image(self, prompt: str, out_path: str) -> bool:
-        """Fast & low-cost FLUX.1-dev image generation via Together AI."""
+    def _together_image(self, prompt: str, out_path: str) -> bool:
+        """Fast low-cost API generation via Together AI ($25 free sign-up credit)."""
         api_key = os.environ.get("TOGETHER_API_KEY") or os.environ.get("TOGETHER_KEY", "")
         if not api_key:
             return False
-
         url = "https://api.together.xyz/v1/images/generations"
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
         payload = {
-            "model": "black-forest-labs/FLUX.1-dev",
-            "prompt": f"candid 35mm editorial fashion photo of Elina Radman, 24yo woman, {prompt}",
-            "width": 896,
-            "height": 1152,
-            "steps": 28,
-            "n": 1,
-            "response_format": "b64_json"
+            "model": "black-forest-labs/FLUX.1-schnell-Free",
+            "prompt": f"Candid 35mm editorial photo of Elina Radman, 24yo Iranian woman, {prompt}",
+            "width": 768,
+            "height": 1024,
+            "steps": 4,
+            "n": 1
         }
         try:
             r = self.session.post(url, headers=headers, json=payload, timeout=60)
             if r.status_code == 200:
-                b64_str = r.json().get("data", [{}])[0].get("b64_json", "")
-                if b64_str:
+                b64 = r.json().get("data", [{}])[0].get("b64_json")
+                if b64:
                     with open(out_path, "wb") as f:
-                        f.write(base64.b64decode(b64_str))
-                    self.working_model = "TogetherAI/FLUX.1-dev"
+                        f.write(base64.b64decode(b64))
+                    self.working_model = "Together-AI/FLUX-schnell"
                     return True
         except Exception as e:
-            self.log(f"Together AI image error: {e}", "error")
+            self.log(f"Together AI error: {e}", "error")
         return False
 
     # ------------------------------------------------------------------ #
@@ -416,6 +406,7 @@ class ImageStudio(Agent):
 
         concept=None -> derive from the latest trend analysis (trend-driven).
         prefer: 'auto' (Gemini -> NVIDIA NIM -> Fal.ai -> Together AI -> HF PuLID-FLUX).
+        Note: Hugging Face spaces are pushed to the absolute last fallback to prevent queue delays.
         """
         self.runs += 1
         self.last_run = datetime.now().isoformat()
@@ -433,8 +424,8 @@ class ImageStudio(Agent):
             "fal": ["fal_ai"],
             "together": ["together_ai"],
             "flux": ["nvidia_nim", "fal_ai", "together_ai", "hf_pulid_flux"],
-            "hf": ["hf_pulid_flux", "hf_pulid_sdxl", "hf_instantid"],
-        }.get(prefer, ["gemini", "nvidia_nim", "fal_ai", "together_ai", "hf_pulid_flux", "hf_pulid_sdxl"])
+            "hf": ["hf_pulid_flux", "hf_pulid_sdxl", "hf_instantid"]
+        }.get(prefer, ["gemini", "nvidia_nim", "fal_ai", "together_ai", "hf_pulid_flux", "hf_pulid_sdxl", "hf_instantid"])
 
         for provider in order:
             if provider == "gemini":
@@ -444,7 +435,7 @@ class ImageStudio(Agent):
             elif provider == "fal_ai":
                 ok = self._fal_ai_image(prompt, out_path)
             elif provider == "together_ai":
-                ok = self._together_ai_image(prompt, out_path)
+                ok = self._together_image(prompt, out_path)
             elif provider == "hf_instantid":
                 ok = self._hf_instantid_image(prompt, out_path)
             elif provider == "hf_pulid_flux":
@@ -456,7 +447,7 @@ class ImageStudio(Agent):
 
             if ok:
                 self.log(f"Image generated via {provider}: {out_path}")
-                used_ref = provider != "nvidia_nim" and bool(self.reference_images())
+                used_ref = provider not in ("nvidia_nim", "fal_ai", "together_ai") and bool(self.reference_images())
                 return {
                     "path": out_path,
                     "provider": provider,
