@@ -32,3 +32,4 @@ content/gemini_models_report.json
 # OS
 .DS_Store
 Thumbs.db
+images/test_outputs/
