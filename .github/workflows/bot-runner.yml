@@ -27,6 +27,17 @@ jobs:
           # agents/llm_router.py) -- GROQ_API_KEY/CEREBRAS_API_KEY/etc. were
           # missing here too, so the Telegram bot's /content command and
           # any chat replies never actually saw them either.
+          #
+          # NOTE: daily-content.yml also stands up the real freellmapi
+          # service (explicit user instruction) as its PRIMARY LLM path.
+          # Deliberately NOT done here: this workflow runs every 5 minutes
+          # (schedule above), and freellmapi's checkout+npm install+build
+          # takes ~2-3 minutes on a cold runner -- that overhead on every
+          # single bot poll would be wasteful and would often make the bot
+          # slower to respond than the 5-minute cron interval itself. The
+          # direct-provider fallback chain below (already fast, no
+          # build step) is a deliberately better fit for this
+          # high-frequency, low-stakes (chat replies) workflow.
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}

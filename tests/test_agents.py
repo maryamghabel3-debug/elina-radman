@@ -727,6 +727,56 @@ def test_llm_router_falls_through_to_next_provider_on_failure(workdir, monkeypat
     assert providers_tried == ["groq", "gemini"]
 
 
+def test_llm_router_tries_real_freellmapi_service_first_when_configured(workdir, monkeypatch):
+    """Explicit user instruction (2026-07-06): actually use the real
+    tashfeenahmed/freellmapi project, not a hand-rolled reimplementation of
+    its idea. When FREELLMAPI_URL is set (the real service is running --
+    see .github/workflows/daily-content.yml, which builds and starts it),
+    LLMRouter must try it FIRST via a real HTTP call with model='auto',
+    before falling through to its own direct-provider calls."""
+    monkeypatch.setenv("FREELLMAPI_URL", "http://localhost:3001")
+    monkeypatch.setenv("FREELLMAPI_API_KEY", "freellmapi-test-key")
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    from agents.llm_router import LLMRouter
+
+    router = LLMRouter()
+    calls = []
+
+    def fake_call(system_prompt, prompt):
+        calls.append((system_prompt, prompt))
+        return "a real caption from freellmapi's router"
+
+    monkeypatch.setattr(router, "_call_freellmapi", fake_call)
+    result = router.smart_generate("test prompt", task_type="creative_writing")
+    assert result["provider"] == "freellmapi"
+    assert result["response"] == "a real caption from freellmapi's router"
+    assert len(calls) == 1
+
+
+def test_llm_router_falls_back_to_direct_providers_when_freellmapi_unreachable(workdir, monkeypatch):
+    """If the real freellmapi service is configured but unreachable (e.g.
+    failed to start, network error), the router must fall through to its
+    direct-provider calls rather than failing the whole request -- exactly
+    like every other optional dependency in this repo."""
+    monkeypatch.setenv("FREELLMAPI_URL", "http://localhost:3001")
+    monkeypatch.setenv("FREELLMAPI_API_KEY", "freellmapi-test-key")
+    monkeypatch.setenv("GROQ_API_KEY", "fake_test_key")
+    for key in ("GEMINI_API_KEY", "CEREBRAS_API_KEY", "OPENROUTER_API_KEY",
+                "GITHUB_MODELS_TOKEN", "DEEPSEEK_API_KEY"):
+        monkeypatch.delenv(key, raising=False)
+    from agents.llm_router import LLMRouter
+
+    router = LLMRouter()
+
+    def fake_call_fails(system_prompt, prompt):
+        raise ConnectionError("freellmapi not reachable")
+
+    monkeypatch.setattr(router, "_call_freellmapi", fake_call_fails)
+    result = router.smart_generate("test prompt", task_type="creative_writing")
+    assert any("freellmapi" in a for a in result["attempts"])
+    assert any("groq" in a for a in result["attempts"])
+
+
 def test_llm_router_get_best_provider_reflects_configured_priority(workdir, monkeypatch):
     for key in ("GROQ_API_KEY", "GEMINI_API_KEY", "CEREBRAS_API_KEY",
                 "OPENROUTER_API_KEY", "GITHUB_MODELS_TOKEN", "DEEPSEEK_API_KEY"):

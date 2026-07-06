@@ -19,13 +19,83 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - run: pip install -r requirements-core.txt
+
+      # Real tashfeenahmed/freellmapi (MIT, 15.2k stars) -- explicit user
+      # instruction to use this actual project, not a hand-rolled
+      # reimplementation of its idea. It's a Node/Express service, so it
+      # must be checked out, built, and run as a background process for
+      # the duration of this job; there is no persistent server to keep it
+      # running on between runs (ephemeral GitHub Actions runner), which is
+      # fine -- it's stateless here (config comes fresh from GitHub Secrets
+      # every run) and the project is documented as "personal
+      # experimentation," not something meant to run as a 24/7 service.
+      - uses: actions/setup-node@v4
+        with: {node-version: '20'}
+      - name: Checkout freellmapi
+        uses: actions/checkout@v4
+        with:
+          repository: tashfeenahmed/freellmapi
+          path: freellmapi
+      - name: Build freellmapi
+        working-directory: freellmapi
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+      - name: Start freellmapi
+        working-directory: freellmapi
+        env:
+          # Declarative config (see docker/README.md's "Declarative startup
+          # config" section) -- applies these keys on boot with no manual
+          # dashboard signup needed. Only providers with a secret actually
+          # set are included (missing ones are simply absent from the
+          # array, which freellmapi treats as "not configured" exactly like
+          # every other optional secret in this workflow).
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          ENCRYPTION_KEY="$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')"
+          printf "ENCRYPTION_KEY=%s\nPORT=3001\n" "$ENCRYPTION_KEY" > .env
+
+          python3 - <<'PYEOF' > /tmp/freeapi_config.json
+          import json, os
+          keys = []
+          mapping = [("groq", "GROQ_API_KEY"), ("google", "GEMINI_API_KEY"),
+                     ("cerebras", "CEREBRAS_API_KEY"), ("openrouter", "OPENROUTER_API_KEY"),
+                     ("opencode", "DEEPSEEK_API_KEY")]
+          for platform, env_var in mapping:
+              val = os.environ.get(env_var, "").strip()
+              if val:
+                  keys.append({"platform": platform, "key": val, "label": "main"})
+          print(json.dumps({"keys": keys, "routing": {"strategy": "reliable"}}))
+          PYEOF
+
+          FREEAPI_CONFIG_JSON="$(cat /tmp/freeapi_config.json)" nohup node server/dist/index.js > /tmp/freellmapi.log 2>&1 &
+          echo "Started freellmapi, waiting for it to come up..."
+          for i in $(seq 1 15); do
+            if curl -sf http://localhost:3001/api/auth/status > /dev/null 2>&1; then
+              echo "freellmapi is up."
+              break
+            fi
+            sleep 1
+          done
+          # The unified API key is printed to stdout on first boot (no
+          # dashboard signup required) -- extract it for the Python script.
+          UNIFIED_KEY=$(grep -oE 'freellmapi-[a-f0-9]+' /tmp/freellmapi.log | head -1)
+          echo "FREELLMAPI_API_KEY=$UNIFIED_KEY" >> "$GITHUB_ENV"
+          echo "FREELLMAPI_URL=http://localhost:3001" >> "$GITHUB_ENV"
+
       - name: Generate content
         env:
           # BUG FIXED (2026-07-06): GROQ_API_KEY (which the user added to
           # this repo's secrets) was never actually passed into the script
           # environment here, so LLMRouter could never see it even after
           # scripts/generate.py was fixed to actually call LLMRouter. Full
-          # provider list now matches agents/llm_router.py's fallback chain.
+          # provider list now matches agents/llm_router.py's fallback chain
+          # -- these remain as a fallback path for when freellmapi itself
+          # (FREELLMAPI_URL/FREELLMAPI_API_KEY, set above) is unreachable.
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
@@ -44,6 +114,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
         run: python scripts/generate.py
+
       - name: Push to repo
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
