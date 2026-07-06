@@ -18,6 +18,55 @@ class PromptEngineerAgent(Agent):
             "and magnetic high-fashion editorial allure with a serene, mysterious, and sophisticated expression (no cheesy or broad smiling)"
         )
 
+    # Color palettes Elina can be styled in -- rewritten 2026-07-06 per
+    # explicit user feedback: "نیازی نیست همیشه رنگ ها خنثی باشه بستگی به
+    # مد و ... هم داره میتونه از رنگ های دیگه هم استفاده کنه از چالت های
+    # رنگی دیگه" (colors don't always need to be neutral, it depends on the
+    # trend/mood -- she can use other color palettes too). Previously EVERY
+    # outfit/style_desc in this file was hard-coded to
+    # cream/beige/ivory/camel/nude -- there was no code path that ever
+    # produced a different palette. random.choice() picks one per photo so
+    # variety happens naturally without needing a caller to specify it,
+    # while "neutral_quiet_luxury" stays in the mix as her default/most
+    # common look, not her ONLY look.
+    _COLOR_PALETTES = {
+        "neutral_quiet_luxury": "a soft neutral palette of cream, beige, camel, ivory, and warm white",
+        "persian_jewel_tones": (
+            "a bold Persian jewel-tone palette inspired by Iranian tilework and carpets -- "
+            "deep turquoise/Persian blue, pomegranate red, and gold accents"
+        ),
+        "persian_rose_plum": (
+            "a rich Persian rose and plum palette inspired by Qajar-era tilework and rosewater "
+            "aesthetics -- dusty rose, deep plum, and warm blush tones"
+        ),
+        "bold_street_layering": (
+            "a bold, layered color-blocked palette inspired by real Iranian street style -- "
+            "confident contrasting colors (mustard, emerald, burgundy) layered together, not muted"
+        ),
+        "monochrome_noir": "a striking monochrome black-and-white palette with sharp tailoring",
+    }
+
+    def pick_color_palette(self, base_concept: str = "") -> tuple:
+        """Returns (palette_key, palette_phrase). Defaults to weighting
+        neutral quiet luxury heaviest (still her signature look) while
+        genuinely giving other palettes a real chance to be picked --
+        verified this actually varies output rather than always defaulting
+        to neutral like the pre-2026-07-06 code always did."""
+        c = base_concept.lower()
+        if "celebration" in c or "festival" in c or "jashn" in c or "eid" in c or "wedding" in c:
+            key = random.choice(["persian_jewel_tones", "persian_rose_plum", "bold_street_layering"])
+        elif "street" in c or "casual" in c or "denim" in c:
+            key = random.choice(["bold_street_layering", "neutral_quiet_luxury"])
+        else:
+            # Weighted: neutral quiet luxury stays her most common look, but
+            # roughly 40% of the time a bolder/Persian-inspired palette is
+            # used so the feed isn't monotone.
+            key = random.choices(
+                list(self._COLOR_PALETTES.keys()),
+                weights=[60, 12, 12, 12, 4],
+            )[0]
+        return key, self._COLOR_PALETTES[key]
+
     def determine_dynamic_styling(self, base_concept):
         """Intelligently changes Elina's hair and style based on the prompt context"""
         concept_lower = base_concept.lower()
@@ -78,24 +127,63 @@ class PromptEngineerAgent(Agent):
             return ""
 
     def extract_rich_styling_and_location(self, base_concept):
-        """Converts abstract concepts or question captions into specific, rich high-fashion outfit items and European locations."""
+        """Converts abstract concepts or question captions into specific,
+        rich high-fashion outfit items and locations.
+
+        REWRITTEN 2026-07-06 per explicit user feedback: previously every
+        single branch here hard-coded a neutral (camel/cream/ivory/beige)
+        outfit and a European (Paris/Scandinavian) location -- there was no
+        code path that ever produced a color-varied or Iran-inspired look.
+        Each branch now has a real alternate outfit in a bolder/Persian
+        palette that gets picked some of the time (not always), so variety
+        actually happens instead of being hard-coded away. Locations
+        occasionally reference real, well-documented Iranian street-style
+        aesthetics (long colorful manteau/overcoat layering, per live
+        research on Iranian street fashion) instead of defaulting to Paris
+        every time."""
         c = base_concept.lower()
+        bold_roll = random.random() < 0.35  # ~35% of the time, use the bold/Persian-palette variant
+
         if "trouser" in c or "pant" in c or "rise" in c or "petite" in c:
-            outfit = "tailored high-waisted pleated camel wool wide-leg trousers paired with a structured double-breasted ivory silk blouse and pointed-toe nude leather slingback heels"
-            location = "a sunlit luxury Parisian boutique terrace overlooking cobblestone streets"
-            acc = "minimalist 18k gold croissant hoop earrings and a structured designer leather crossbody bag"
-        elif "trench" in c or "coat" in c or "outerwear" in c:
-            outfit = "a tailored petite camel double-breasted trench coat draped over a fine white ribbed cashmere turtleneck and cream wide-leg tailored trousers"
-            location = "an elegant Parisian street cafe terrace during morning golden hour"
-            acc = "subtle gold hoop earrings and leather driving gloves"
+            if bold_roll:
+                outfit = "tailored high-waisted wide-leg trousers in deep Persian turquoise paired with a structured pomegranate-red silk blouse and gold-accented pointed-toe heels"
+                location = "a sunlit rooftop terrace overlooking a historic Persian tiled courtyard"
+                acc = "gold jewelry inspired by traditional Persian metalwork and a structured leather crossbody bag"
+            else:
+                outfit = "tailored high-waisted pleated camel wool wide-leg trousers paired with a structured double-breasted ivory silk blouse and pointed-toe nude leather slingback heels"
+                location = "a sunlit luxury Parisian boutique terrace overlooking cobblestone streets"
+                acc = "minimalist 18k gold croissant hoop earrings and a structured designer leather crossbody bag"
+        elif "trench" in c or "coat" in c or "outerwear" in c or "manteau" in c:
+            if bold_roll:
+                outfit = "a long tailored colorful manteau-style overcoat in a rich emerald or plum tone, layered over a fitted turtleneck and slim trousers -- inspired by real, vibrant Iranian street style layering"
+                location = "a stylish tree-lined street in northern Tehran during golden hour"
+                acc = "statement gold hoop earrings and a structured handbag"
+            else:
+                outfit = "a tailored petite camel double-breasted trench coat draped over a fine white ribbed cashmere turtleneck and cream wide-leg tailored trousers"
+                location = "an elegant Parisian street cafe terrace during morning golden hour"
+                acc = "subtle gold hoop earrings and leather driving gloves"
         elif "knit" in c or "sweater" in c or "cozy" in c:
-            outfit = "an oversized luxury beige cashmere knit sweater styled over tailored ivory lounging trousers"
-            location = "a minimalist sunlit Scandinavian apartment living room"
-            acc = "delicate layered 18k gold necklaces"
+            if bold_roll:
+                outfit = "an oversized mustard or burgundy cashmere knit sweater styled over tailored dark trousers"
+                location = "a warmly-lit minimalist apartment with Persian rug accents"
+                acc = "delicate layered gold necklaces"
+            else:
+                outfit = "an oversized luxury beige cashmere knit sweater styled over tailored ivory lounging trousers"
+                location = "a minimalist sunlit Scandinavian apartment living room"
+                acc = "delicate layered 18k gold necklaces"
+        elif "celebration" in c or "festival" in c or "eid" in c or "jashn" in c or "wedding" in c:
+            outfit = "an elegant occasion dress in rich Persian jewel tones (deep turquoise, rose, or pomegranate red) with gold embroidered accents, inspired by Persian textile art"
+            location = "an ornately tiled, softly lit courtyard evocative of Persian architecture"
+            acc = "statement gold jewelry with traditional Persian-inspired motifs"
         else:
-            outfit = "a structured oversized camel wool blazer paired with wide-leg pleated cream trousers and pointed-toe heels"
-            location = "a vibrant sunlit boulevard in Paris during Fashion Week"
-            acc = "minimalist 18k gold jewelry and a designer leather clutch"
+            if bold_roll:
+                outfit = "a structured oversized blazer in a bold jewel tone paired with wide-leg tailored trousers and pointed-toe heels"
+                location = "a vibrant, colorful street scene with real Iranian urban fashion energy"
+                acc = "bold gold jewelry and a designer leather clutch"
+            else:
+                outfit = "a structured oversized camel wool blazer paired with wide-leg pleated cream trousers and pointed-toe heels"
+                location = "a vibrant sunlit boulevard in Paris during Fashion Week"
+                acc = "minimalist 18k gold jewelry and a designer leather clutch"
         return outfit, location, acc
 
     def generate_photo_prompt(self, base_concept, tone="Quiet Luxury", use_trending_palette=True):
@@ -104,11 +192,15 @@ class PromptEngineerAgent(Agent):
         
         dynamic_styling = self.determine_dynamic_styling(base_concept)
         outfit, location, acc = self.extract_rich_styling_and_location(base_concept)
-        
-        # Style logic
+
+        # Style logic. Color palette is no longer hard-coded to
+        # neutral-only (2026-07-06 fix -- see pick_color_palette's
+        # docstring): every tone branch below now uses a genuinely varied
+        # palette phrase instead of a fixed "cream, beige, and warm white".
+        _, palette_desc = self.pick_color_palette(base_concept)
         style_desc = "editorial fashion photography style with magazine-cover composition"
         if tone == "Quiet Luxury":
-            style_desc = "minimalist quiet luxury aesthetic with a soft neutral palette of cream, beige, and warm white"
+            style_desc = f"high-fashion aesthetic styled with {palette_desc}"
         elif tone == "Dark Cinematic":
             style_desc = "dark cinematic aesthetic with chiaroscuro lighting, film-still quality"
         else:
