@@ -144,3 +144,9 @@ elina-radman/
 ---
 
 *Built with ❤️ — 2026 — $0/month by default · MIT License*
+
+## 🎨 Update (2026): MeiGen AI Design Integration
+The image generation engine has been upgraded to use the open-source **MeiGen AI Design MCP** (`npx meigen gen`). 
+- Hugging Face integrations have been completely bypassed per user request.
+- The generation engine will automatically use your `MEIGEN_API_TOKEN` to generate hyper-realistic, face-consistent photos of Elina based on her reference files in `images/*.jpg`.
+- To set this up, add `MEIGEN_API_TOKEN` to your GitHub Secrets.
