@@ -413,39 +413,6 @@ class ImageStudio(Agent):
             self.log(f"Together AI error: {e}", "error")
         return False
 
-    def _meigen_cli_image(self, prompt: str, out_path: str) -> bool:
-        """Generation using MeiGen AI Design MCP CLI (npx meigen gen)."""
-        import subprocess
-        # Get the first reference image for Face Consistency
-        refs = self.reference_images(limit=1)
-        ref_flag = f"--ref {refs[0]}" if refs else ""
-        
-        # Build the npx command
-        # MEIGEN_API_TOKEN must be in environment
-        cmd = f'npx -y meigen@latest gen --prompt "{prompt}" {ref_flag} --json'
-        
-        try:
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-            if result.returncode == 0:
-                # The CLI outputs JSON if --json is passed. Let's parse the image path
-                import json
-                try:
-                    data = json.loads(result.stdout)
-                    img_url = data.get("imageUrls", [None])[0]
-                    if img_url:
-                        img_data = self.session.get(img_url, timeout=30).content
-                        with open(out_path, "wb") as f:
-                            f.write(img_data)
-                        self.working_model = data.get("model", "meigen-model")
-                        return True
-                except Exception as e:
-                    self.log(f"Meigen CLI JSON parse error: {e}. Output: {result.stdout}", "error")
-            else:
-                self.log(f"Meigen CLI error: {result.stderr}", "error")
-        except Exception as e:
-            self.log(f"Meigen CLI execution error: {e}", "error")
-        return False
-
     # ------------------------------------------------------------------ #
     # Public API
     # ------------------------------------------------------------------ #
@@ -473,9 +440,8 @@ class ImageStudio(Agent):
             "fal": ["fal_ai"],
             "together": ["together_ai"],
             "flux": ["nvidia_nim", "fal_ai", "together_ai", "hf_pulid_flux"],
-            "hf": ["hf_pulid_flux", "hf_pulid_sdxl", "hf_instantid"],
-            "meigen": ["meigen_cli"]
-        }.get(prefer, ["meigen_cli", "gemini", "nvidia_nim", "fal_ai", "together_ai"])
+            "hf": ["hf_pulid_flux", "hf_pulid_sdxl", "hf_instantid"]
+        }.get(prefer, ["gemini", "nvidia_nim", "fal_ai", "together_ai", "hf_pulid_flux", "hf_pulid_sdxl", "hf_instantid"])
 
         # STRICT_FACE_ONLY=1 removes providers that never receive Elina's
         # reference photo (nvidia_nim/fal_ai/together_ai only get a text
@@ -499,14 +465,12 @@ class ImageStudio(Agent):
                 ok = self._hf_pulid_flux_image(prompt, out_path)
             elif provider == "hf_pulid_sdxl":
                 ok = self._hf_pulid_sdxl_image(prompt, out_path)
-            elif provider == "meigen_cli":
-                ok = self._meigen_cli_image(prompt, out_path)
             else:
                 ok = False
 
             if ok:
                 self.log(f"Image generated via {provider}: {out_path}")
-                used_ref = provider in ("meigen_cli", "gemini", "hf_pulid_flux", "hf_pulid_sdxl", "hf_instantid") and bool(self.reference_images())
+                used_ref = provider not in ("nvidia_nim", "fal_ai", "together_ai") and bool(self.reference_images())
                 return {
                     "path": out_path,
                     "provider": provider,
