@@ -1,6 +1,7 @@
 # ── Core runtime (used by GitHub Actions: bot, content, publishing) ──
 requests>=2.32
 google-generativeai>=0.8
+google-genai>=1.0
 
 # ── Trend photo analysis (dominant colour / palette extraction) ──
 Pillow>=10.0

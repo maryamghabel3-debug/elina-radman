@@ -140,7 +140,17 @@ def load_visual_signals():
 
 
 def generate(pillar, trends=None, visual_signals=""):
-    api_key = os.environ.get("GEMINI_API_KEY", "")
+    # BUG FIXED (2026-07-06, found while actually running the pipeline
+    # end-to-end): this function used to call google.generativeai directly
+    # and NEVER used agents/llm_router.py at all, so adding GROQ_API_KEY (or
+    # any other provider) to secrets had zero effect on caption quality --
+    # every day Gemini's free quota ran out, captions silently fell back to
+    # a fixed, repetitive template. Now routes through LLMRouter, which
+    # tries Groq -> Gemini -> Cerebras -> OpenRouter -> GitHub Models ->
+    # DeepSeek in order and only falls back to the template if every
+    # configured provider genuinely fails.
+    from agents.llm_router import LLMRouter
+    router = LLMRouter()
 
     trend_line = ""
     if trends:
@@ -155,7 +165,8 @@ def generate(pillar, trends=None, visual_signals=""):
     except Exception as e:
         print(f"MemoryEngine skipped: {e}")
 
-    prompt = f"""You are {BRAND}. Tone: {TONE}. Audience: {AUDIENCE}.{memory_ctx}
+    system_prompt = f"You are {BRAND}. Tone: {TONE}. Audience: {AUDIENCE}."
+    prompt = f"""{memory_ctx}
 Create an Instagram/TikTok caption (3-4 short lines) for content pillar: {pillar}.
 
 Rules:
@@ -168,19 +179,10 @@ Rules:
 
 Caption:"""
 
-    caption = ""
-    if api_key:
-        try:
-            import google.generativeai as genai
-
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel("gemini-2.5-flash")
-            resp = model.generate_content(prompt)
-            caption = resp.text.strip()
-        except Exception as e:
-            print(f"Gemini: {e}")
-
+    result = router.smart_generate(prompt, task_type="creative_writing", system_prompt=system_prompt)
+    caption = result.get("response", "")
     if not caption:
+        print(f"   ⚠️  All LLM providers failed for caption ({result.get('attempts')}) -- using template")
         caption = cfg.fallback_for(pillar)
 
     # Fetch affiliate item recommendation for monetization
@@ -193,17 +195,16 @@ Caption:"""
         print(f"ProductHunter skipped: {e}")
 
     caption_fa = ""
-    if api_key and caption:
-        try:
-            import google.generativeai as genai
-            genai.configure(api_key=api_key)
-            model_fa = genai.GenerativeModel("gemini-2.5-flash")
-            resp_fa = model_fa.generate_content(f"Translate and adapt this fashion influencer caption into warm, elegant Persian (Farsi) matching Elina Radman's voice:\n{caption}\nPersian:")
-            caption_fa = resp_fa.text.strip()
-        except Exception:
-            pass
+    if caption:
+        fa_result = router.smart_generate(
+            f"Translate and adapt this fashion influencer caption into warm, elegant Persian (Farsi) "
+            f"matching Elina Radman's voice:\n{caption}\nPersian:",
+            task_type="creative_writing", system_prompt=system_prompt,
+        )
+        caption_fa = fa_result.get("response", "")
     if not caption_fa:
         caption_fa = f"استایل امروز الینا در تم {pillar} 🤍✨ نظر شما درباره این ست چیه؟"
+
 
     pid = f"elina-{datetime.now().strftime('%Y%m%d')}-{pillar[:4]}"
     return {

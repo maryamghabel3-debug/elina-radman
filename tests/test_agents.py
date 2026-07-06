@@ -673,3 +673,88 @@ def test_lip_sync_studio_degrades_without_gradio_client(workdir, monkeypatch):
     assert result["ok"] is False
     assert result["error"] == "gradio_client_not_installed"
 
+
+# --------------------------------------------------------------------------- #
+# LLMRouter -- rewritten 2026-07-06 after finding scripts/generate.py never
+# actually called it (captions always went straight to Gemini, so setting
+# GROQ_API_KEY had zero effect) and daily-content.yml/bot-runner.yml never
+# even passed GROQ_API_KEY into the job environment.
+# --------------------------------------------------------------------------- #
+def test_llm_router_degrades_clearly_with_no_providers_configured(workdir, monkeypatch):
+    """No configured provider must return a clear, empty-response result
+    with an explanatory attempts list -- never crash, and never return the
+    old opaque '[Simulation - API Key missing]' stub that looked like real
+    generated content."""
+    for key in ("GROQ_API_KEY", "GEMINI_API_KEY", "CEREBRAS_API_KEY",
+                "OPENROUTER_API_KEY", "GITHUB_MODELS_TOKEN", "DEEPSEEK_API_KEY"):
+        monkeypatch.delenv(key, raising=False)
+    from agents.llm_router import LLMRouter
+
+    result = LLMRouter().smart_generate("test prompt", task_type="creative_writing")
+    assert result["response"] == ""
+    assert result["provider"] == ""
+
+
+def test_llm_router_tries_groq_first_and_reports_real_http_error(workdir, monkeypatch):
+    """With an (invalid) GROQ_API_KEY set, the router must actually attempt
+    a real HTTP call and surface the real failure reason in 'attempts' --
+    this is what proved the previous version's silent simulation stub was
+    hiding real configuration problems."""
+    monkeypatch.setenv("GROQ_API_KEY", "fake_test_key")
+    for key in ("GEMINI_API_KEY", "CEREBRAS_API_KEY", "OPENROUTER_API_KEY",
+                "GITHUB_MODELS_TOKEN", "DEEPSEEK_API_KEY"):
+        monkeypatch.delenv(key, raising=False)
+    from agents.llm_router import LLMRouter
+
+    result = LLMRouter().smart_generate("test prompt", task_type="creative_writing")
+    assert result["response"] == ""
+    assert any("groq" in a for a in result["attempts"])
+
+
+def test_llm_router_falls_through_to_next_provider_on_failure(workdir, monkeypatch):
+    """If the first configured provider in priority order fails, the router
+    must actually try the next one instead of giving up -- the core
+    freellmapi-style behavior this rewrite was built around."""
+    monkeypatch.setenv("GROQ_API_KEY", "fake_test_key")
+    monkeypatch.setenv("GEMINI_API_KEY", "fake_test_key")
+    for key in ("CEREBRAS_API_KEY", "OPENROUTER_API_KEY", "GITHUB_MODELS_TOKEN", "DEEPSEEK_API_KEY"):
+        monkeypatch.delenv(key, raising=False)
+    from agents.llm_router import LLMRouter
+
+    result = LLMRouter().smart_generate("test prompt", task_type="creative_writing")
+    # Both configured providers must have been attempted, in priority order.
+    providers_tried = [a.split(":")[0] for a in result["attempts"]]
+    assert providers_tried == ["groq", "gemini"]
+
+
+def test_llm_router_get_best_provider_reflects_configured_priority(workdir, monkeypatch):
+    for key in ("GROQ_API_KEY", "GEMINI_API_KEY", "CEREBRAS_API_KEY",
+                "OPENROUTER_API_KEY", "GITHUB_MODELS_TOKEN", "DEEPSEEK_API_KEY"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", "fake_test_key")
+    from agents.llm_router import LLMRouter
+
+    assert LLMRouter().get_best_provider("creative_writing") == "gemini"
+
+
+def test_generate_uses_llm_router_not_gemini_directly(workdir, monkeypatch):
+    """Regression test for the real bug found while running the pipeline:
+    scripts/generate.py used to call google.generativeai directly and
+    never touched LLMRouter, so GROQ_API_KEY had zero effect on captions."""
+    import importlib
+    import scripts.generate as gen
+
+    importlib.reload(gen)
+
+    calls = []
+
+    class FakeRouter:
+        def smart_generate(self, prompt, task_type="general", system_prompt=""):
+            calls.append(task_type)
+            return {"provider": "fake", "model": "fake-model", "response": "a fake caption", "attempts": []}
+
+    monkeypatch.setattr("agents.llm_router.LLMRouter", FakeRouter)
+    piece = gen.generate("petite_styling")
+    assert piece["caption"] == "a fake caption"
+    assert len(calls) >= 1
+
