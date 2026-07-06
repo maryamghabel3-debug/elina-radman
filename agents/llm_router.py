@@ -37,8 +37,28 @@ Providers, all confirmed free-tier-with-no-credit-card via live research:
 """
 
 import os
+import re
 
 import requests
+
+# Detects CJK (Chinese/Japanese/Korean) characters -- these should NEVER
+# appear in genuinely correct Persian/English output. Found live (2026-07-06)
+# in a real GitHub Actions run: Groq's Llama 3.3 70B produced a Persian
+# caption with stray Chinese characters mixed in mid-sentence (e.g. "最近"
+# meaning "recently" appearing instead of/alongside its Persian
+# translation) -- a documented weakness of general-purpose free models on
+# non-English output (the same failure class found and fixed in the
+# YouTube-Automation-Factory sibling project's script_quality.py). A simple
+# Persian-character-percentage check does NOT catch this: the contaminating
+# characters are few relative to a long correct sentence, so the ratio
+# still looks fine (measured live: 97.6% Persian chars despite visible
+# contamination) -- checking for the PRESENCE of any CJK character at all
+# is what actually catches it.
+_CJK_CONTAMINATION_PATTERN = re.compile(r"[\u4e00-\u9fff\uac00-\ud7af\u3040-\u30ff]")
+
+
+def _has_cjk_contamination(text: str) -> bool:
+    return bool(_CJK_CONTAMINATION_PATTERN.search(text))
 
 
 class LLMRouter:
@@ -176,33 +196,44 @@ class LLMRouter:
         r.raise_for_status()
         return r.json()["choices"][0]["message"]["content"]
 
-    _CALLERS = {
-        "groq": _call_groq,
-        "gemini": _call_gemini,
-        "cerebras": _call_cerebras,
-        "openrouter": _call_openrouter,
-        "github_models": _call_github_models,
-        "deepseek": _call_deepseek,
+    _CALLER_NAMES = {
+        "groq": "_call_groq",
+        "gemini": "_call_gemini",
+        "cerebras": "_call_cerebras",
+        "openrouter": "_call_openrouter",
+        "github_models": "_call_github_models",
+        "deepseek": "_call_deepseek",
     }
 
-    def smart_generate(self, prompt, task_type="general", system_prompt=""):
+    def smart_generate(self, prompt, task_type="general", system_prompt="", language=""):
         """Tries every provider configured for this task_type, IN ORDER,
         until one genuinely succeeds (freellmapi-style failover). Returns
         {'provider', 'model', 'response', 'attempts'} -- 'attempts' lists
         every provider tried and why it failed, for debugging (this
         replaces the old silent '[Simulation - API Key missing]' stub,
         which made it impossible to tell whether a provider was
-        unconfigured, out of quota, or genuinely broken)."""
+        unconfigured, out of quota, or genuinely broken).
+
+        language='fa' additionally rejects any response containing CJK
+        (Chinese/Japanese/Korean) character contamination -- verified live
+        (2026-07-06) that Groq's free Llama 3.3 70B produces this exact
+        failure mode on Persian output despite otherwise looking correct.
+        A rejected response is treated exactly like an API failure and the
+        router falls through to the next configured provider."""
         order = self._configured_order(task_type)
         attempts = []
 
         for provider in order:
             model_name = self.providers.get(provider, provider)
-            caller = self._CALLERS[provider]
+            caller = getattr(self, self._CALLER_NAMES[provider])
             try:
                 print(f"[LLMRouter] Trying {model_name} for task: {task_type}...")
-                text = caller(self, system_prompt, prompt)
+                text = caller(system_prompt, prompt)
                 if text and text.strip():
+                    if language == "fa" and _has_cjk_contamination(text):
+                        attempts.append(f"{provider}: rejected -- CJK character contamination in Persian output")
+                        print(f"[LLMRouter] {provider} rejected: Persian output contains CJK characters")
+                        continue
                     return {"provider": provider, "model": model_name,
                             "response": text.strip(), "attempts": attempts}
                 attempts.append(f"{provider}: empty response")

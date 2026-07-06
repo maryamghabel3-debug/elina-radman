@@ -199,9 +199,11 @@ Caption:"""
         fa_result = router.smart_generate(
             f"Translate and adapt this fashion influencer caption into warm, elegant Persian (Farsi) "
             f"matching Elina Radman's voice:\n{caption}\nPersian:",
-            task_type="creative_writing", system_prompt=system_prompt,
+            task_type="creative_writing", system_prompt=system_prompt, language="fa",
         )
         caption_fa = fa_result.get("response", "")
+        if not caption_fa and fa_result.get("attempts"):
+            print(f"   ⚠️  All LLM providers failed/rejected for Persian caption ({fa_result['attempts']}) -- using template")
     if not caption_fa:
         caption_fa = f"استایل امروز الینا در تم {pillar} 🤍✨ نظر شما درباره این ست چیه؟"
 

@@ -737,6 +737,29 @@ def test_llm_router_get_best_provider_reflects_configured_priority(workdir, monk
     assert LLMRouter().get_best_provider("creative_writing") == "gemini"
 
 
+def test_llm_router_rejects_persian_response_with_cjk_contamination(workdir, monkeypatch):
+    """Regression test for a REAL bug found on a live GitHub Actions run
+    (2026-07-06): Groq's free Llama 3.3 70B produced an otherwise-correct
+    Persian caption with stray Chinese characters mixed in mid-sentence
+    (e.g. '最近' appearing where a Persian word should be). A simple
+    Persian-character-percentage check does NOT catch this (measured live:
+    97.6% Persian chars despite visible contamination) -- checking for the
+    presence of ANY CJK character is what actually catches it."""
+    from agents.llm_router import LLMRouter, _has_cjk_contamination
+
+    contaminated = "پذیرش قد کوچکم با شلوارهای پاچه‌عاجی که خطی بی‌عیب ایجاد می‌کنند.最近 در پاریس"
+    clean = "پذیرش قد کوچکم با شلوارهای پاچه‌عاجی که خطی بی‌عیب ایجاد می‌کنند. اخیراً در پاریس"
+    assert _has_cjk_contamination(contaminated) is True
+    assert _has_cjk_contamination(clean) is False
+
+    monkeypatch.setenv("GROQ_API_KEY", "fake_test_key")
+    router = LLMRouter()
+    monkeypatch.setattr(router, "_call_groq", lambda sp, p: contaminated)
+    result = router.smart_generate("test", task_type="creative_writing", language="fa")
+    assert result["response"] == ""
+    assert any("CJK" in a for a in result["attempts"])
+
+
 def test_generate_uses_llm_router_not_gemini_directly(workdir, monkeypatch):
     """Regression test for the real bug found while running the pipeline:
     scripts/generate.py used to call google.generativeai directly and
@@ -749,7 +772,7 @@ def test_generate_uses_llm_router_not_gemini_directly(workdir, monkeypatch):
     calls = []
 
     class FakeRouter:
-        def smart_generate(self, prompt, task_type="general", system_prompt=""):
+        def smart_generate(self, prompt, task_type="general", system_prompt="", language=""):
             calls.append(task_type)
             return {"provider": "fake", "model": "fake-model", "response": "a fake caption", "attempts": []}
 
