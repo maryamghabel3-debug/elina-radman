@@ -622,3 +622,54 @@ def test_ensure_weekly_moodboard_creates_file_once(workdir, monkeypatch):
     with open("content/weekly_moodboard.json") as f:
         second = json.load(f)
     assert first == second
+
+
+# --------------------------------------------------------------------------- #
+# LipSyncStudio -- real lip-sync via free Hugging Face Spaces (added 2026-07-06
+# to fix a real gap: the "custom_talking_head" workflow previously produced
+# zero mouth movement despite docs claiming SadTalker/LongCat lip-sync).
+# --------------------------------------------------------------------------- #
+def test_lip_sync_studio_fails_gracefully_with_no_source_files(workdir):
+    from agents.lip_sync_studio import LipSyncStudio
+
+    result = LipSyncStudio().sync("nonexistent_video.mp4", "nonexistent_audio.mp3")
+    assert result["ok"] is False
+    assert "error" in result
+
+
+def test_lip_sync_studio_fails_gracefully_with_missing_audio(workdir):
+    from agents.lip_sync_studio import LipSyncStudio
+
+    with open("real_video.mp4", "wb") as f:
+        f.write(b"fake video bytes")
+
+    result = LipSyncStudio().sync("real_video.mp4", "nonexistent_audio.mp3")
+    assert result["ok"] is False
+    assert result["error"] == "no_audio_path"
+
+
+def test_lip_sync_studio_degrades_without_gradio_client(workdir, monkeypatch):
+    """If gradio_client isn't installed, LipSyncStudio must degrade to a
+    clear error instead of crashing -- lip-sync is an enhancement, never a
+    hard pipeline dependency (same philosophy as every other optional agent
+    in this repo)."""
+    import builtins
+    from agents.lip_sync_studio import LipSyncStudio
+
+    with open("real_video.mp4", "wb") as f:
+        f.write(b"fake video bytes")
+    with open("real_audio.mp3", "wb") as f:
+        f.write(b"fake audio bytes")
+
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "gradio_client":
+            raise ImportError("simulated missing dependency")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    result = LipSyncStudio().sync("real_video.mp4", "real_audio.mp3")
+    assert result["ok"] is False
+    assert result["error"] == "gradio_client_not_installed"
+

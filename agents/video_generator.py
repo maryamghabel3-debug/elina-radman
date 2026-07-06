@@ -152,9 +152,54 @@ class DirectorAgent(Agent):
             
         elif plan['workflow'] == "custom_talking_head":
             self.log(f"Generating Talking Head via {plan['primary_model']}...")
-            if audio_text:
-                self.log("Generating Voiceover (Edge-TTS)...")
+            # REAL IMPLEMENTATION (2026-07-06) -- this branch used to only
+            # set an output filename and log "Generating Voiceover" without
+            # actually calling any TTS or lip-sync tool, then silently fell
+            # through to the same silent Ken-Burns zoom every other
+            # workflow uses. That meant every "talking head" video ElinaOS
+            # ever produced had NO mouth movement at all, contradicting the
+            # docs/catalog above which name real lip-sync models
+            # (SadTalker/LongCat/OmniTalker). Now actually:
+            #   1. renders a real edge-tts voiceover from audio_text (or the
+            #      vision text if no separate audio_text was given)
+            #   2. builds the silent zoom video exactly as before (this is
+            #      still a real, valid clip -- just without lip movement)
+            #   3. sends BOTH to LipSyncStudio (real, verified-live
+            #      fffiloni/LatentSync Space) to get a version where Elina's
+            #      mouth actually matches the narration
+            # Falls back to the silent zoom clip if TTS or lip-sync fails
+            # for any reason (network, quota, HF_TOKEN missing) -- never
+            # crashes the pipeline over an optional enhancement.
             output_video = os.path.join(self.output_dir, "longcat_talking_head.mp4")
+            speech_text = audio_text or user_vision
+            audio_path = os.path.join(self.output_dir, f"talking_head_audio_{int(datetime.now().timestamp())}.mp3")
+            tts_ok = False
+            if speech_text:
+                self.log("Generating real voiceover (edge-tts)...")
+                try:
+                    import edge_tts
+                    communicate = edge_tts.Communicate(speech_text, "en-US-JennyNeural")
+                    asyncio.run(communicate.save(audio_path))
+                    tts_ok = os.path.exists(audio_path) and os.path.getsize(audio_path) > 0
+                except Exception as e:
+                    self.log(f"edge-tts voiceover failed: {e}", "warning")
+
+            silent_ok = self._create_real_video(user_vision, output_video)
+
+            if tts_ok and silent_ok:
+                try:
+                    from .lip_sync_studio import LipSyncStudio
+                    sync_result = LipSyncStudio().sync(output_video, audio_path)
+                    if sync_result.get("ok"):
+                        output_video = sync_result["video_path"]
+                        cloud_success = True
+                        self.log(f"Real lip-synced talking head produced via {sync_result.get('provider')}")
+                    else:
+                        self.log(f"Lip-sync unavailable ({sync_result.get('error')}) -- "
+                                 f"delivering silent zoom clip instead", "warning")
+                except Exception as e:
+                    self.log(f"LipSyncStudio unavailable ({e}) -- delivering silent zoom clip", "warning")
+
             
         else:
             self.log(f"Generating Cinematic B-Roll via {plan['primary_model']}...")

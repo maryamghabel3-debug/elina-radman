@@ -6,9 +6,10 @@
 
 ## 🌟 دسته اول: ایجنت‌های اختصاصی اینفلوئنسر و تولید محتوای شبکه‌های اجتماعی (Social Media & Influencer Agents)
 
-1. **AI-Influencer-Generator (`SamurAIGPT/AI-Influencer-Generator`)**
+1. **AI-Influencer-Generator (`SamurAIGPT/AI-Influencer-Generator`)** ✅ **متحرک‌سازی لب واقعاً اضافه شد (۶ ژوئیه ۲۰۲۶)**
    - **توضیح:** جعبه‌ابزار کامل و آماده برای ساخت اینفلوئنسرهای مجازی رایگان. شامل پایپ‌لاین تولید پرامپت با GPT، تولید عکس با Stable Diffusion، تبدیل متن به صدا با gTTS و متحرک‌سازی لب‌ها با SadTalker.
    - **لینک مخزن:** [https://github.com/SamurAIGPT/AI-Influencer-Generator](https://github.com/SamurAIGPT/AI-Influencer-Generator)
+   - **وضعیت در ElinaOS:** با بررسی کد `agents/video_generator.py` مشخص شد که مسیر «ویدیوی صحبت‌کننده» اصلاً حرکت لب واقعی نداشت (فقط زوم روی عکس ثابت بود، برخلاف ادعای مستندات قبلی). یک ماژول جدید (`agents/lip_sync_studio.py`) ساخته شد که واقعاً به سرویس‌های رایگان Hugging Face (LatentSync، Wav2Lip، SadTalker) متصل می‌شه. جزئیات کامل و محدودیت‌های واقعی هرکدوم در `docs/LIP-SYNC-SETUP.md` مستند شده.
 
 2. **Open-AI-Design-Agent (`Anil-matcha/Open-AI-Design-Agent`)**
    - **توضیح:** ایجنت طراحی خودمختار و جایگزین متن‌باز برای Lovart و Runway. قابلیت دریافت کیت برند (رنگ، لوگو و فونت) و تولید خودکار پوستر، پست‌های اینستاگرام، ریلز و تامنیل یوتیوب.

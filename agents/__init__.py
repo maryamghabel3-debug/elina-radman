@@ -5,6 +5,7 @@ from .memory_engine import MemoryEngine
 from .faceless_studio import FacelessStudio
 from .image_studio import ImageStudio
 from .video_generator import DirectorAgent
+from .lip_sync_studio import LipSyncStudio
 from .product_hunter import ProductHunter
 from .fashion_stylist import FashionStylist
 from .trend_hunter import TrendHunter
