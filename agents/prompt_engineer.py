@@ -336,11 +336,89 @@ class PromptEngineerAgent(Agent):
         
         return json.dumps(script_payload, indent=2)
 
+    # ==================================================================
+    # CHARACTER IDENTITY LOCKING PIPELINE
+    # Added per user request based on the "Cinematic AI Food Film"
+    # breakdown by the creator who locks identity BEFORE any video via a
+    # 3-step pipeline: (1) full-body, (2) 8K face close-up with real skin
+    # pores/imperfections, (3) a multi-angle character reference sheet.
+    # This is THE key to 100% face consistency across every scene/video,
+    # because giving the video model (Kling/Seedance/Hunyuan) a multi-angle
+    # turnaround sheet stops it from inventing/changing the face on head
+    # turns. Run this ONCE to mint Elina's canonical reference assets.
+    # ==================================================================
+
+    def generate_character_reference_sheet(self):
+        """STEP 3 of the pipeline: a print-ready multi-angle turnaround sheet.
+        This is the single most important asset for face consistency -- it
+        locks Elina's identity from every angle so downstream video models
+        never drift the face on profile/back turns."""
+        self.log("Minting Elina's canonical CHARACTER REFERENCE SHEET (identity lock)")
+        return (
+            f"Create a professional character reference sheet based strictly on the uploaded reference image of "
+            f"{self.base_subject}. Use a clean neutral plain light-grey background and present the sheet as a "
+            f"technical model turnaround while matching the exact realistic visual style of the reference. "
+            f"Arrange the composition into two horizontal rows. "
+            f"TOP ROW: four full-body standing views -- front, left profile, right profile, and back. "
+            f"BOTTOM ROW: three close-up portraits -- front, left profile, right profile. "
+            f"Maintain PERFECT identity consistency across every panel (same face, same bone structure, "
+            f"same hair, same height and proportions). Keep the subject in a relaxed A-pose with consistent "
+            f"scale and alignment, accurate anatomy, and a clear silhouette. Lighting must be identical and "
+            f"even across all panels. Output a crisp, ultra-realistic, print-ready reference sheet. No text, "
+            f"no writings, no watermarks, no labels."
+        )
+
+    def generate_8k_face_closeup(self):
+        """STEP 2 of the pipeline: the 8K skin-realism enhancement pass.
+        The pro secret from the breakdown -- explicitly asking for pores and
+        natural skin imperfections is what removes the fake 'plastic AI'
+        look and makes Elina read as a real photographed human."""
+        self.log("Generating 8K skin-realism face close-up for Elina")
+        return (
+            f"Extreme close-up of {self.base_subject}'s face, enhanced to 8K image detail. "
+            f"Enhance facial skin realism while preserving ALL facial features, bone structure and expression exactly. "
+            f"Add realistic skin pores, fine peach fuzz, subtle natural skin imperfections, faint under-eye texture, "
+            f"soft natural sebum highlights on the T-zone, and individual eyebrow/eyelash strands. "
+            f"Photographed on a 100mm macro lens at f/4, soft even beauty lighting. "
+            f"Absolutely no airbrushing, no CGI, no 3D-render smoothness, no plastic skin -- raw photorealistic human skin only."
+        )
+
+    def generate_full_body_reference(self, outfit_desc="a plain fitted outfit in a neutral tone"):
+        """STEP 1 of the pipeline: the full-body establishing shot that
+        pins down proportions, height and styling before the face pass."""
+        self.log("Generating full-body character reference for Elina")
+        return (
+            f"Full body shot of {self.base_subject}, wearing {outfit_desc}, standing in a relaxed natural pose "
+            f"against a plain neutral background. Entire body visible head-to-toe with no cropping, accurate petite "
+            f"150cm proportions, natural detailed skin texture with visible pores, shot on Canon EOS R5 50mm f/4, "
+            f"even studio lighting, ultra-realistic, zero CGI or airbrushing."
+        )
+
+    def build_identity_pipeline(self, outfit_desc="a plain fitted outfit in a neutral tone"):
+        """Returns all 3 identity-locking assets in the exact order the
+        breakdown recommends generating them. Run this ONCE up front; feed
+        the resulting reference sheet into every video generation call."""
+        return {
+            "step_1_full_body": self.generate_full_body_reference(outfit_desc),
+            "step_2_face_8k": self.generate_8k_face_closeup(),
+            "step_3_reference_sheet": self.generate_character_reference_sheet(),
+            "pro_tip": (
+                "Generate these BEFORE any video. The reference sheet locks identity so Elina looks identical "
+                "across every scene. Always pass the reference sheet (not a single random selfie) as the "
+                "character reference into Kling/Seedance/Hunyuan."
+            ),
+        }
+
     def run(self, base_concept, format_type="photo", tone="dark"):
         self.runs += 1
         self.last_run = datetime.now().isoformat()
-        
+
         if format_type == "photo":
             return self.generate_photo_prompt(base_concept, tone)
+        elif format_type == "reference_sheet":
+            # One-time identity-locking pipeline (full-body -> 8K face -> turnaround sheet)
+            return self.build_identity_pipeline()
+        elif format_type == "face_8k":
+            return self.generate_8k_face_closeup()
         else:
             return self.generate_cinematic_json_script(base_concept, tone)
