@@ -409,6 +409,249 @@ class PromptEngineerAgent(Agent):
             ),
         }
 
+
+    def generate_hero_asset_prompt(
+        self,
+        asset_name="signature object",
+        asset_context="fashion editorial",
+        material_focus="texture, fibers, surface detail, steam/dust/particles when appropriate",
+    ):
+        """Generate a separate HERO ASSET prompt before video production.
+
+        Inspired by the cinematic food-film workflow: first create the hero object
+        (food/product/outfit/accessory) as a reference image, then feed it into
+        the video model. This keeps lighting, material style, color palette, and
+        texture consistent across all shots.
+        """
+        return (
+            f"HERO ASSET REFERENCE — {asset_name}. Context: {asset_context}. "
+            "Create a premium commercial/editorial hero shot, centered composition, no text, no logos, no watermark. "
+            "Use one clear material language and one consistent surface/background. "
+            f"Emphasize {material_focus}. "
+            "Include micro-detail: pores, fabric weave, leather grain, metal reflections, dust motes, steam, scratches, "
+            "or natural imperfections where relevant. Lighting must be consistent with the final video: high-end cinematic "
+            "key light plus motivated back/rim light, deep controlled shadows, realistic reflections, and physically plausible scale. "
+            "Ultra-realistic, print-ready, commercial still, 8K detail."
+        )
+
+    def generate_exploded_view_prompt(self, elements, base_surface="minimal dark editorial surface", aesthetic="cinematic editorial"):
+        """Generate an exploded-view / suspended-elements reference.
+
+        The food-film breakdown teaches that complex scenes become more controllable
+        when important components are pre-generated as clean references: ingredients,
+        accessories, garments, products, cards, plants, props, etc.
+        """
+        if isinstance(elements, (list, tuple)):
+            elements_text = ", ".join(elements)
+        else:
+            elements_text = str(elements)
+
+        return (
+            "EXPLODED VIEW REFERENCE — vertical suspended composition. "
+            f"Elements: {elements_text}. Base surface: {base_surface}. "
+            f"Aesthetic: {aesthetic}. Arrange each element in clean vertical alignment, hovering with believable scale, "
+            "each object separated and readable, no hands, no body parts unless explicitly requested. "
+            "Add tiny airborne particles, dust, fabric fibers, spice-like particulate energy, or pollen/leaf particles when suitable. "
+            "Use consistent lens, lighting, background, and color palette with the hero asset. "
+            "No text, no symbols, no labels. Ultra-realistic, crisp, high-detail reference plate."
+        )
+
+    def generate_action_detail_prompt(
+        self,
+        action="hands adjusting a garment",
+        surface="dark editorial prep surface",
+        detail_focus="texture and motion",
+        aesthetic="high-end cinematic editorial",
+    ):
+        """Generate a close action-shot prompt for tactile motion references."""
+        return (
+            "ACTION DETAIL REFERENCE — tactile close-up. "
+            f"Action: {action}. Surface/background: {surface}. "
+            f"Focus: {detail_focus}. Aesthetic: {aesthetic}. "
+            "Macro-level detail, realistic contact, pressure, material deformation, particles in air, natural imperfections, "
+            "motivated directional lighting, shallow depth of field, no distracting background elements, no text or watermark."
+        )
+
+    def generate_directed_production_workflow(
+        self,
+        base_concept,
+        production_type="fashion",
+        duration="15 seconds",
+        mood="cinematic pressure",
+        platform="reels/shorts/youtube",
+    ):
+        """Create a full directed AI-video workflow with pre-production assets.
+
+        This combines lessons from:
+        - Card Sovereign: pressure, rhythm, low-angle authority, speed-ramping, sound design.
+        - Cinematic Food Film: build character first, 8K face, reference sheet, hero asset,
+          exploded view, action-detail shots, JSON timecoded direction, lens logic, particles,
+          hero reveal, negative space, and consistent visual references.
+        """
+        self.log(f"Engineering directed production workflow for: {base_concept[:80]}")
+
+        # Choose objects and tactile details based on topic, but keep it generic enough
+        # for fashion, food, product, psychology, gardening, and cinematic content.
+        concept_lower = base_concept.lower()
+        if production_type == "food" or any(k in concept_lower for k in ["food", "chef", "recipe", "kitchen", "spice", "cook"]):
+            hero_asset = "the final plated dish / hero food object"
+            exploded_elements = ["main ingredient", "herbs", "spices", "oil drizzle", "steam", "garnish", "texture particles"]
+            action = "hands seasoning, plating, slicing, or revealing the hero food object"
+            environment = "high-end dark cinematic kitchen with matte surfaces, dark wood, steel fixtures, dramatic negative space"
+            effects = "spice dust explosions, steam bursts, oil drizzle, heat distortion, micro herb flakes drifting"
+            lenses = "24mm for explosive wide action, 100mm macro for texture, steam, skin/fabric/product detail"
+        elif production_type == "product" or any(k in concept_lower for k in ["bag", "shoe", "jewelry", "perfume", "product"]):
+            hero_asset = "the featured product/accessory"
+            exploded_elements = ["product", "packaging", "material fragments", "reflection highlights", "brand-color accents"]
+            action = "hands reveal, rotate, open, wear, or place the product with deliberate elegance"
+            environment = "luxury editorial set with controlled negative space, premium surfaces, and clean shadows"
+            effects = "dust motes, polished reflections, fabric fibers, soft glints, subtle lens flare"
+            lenses = "50mm for natural product scale, 100mm macro for leather grain/metal reflection/fabric weave"
+        else:
+            hero_asset = "Elina's outfit / signature visual object / emotional symbol of the scene"
+            exploded_elements = ["garment details", "accessories", "plant/nature symbol", "light particles", "fabric motion"]
+            action = "Elina performs one intentional gesture connected to the story"
+            environment = "cinematic fashion/lifestyle location with controlled negative space and emotionally meaningful props"
+            effects = "floating dust, fabric movement, hair movement, pollen/leaf particles, atmospheric haze"
+            lenses = "35mm for intimate lifestyle movement, 85mm for portraits, 100mm macro for fabric/skin/accessory detail"
+
+        identity_pipeline = self.build_identity_pipeline(
+            outfit_desc="a clean full-body styling reference matching the chosen story, with exact face and petite proportions preserved"
+        )
+
+        workflow = {
+            "workflow_name": "Directed Cinematic AI Video Workflow",
+            "based_on": [
+                "Card Sovereign pressure/rhythm/sound-design method",
+                "Cinematic Food Film reference-first production method",
+                "Aduni 5-part photoreal prompt formula",
+            ],
+            "platform": platform,
+            "duration": duration,
+            "pre_production": {
+                "identity_lock": identity_pipeline,
+                "hero_asset_prompt": self.generate_hero_asset_prompt(
+                    hero_asset,
+                    asset_context=f"{production_type} / {base_concept}",
+                    material_focus="macro detail, realistic imperfections, consistent lighting, surface texture, particles, steam/fabric/light movement",
+                ),
+                "exploded_view_prompt": self.generate_exploded_view_prompt(
+                    exploded_elements,
+                    base_surface="the same surface/background language as the hero asset",
+                    aesthetic="premium cinematic editorial realism",
+                ),
+                "action_detail_prompt": self.generate_action_detail_prompt(
+                    action=action,
+                    surface="the same set/background as the hero asset",
+                    detail_focus="material contact, deliberate gesture, texture, motion, particles, and believable physics",
+                    aesthetic="cinematic commercial/editorial realism",
+                ),
+                "pro_tip": (
+                    "Generate hero asset first, then exploded/detail references. Use them as references for the video model. "
+                    "This keeps lighting, props, surfaces, textures, color palette, and identity consistent across all shots."
+                ),
+            },
+            "video_prompt_json": {
+                "scene_duration": duration,
+                "style": {
+                    "environment": environment,
+                    "lighting": (
+                        "high-contrast motivated lighting: controlled key light carving the subject/object, "
+                        "rim/back light for separation, hard shadows where drama is needed, soft fill only when emotionally justified"
+                    ),
+                    "effects": effects,
+                    "mood": mood,
+                    "negative_space": "use darkness/empty space as a storytelling weapon; avoid busy backgrounds and random colorful clutter",
+                },
+                "references": {
+                    "character_identity": "@[Character Reference Sheet] exact Elina identity, exact face, exact petite proportions, no face drift",
+                    "hero_asset": "@[Hero Asset Reference] final object/product/outfit/food shot with consistent lighting and texture",
+                    "exploded_view": "@[Exploded View Reference] suspended components for motion and detail continuity",
+                    "action_detail": "@[Action Detail Reference] tactile close-up for believable hands/material interaction",
+                },
+                "camera_language": {
+                    "general": (
+                        "directed cinematic pacing: intentional hook, aggressive but motivated push-ins, whip-pans only on action beats, "
+                        "snap cuts, bullet-time freezes, low-angle hero shots, selective dutch angles, handheld breathing only when it adds tension"
+                    ),
+                    "lenses": lenses,
+                    "depth": "use shallow depth of field for emotion/detail, deeper focus only for spatial reveals",
+                    "framing": "every shot must have a clear subject, readable silhouette, and no accidental crops of face/hands/product",
+                },
+                "sequence": [
+                    {
+                        "time": "0-2s",
+                        "beat": "THE HOOK / ENTRANCE",
+                        "direction": (
+                            f"Start with the strongest visual promise of {base_concept}. Open with controlled pressure, not random motion. "
+                            "Camera breathes inward. One clear gesture or reveal makes the viewer stop scrolling."
+                        ),
+                        "camera": "extreme close-up or low-angle hero entrance -> slow push-in",
+                        "speed_ramp": "near-still pause -> 0.25x slow-motion on the first meaningful gesture",
+                    },
+                    {
+                        "time": "2-6s",
+                        "beat": "THE TACTILE MONEY SHOT",
+                        "direction": (
+                            "Feature the most satisfying object/material/action: texture, fabric, product, food, plant, card, hand gesture, or emotional symbol. "
+                            "Use macro detail. Make every fiber, pore, grain, crease, reflection, particle, or steam trail visible."
+                        ),
+                        "camera": "100mm macro insert -> rapid push-in -> suspended slow-motion hover",
+                        "speed_ramp": "full speed launch/action -> instant extreme slow-motion hover -> snap back to full speed",
+                    },
+                    {
+                        "time": "6-10s",
+                        "beat": "THE EXPLOSION / TRANSFORMATION",
+                        "direction": (
+                            "Use the exploded-view logic: components rise, rotate, assemble, reveal, or orbit around the subject. "
+                            "The subject remains composed while the world moves around her/it."
+                        ),
+                        "camera": "360-degree orbit while rising, low upshot, tight side cut, rotating follow shot",
+                        "speed_ramp": "0.5x build -> 1.5x fast cuts -> bullet-time freeze",
+                    },
+                    {
+                        "time": "10-15s",
+                        "beat": "THE HERO RELEASE / FINAL FRAME",
+                        "direction": (
+                            "Resolve with a powerful hero image: final outfit/product/dish/idea perfectly framed. "
+                            "End on an epic freeze frame that feels like the beginning of something bigger."
+                        ),
+                        "camera": "wide pull-back -> final centered hero frame -> freeze",
+                        "speed_ramp": "ultra slow -> full speed impact -> silence/freeze",
+                    },
+                ],
+                "sound_design": {
+                    "voice": "deep/clear/intimate voiceover when needed; voice must match the language, emotion, and platform",
+                    "foley": "sharp whooshes, tactile fabric/product/food sounds, micro cracks, breath, room tone",
+                    "slow_motion": "low-frequency audio stretch, near-silence with ambient hum during hover moments",
+                    "music": "score must support the scene like a trailer, not generic background music",
+                    "ending": "sub-bass impact hit, then a short silence to create memory",
+                },
+                "subtitle_rules": {
+                    "required": True,
+                    "style": "platform-optimized, high contrast, not covering face/product/hands; word-by-word for shorts when appropriate",
+                    "languages": "generate subtitles in target language and optionally English for international reach",
+                },
+                "negative_prompt": (
+                    "no anime, no CGI look unless explicitly CGV, no plastic skin, no random text/symbols/logos, no face drift, "
+                    "no extra fingers, no distorted hands, no inconsistent outfit, no busy colorful background, no flat lighting, "
+                    "no abrupt/jarring cuts that feel accidental, no low-quality blur, no watermark"
+                ),
+            },
+            "qa_checklist": [
+                "Does identity remain identical in every frame/reference?",
+                "Is there a clear hero asset or hero visual promise?",
+                "Are lighting/background/materials consistent across references and video?",
+                "Does the first 1-2 seconds stop scrolling?",
+                "Is there speed-ramp rhythm: full speed -> slow hover -> snap/impact?",
+                "Are micro-details visible (pores, fibers, reflections, steam, particles)?",
+                "Does sound design carry emotion, not just fill silence?",
+                "Does the final freeze/hero frame leave viewers wanting more?",
+                "Are subtitles readable and not covering important visual areas?",
+            ],
+        }
+        return workflow
+
     def run(self, base_concept, format_type="photo", tone="dark"):
         self.runs += 1
         self.last_run = datetime.now().isoformat()
@@ -420,5 +663,9 @@ class PromptEngineerAgent(Agent):
             return self.build_identity_pipeline()
         elif format_type == "face_8k":
             return self.generate_8k_face_closeup()
+        elif format_type in ["directed_workflow", "production_workflow", "cinematic_workflow", "food_film"]:
+            # Full pre-production + video-direction pipeline learned from
+            # Card Sovereign and Cinematic Food Film prompt breakdowns.
+            return self.generate_directed_production_workflow(base_concept, production_type=tone)
         else:
             return self.generate_cinematic_json_script(base_concept, tone)
