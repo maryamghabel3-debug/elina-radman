@@ -1,6 +1,6 @@
 name: Generate Daily Content
 on:
-  schedule: [{cron: '0 23 * * *'}]
+  # schedule: [{cron: '0 23 * * *'}]
   workflow_dispatch:
 
 permissions:
