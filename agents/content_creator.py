@@ -164,11 +164,12 @@ class ContentCreator(Agent):
         if not generated_caption:
             generated_caption = self.FALLBACK_CAPTIONS.get(
                 pillar,
-                self.FALLBACK_CAPTIONS["ootd"],
+                self.FALLBACK_CAPTIONS["mindful_lifestyle"],
             )
         
-        # Smart Monetization Injection
-        if pillar in ["ootd", "petite_styling", "smart_shopping"] and products:
+        # Smart Monetization Injection - V2: adapted to psychology pillars
+        # TODO: Needs PM decision if affiliate logic still relevant for psychology content
+        if pillar in ["psychology_insights", "ai_art_therapy", "mindful_lifestyle"] and products:
             prod = random.choice(products)
             affiliate_section = (
                 f"\n\n✨ Found the perfect {prod['name']} from {prod['brand']} "
@@ -205,7 +206,7 @@ class ContentCreator(Agent):
             target_platforms = ["instagram", "tiktok"]
             if p == "ai_tech_hacks":
                 target_platforms.extend(["youtube", "threads"])
-            elif p in ["ootd", "petite_styling"]:
+            elif p in ["psychology_insights", "mindful_lifestyle"]:
                 target_platforms.extend(["pinterest", "lemon8"])
 
             piece = {
