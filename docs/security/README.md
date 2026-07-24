@@ -1,5 +1,36 @@
 # Security Documentation Index - ElinaOS
 
+> **Status Notice**
+> This security documentation describes the intended V2 security target state for ElinaOS.
+> It must not be interpreted as fully implemented unless a section is explicitly marked `CURRENT`.
+> All unverified controls are marked as `TARGET`, `TODO`, or `PROPOSED`.
+> Last reviewed: 2026-07-24
+
+## Implementation Status Legend
+
+- `CURRENT` — Verified in the current repository code.
+- `TARGET` — Intended for ElinaOS V2, not yet implemented.
+- `TODO` — Required, must be implemented before production launch.
+- `PROPOSED` — Optional future hardening idea.
+- `UNKNOWN` — Requires manual verification.
+
+## Security Control Status Summary
+
+| Area | Status | Notes |
+|---|---|---|
+| Secret handling in repository | TARGET | Must use GitHub Secrets / env vars; no secrets in tracked files |
+| Prompt injection defense | TARGET | Requires runtime implementation in agents |
+| Human approval before publish | TARGET | Non-negotiable for V2 |
+| Branch protection on main | TODO | Must be configured by owner in GitHub UI |
+| Audit logging | TARGET | Policy defined, implementation pending |
+| Agent sandboxing | PROPOSED | Future hardening |
+| Network egress control | PROPOSED | Future hardening |
+| Incident response process | TARGET | Documented, not yet tested |
+| Third-party agent review | TARGET | Framework proposed |
+| Data encryption at rest | PROPOSED | Depends on final storage choice |
+| MFA on GitHub account | TODO | Owner must enable |
+| Token rotation policy | TODO | 30-90 day rotation |
+
 ElinaOS implements zero-trust, defense-in-depth, and secure-by-default.
 This index maps all security controls and their validation status.
 
@@ -10,24 +41,24 @@ This index maps all security controls and their validation status.
 - Secure by default: unsafe patterns blocked at CI and runtime.
 - Transparency: all controls documented, auditable, and versioned.
 
-## Document Map (14 files)
+## Document Map (14 files) - V2 Target State
 
-| # | File | Lines | Scope | Status |
+| # | File | Scope | Status | Notes |
 |---|---|---|---|---|
-| 1 | SECURITY_ARCHITECTURE.md | 255 | zero-trust layers | PASS |
-| 2 | THREAT_MODEL.md | 182 | risks + mitigations | PASS |
-| 3 | PROMPT_INJECTION_DEFENSE.md | 164 | LLM input/output | PASS |
-| 4 | SECURITY_AGENT_RUNTIME.md | 102 | runtime guardrails | PASS |
-| 5 | CHANNEL_SECURITY_TELEGRAM_WEB_MOBILE.md | 95 | channel isolation | PASS |
-| 6 | SECRETS_AND_KEY_MANAGEMENT.md | 107 | keys, rotation | PASS |
-| 7 | LOGGING_AND_MONITORING.md | 90 | detections | PASS |
-| 8 | DATA_PROTECTION_AND_ENCRYPTION.md | 84 | crypto at rest/in transit | PASS |
-| 9 | AGENT_SECURITY_MODEL.md | 84 | agent trust boundaries | PASS |
-| 10 | INCIDENT_RESPONSE.md | 83 | playbooks | PASS |
-| 11 | SECURITY_TESTING.md | 82 | SAST/DAST/tests | PASS |
-| 12 | IDENTITY_AND_ACCESS_CONTROL.md | 80 | RBAC/ABAC | PASS |
-| 13 | THIRD_PARTY_AGENT_REVIEW.md | 104 | supply chain | PASS |
-| 14 | README.md | 109 | index | PASS |
+| 1 | SECURITY_ARCHITECTURE.md | zero-trust layers | TARGET | 7 pillars defined, implementation pending |
+| 2 | THREAT_MODEL.md | risks + mitigations | TARGET | R01-R18 documented |
+| 3 | PROMPT_INJECTION_DEFENSE.md | LLM input/output | TARGET | 8-layer defense proposed |
+| 4 | SECURITY_AGENT_RUNTIME.md | runtime guardrails | TARGET | 5 guardrails + 8 actions |
+| 5 | CHANNEL_SECURITY_TELEGRAM_WEB_MOBILE.md | channel isolation | TARGET | Telegram/Web/Mobile policy |
+| 6 | SECRETS_AND_KEY_MANAGEMENT.md | keys, rotation | TODO | must use vault / GitHub Secrets |
+| 7 | LOGGING_AND_MONITORING.md | detections | TARGET | SIEM rules proposed |
+| 8 | DATA_PROTECTION_AND_ENCRYPTION.md | crypto at rest/in transit | PROPOSED | envelope encryption plan |
+| 9 | AGENT_SECURITY_MODEL.md | agent trust boundaries | TARGET | L0-L3 trust levels |
+| 10 | INCIDENT_RESPONSE.md | playbooks | TARGET | playbooks documented, not tested |
+| 11 | SECURITY_TESTING.md | SAST/DAST/tests | TARGET | testing framework proposed |
+| 12 | IDENTITY_AND_ACCESS_CONTROL.md | RBAC/ABAC | TODO | OPA policies to be implemented |
+| 13 | THIRD_PARTY_AGENT_REVIEW.md | supply chain | TARGET | supply chain review process |
+| 14 | README.md | index | CURRENT | index file, verified in repo |
 
 ## Validation Criteria
 - Minimum 80 lines for critical docs, 60 for runtime/channel.
@@ -51,7 +82,7 @@ This index maps all security controls and their validation status.
 
 ## Telegram + Web + Mobile Isolation
 - Telegram bot runs in separate VPC, no direct DB access.
-- Web/mobile clients use signed JWTs, rate limited per IP+user.
+- TARGET: Web/mobile clients use signed JWTs, rate limited per IP+user.
 - See CHANNEL_SECURITY_TELEGRAM_WEB_MOBILE.md for limits.
 
 ## Runtime Guardrails
@@ -62,7 +93,7 @@ This index maps all security controls and their validation status.
 ## How to Verify Locally
 - `./scripts/security_validate.sh` runs line-count + max-len check.
 - `git diff --check` ensures no whitespace errors.
-- Secret scan: `gitleaks` or `trufflehog` with allowlist.
+- TARGET: Secret scan: `gitleaks` or `trufflehog` with allowlist.
 - Link check: `markdown-link-check docs/security/*.md`.
 
 ## Contacts
@@ -77,33 +108,6 @@ This index maps all security controls and their validation status.
 
 ## References
 - NIST 800-207 Zero Trust Architecture
-- OWASP LLM Top 10 2025 - Prompt Injection
+- TARGET: OWASP LLM Top 10 2025 - Prompt Injection
 - OWASP ASVS 5.0 + Agent Security Model
 - CIS Controls v8 - Logging and Monitoring
-- Additional compliance note 82: aligns with SOC2 CC6.1.
-- Additional compliance note 83: aligns with SOC2 CC6.1.
-- Additional compliance note 84: aligns with SOC2 CC6.1.
-- Additional compliance note 85: aligns with SOC2 CC6.1.
-- Additional compliance note 86: aligns with SOC2 CC6.1.
-- Additional compliance note 87: aligns with SOC2 CC6.1.
-- Additional compliance note 88: aligns with SOC2 CC6.1.
-- Additional compliance note 89: aligns with SOC2 CC6.1.
-- Additional compliance note 90: aligns with SOC2 CC6.1.
-- Additional compliance note 91: aligns with SOC2 CC6.1.
-- Additional compliance note 92: aligns with SOC2 CC6.1.
-- Additional compliance note 93: aligns with SOC2 CC6.1.
-- Additional compliance note 94: aligns with SOC2 CC6.1.
-- Additional compliance note 95: aligns with SOC2 CC6.1.
-- Additional compliance note 96: aligns with SOC2 CC6.1.
-- Additional compliance note 97: aligns with SOC2 CC6.1.
-- Additional compliance note 98: aligns with SOC2 CC6.1.
-- Additional compliance note 99: aligns with SOC2 CC6.1.
-- Additional compliance note 100: aligns with SOC2 CC6.1.
-- Additional compliance note 101: aligns with SOC2 CC6.1.
-- Additional compliance note 102: aligns with SOC2 CC6.1.
-- Additional compliance note 103: aligns with SOC2 CC6.1.
-- Additional compliance note 104: aligns with SOC2 CC6.1.
-- Additional compliance note 105: aligns with SOC2 CC6.1.
-- Additional compliance note 106: aligns with SOC2 CC6.1.
-- Additional compliance note 107: aligns with SOC2 CC6.1.
-- Additional compliance note 108: aligns with SOC2 CC6.1.

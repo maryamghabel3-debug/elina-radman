@@ -5,11 +5,11 @@ Every tool call passes through 5 guardrails before execution.
 
 ## 5 Guardrails
 
-1. **InputGuard**: validates prompt length, charset, BIDI, injection markers.
-2. **ToolGuard**: checks tool allowlist, args schema, rate limit, cost cap.
-3. **OutputGuard**: filters PII, secrets, disallowed content, exfil URLs.
-4. **MemoryGuard**: scopes memory per agent, prevents cross-tenant leak.
-5. **NetworkGuard**: egress allowlist, no private IP, DNS pinning.
+TARGET: 1. **InputGuard**: validates prompt length, charset, BIDI, injection markers.
+TARGET: 2. **ToolGuard**: checks tool allowlist, args schema, rate limit, cost cap.
+TARGET: 3. **OutputGuard**: filters PII, secrets, disallowed content, exfil URLs.
+TARGET: 4. **MemoryGuard**: scopes memory per agent, prevents cross-tenant leak.
+TARGET: 5. **NetworkGuard**: egress allowlist, no private IP, DNS pinning.
 
 ## Trust Levels
 - L0 Untrusted: external user input, web scraping.
@@ -31,15 +31,15 @@ Every tool call passes through 5 guardrails before execution.
 | 8 | ALERT + KILL | critical exfil attempt | terminate session |
 
 ## Execution Flow
-User Input -> InputGuard -> LLM -> OutputGuard -> ToolGuard ->
-MemoryGuard -> NetworkGuard -> Tool Execution -> Log.
+TARGET: User Input -> InputGuard -> LLM -> OutputGuard -> ToolGuard ->
+TARGET: MemoryGuard -> NetworkGuard -> Tool Execution -> Log.
 On failure, fallback to safe state and emit audit event.
 
 ## Memory Isolation
 - Per-agent vector store, tenant ID in every key.
 - No global memory write without L2 approval.
 - TTL 24h for episodic, 90d for semantic with review.
-- Embedding encryption at rest using AES-256-GCM.
+- TARGET: Embedding encryption at rest using AES-256-GCM.
 
 ## Tool Policy Example (YAML)
 ```yaml
@@ -74,29 +74,10 @@ tools:
 - If network guard cannot resolve allowlist, block egress.
 
 ## Operator Override
-- Human in loop can approve QUARANTINE items via dashboard.
-- Override requires MFA + second approver for L3 actions.
+- TARGET: Human in loop can approve QUARANTINE items via dashboard.
+- TARGET: Override requires MFA + second approver for L3 actions.
 - All overrides audited with justification ticket ID.
 
 ## Version History
 - v1.1: Added 5 guardrails, 8 actions, fail-closed logic.
 - v1.2: Added cost caps and BIDI checks.
-- Runtime hardening note 83: seccomp + read-only FS.
-- Runtime hardening note 84: seccomp + read-only FS.
-- Runtime hardening note 85: seccomp + read-only FS.
-- Runtime hardening note 86: seccomp + read-only FS.
-- Runtime hardening note 87: seccomp + read-only FS.
-- Runtime hardening note 88: seccomp + read-only FS.
-- Runtime hardening note 89: seccomp + read-only FS.
-- Runtime hardening note 90: seccomp + read-only FS.
-- Runtime hardening note 91: seccomp + read-only FS.
-- Runtime hardening note 92: seccomp + read-only FS.
-- Runtime hardening note 93: seccomp + read-only FS.
-- Runtime hardening note 94: seccomp + read-only FS.
-- Runtime hardening note 95: seccomp + read-only FS.
-- Runtime hardening note 96: seccomp + read-only FS.
-- Runtime hardening note 97: seccomp + read-only FS.
-- Runtime hardening note 98: seccomp + read-only FS.
-- Runtime hardening note 99: seccomp + read-only FS.
-- Runtime hardening note 100: seccomp + read-only FS.
-- Runtime hardening note 101: seccomp + read-only FS.

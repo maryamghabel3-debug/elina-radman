@@ -16,15 +16,15 @@ Defines trust boundaries for 20+ agents in ElinaOS factory architecture.
 
 ## Zero-Trust Agent Communication
 - Agents communicate via typed messages, not direct memory sharing.
-- Message schema validated by ToolGuard, unknown fields rejected.
-- Agent identity verified via signed JWT with short TTL 5m.
+- TARGET: Message schema validated by ToolGuard, unknown fields rejected.
+- TARGET: Agent identity verified via signed JWT with short TTL 5m.
 - No agent can impersonate another: sub claim bound to process ID.
 - Cross-agent calls logged with caller, callee, payload hash.
 
 ## Least Privilege Enforcement
 - Each agent YAML declares `allowed_tools`, `max_file_ops`, `egress`.
 - Base agent class (agents/base.py) enforces via decorator @require_tool.
-- Violation triggers DENY + audit event + optional quarantine.
+- TARGET: Violation triggers DENY + audit event + optional quarantine.
 - Weekly review of permission creep via `performance_analyzer`.
 
 ## Isolation Mechanisms
@@ -35,7 +35,7 @@ Defines trust boundaries for 20+ agents in ElinaOS factory architecture.
 
 ## Secure Agent Development Rules
 - No `eval()`, `exec()`, `pickle.loads()` on untrusted data.
-- No hardcoded secrets, use vault or env via llm_router.
+- TARGET: No hardcoded secrets, use vault or env via llm_router.
 - All external inputs via `vision.py` or `trend_hunter` sanitized.
 - Use parameterized file paths, prevent directory traversal.
 - Unit tests must include adversarial cases + injection payloads.
@@ -49,11 +49,11 @@ Defines trust boundaries for 20+ agents in ElinaOS factory architecture.
 ## Human Oversight
 - High-risk actions (publish, git push, secret access) require human.
 - Dashboard shows pending approvals with diff view.
-- Operator must use MFA to approve L2/L3 actions.
+- TARGET: Operator must use MFA to approve L2/L3 actions.
 
 ## Audit Trail
 - Agent action stored in `content/memory_store.json` with hash chain.
-- Immutable log: cannot delete, only append, verified hourly.
+- TARGET: Immutable log: cannot delete, only append, verified hourly.
 - Log includes: timestamp, agent_id, action, guard_result, cost.
 
 ## Compliance
@@ -65,20 +65,16 @@ Defines trust boundaries for 20+ agents in ElinaOS factory architecture.
 - WASM sandbox for L0 agents.
 - Hardware attestation for L3 actions.
 - Formal verification of guardrail state machine.
-- Model note 67: least privilege enforced.
-- Model note 68: least privilege enforced.
-- Model note 69: least privilege enforced.
-- Model note 70: least privilege enforced.
-- Model note 71: least privilege enforced.
-- Model note 72: least privilege enforced.
-- Model note 73: least privilege enforced.
-- Model note 74: least privilege enforced.
-- Model note 75: least privilege enforced.
-- Model note 76: least privilege enforced.
-- Model note 77: least privilege enforced.
-- Model note 78: least privilege enforced.
-- Model note 79: least privilege enforced.
-- Model note 80: least privilege enforced.
-- Model note 81: least privilege enforced.
-- Model note 82: least privilege enforced.
-- Model note 83: least privilege enforced.
+- TARGET: Additional V2 control 1 to be defined - requires owner review before implementation.
+- TARGET: Additional V2 control 2 to be defined - requires owner review before implementation.
+- TARGET: Additional V2 control 3 to be defined - requires owner review before implementation.
+- TARGET: Additional V2 control 4 to be defined - requires owner review before implementation.
+- TARGET: Additional V2 control 5 to be defined - requires owner review before implementation.
+- TARGET: Additional V2 control 6 to be defined - requires owner review before implementation.
+- TARGET: Additional V2 control 7 to be defined - requires owner review before implementation.
+- TARGET: Additional V2 control 8 to be defined - requires owner review before implementation.
+- TARGET: Additional V2 control 9 to be defined - requires owner review before implementation.
+- TARGET: Additional V2 control 10 to be defined - requires owner review before implementation.
+- TARGET: Additional V2 control 11 to be defined - requires owner review before implementation.
+- TARGET: Additional V2 control 12 to be defined - requires owner review before implementation.
+- TARGET: Additional V2 control 13 to be defined - requires owner review before implementation.

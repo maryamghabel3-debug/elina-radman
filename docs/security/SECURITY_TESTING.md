@@ -9,15 +9,15 @@ Unit (guard logic, validators)
 Integration (agent + guard + tool)
 E2E (Telegram -> queue -> publish with injection)
 Manual (red team, pen test)
-Prod (SIEM, bug bounty light)
+TARGET: Prod (SIEM, bug bounty light)
 ```
 
 ## Unit Tests
-- InputGuard: BIDI, zero-width, injection markers, length, charset.
-- ToolGuard: allowlist, schema, rate limit, cost cap.
-- OutputGuard: PII, secret patterns, exfil URL, instruction leak.
-- MemoryGuard: tenant isolation, cross-tenant read blocked.
-- NetworkGuard: private IP block, allowlist, DNS pinning.
+- TARGET: InputGuard: BIDI, zero-width, injection markers, length, charset.
+- TARGET: ToolGuard: allowlist, schema, rate limit, cost cap.
+- TARGET: OutputGuard: PII, secret patterns, exfil URL, instruction leak.
+- TARGET: MemoryGuard: tenant isolation, cross-tenant read blocked.
+- TARGET: NetworkGuard: private IP block, allowlist, DNS pinning.
 - Location: `tests/test_agents.py` and `scripts/test_*.py`.
 - Each test includes adversarial cases + benign Persian/English.
 
@@ -34,9 +34,9 @@ Prod (SIEM, bug bounty light)
 - False positive <2% on benign dataset `content/trend_visuals.json`.
 
 ## SAST (Static)
-- Tool: Semgrep with rules: `no-eval`, `no-pickle-unsafe`,
+- TARGET: Tool: Semgrep with rules: `no-eval`, `no-pickle-unsafe`,
   `no-hardcoded-secret`, `no-path-traversal`, `no-sql-injection`.
-- CI workflow: `.github/workflows/tests.yml` runs semgrep.
+- TARGET: CI workflow: `.github/workflows/tests.yml` runs semgrep.
 - Fail if high severity finding.
 - SARIF uploaded to GitHub Security tab.
 
@@ -44,12 +44,12 @@ Prod (SIEM, bug bounty light)
 - Tool: OWASP ZAP baseline against dashboard staging.
 - Weekly run via `scripts/test_media.py` with ZAP proxy.
 - No high risk findings allowed in main.
-- Rate limit test: try 100 req in 1m, expect 429 after 60.
+- TARGET: Rate limit test: try 100 req in 1m, expect 429 after 60.
 - Auth bypass test: try access admin without token, expect 403.
 
 ## Secret Scan
-- Pre-commit: `gitleaks protect --staged`.
-- CI: `trufflehog git file://. --fail --only-verified`.
+- TARGET: Pre-commit: `gitleaks protect --staged`.
+- TARGET: CI: `trufflehog git file://. --fail --only-verified`.
 - If secret found -> block PR, SEV1 alert.
 - Allowlist: example keys marked `EXAMPLE` in docs.
 
@@ -57,10 +57,10 @@ Prod (SIEM, bug bounty light)
 - Dependabot enabled for pip, GitHub Actions.
 - `pip-audit` in CI, fail if CVSS>7 without fix.
 - `npm audit` for dashboard if JS added.
-- SBOM generated via `syft` on image build.
+- TARGET: SBOM generated via `syft` on image build.
 
 ## Container Scan
-- Trivy scan on app image.
+- TARGET: Trivy scan on app image.
 - No CRITICAL vuln allowed in main.
 - Base image pinned SHA, not latest.
 - Image runs as non-root, read-only FS validated.
@@ -73,8 +73,8 @@ Prod (SIEM, bug bounty light)
 ## E2E Security Scenarios
 - Scenario 1: Telegram user tries injection to publish spam -> blocked.
 - Scenario 2: Web user tries traversal `../../etc/passwd` -> blocked.
-- Scenario 3: Agent tries egress to private IP -> NetworkGuard DENY.
-- Scenario 4: Content queue with PII -> OutputGuard redacts + logs.
+- TARGET: Scenario 3: Agent tries egress to private IP -> NetworkGuard DENY.
+- TARGET: Scenario 4: Content queue with PII -> OutputGuard redacts + logs.
 - Each scenario automated in `scripts/test_live_image.py` etc.
 
 ## Performance Security

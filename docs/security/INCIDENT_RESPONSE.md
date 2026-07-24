@@ -19,36 +19,36 @@ Preparation for security incidents with playbooks and timelines.
 
 ## Detection Sources
 - Guard alerts: DENY, ALERT+KILL actions from runtime guardrails.
-- Monitoring: SIEM alert on 5+ DENY in 10m, or egress to disallowed.
+- TARGET: Monitoring: SIEM alert on 5+ DENY in 10m, or egress to disallowed.
 - User report: GitHub issue with label `security` + email.
 - Dependency scan: Dependabot PR with CVSS >7 triggers SEV3.
 
 ## Playbooks
 
 ### Playbook A: Secret Leak
-1. Revoke secret in vault and GitHub/emprovider immediately.
+TARGET: 1. Revoke secret in vault and GitHub/emprovider immediately.
 2. Rotate all derived tokens and DEKs.
-3. Search GitHub history with trufflehog, purge if needed.
+TARGET: 3. Search GitHub history with trufflehog, purge if needed.
 4. Force re-auth all sessions.
 5. Post-mortem: how leaked, add detection.
 
 ### Playbook B: Prompt Injection -> Tool Abuse
-1. Quarantine session, kill agent process.
+TARGET: 1. Quarantine session, kill agent process.
 2. Review `content/queue` for malicious items, delete.
 3. Block user and IP hash at channel guard.
-4. Update prompt injection markers in `PROMPT_INJECTION_DEFENSE.md`.
+TARGET: 4. Update prompt injection markers in `PROMPT_INJECTION_DEFENSE.md`.
 5. Add unit test replicating injection payload.
 
 ### Playbook C: Unauthorized Publish
 1. Unpublish content via platform manager with audit log.
 2. Disable publisher tool via policy flip.
 3. Notify operator with diff of published content.
-4. Require MFA re-auth before re-enable publish.
+TARGET: 4. Require MFA re-auth before re-enable publish.
 
 ## Containment
-- Isolate affected agent by revoking its JWT.
+- TARGET: Isolate affected agent by revoking its JWT.
 - Disable GitHub Action workflow `bot-runner.yml` if compromised.
-- Block egress at NetworkGuard level.
+- TARGET: Block egress at NetworkGuard level.
 - Snapshot logs for forensics before purge.
 
 ## Eradication and Recovery
@@ -75,9 +75,6 @@ Preparation for security incidents with playbooks and timelines.
 - Logs in `dashboard/app.py` with incident view.
 - Forensics: `scripts/security_logs.py` to export timeline.
 - Isolation: `scripts/disable_agent.py --agent publisher`.
-- Response note 77: playbook tested.
-- Response note 78: playbook tested.
-- Response note 79: playbook tested.
-- Response note 80: playbook tested.
-- Response note 81: playbook tested.
-- Response note 82: playbook tested.
+- TARGET: Additional V2 control 1 to be defined - requires owner review before implementation.
+- TARGET: Additional V2 control 2 to be defined - requires owner review before implementation.
+- TARGET: Additional V2 control 3 to be defined - requires owner review before implementation.

@@ -19,10 +19,10 @@ ElinaOS uses open source libraries and external AI models. Supply chain secured.
 1. Propose via issue with justification and alternatives.
 2. Check license: no GPL, only MIT/Apache/BSD/PSF allowed.
 3. Check maintenance: commits in last 6 months? Issues responsive?
-4. Check supply chain: SLSA level, signed tags, provenance?
+TARGET: 4. Check supply chain: SLSA level, signed tags, provenance?
 5. Threat model update: what if this dep is malicious?
-6. Security scan: `pip-audit` + `semgrep` + `trivy` on image.
-7. SBOM entry added in `dashboard/requirements.txt` or `requirements.txt`.
+TARGET: 6. Security scan: `pip-audit` + `semgrep` + `trivy` on image.
+TARGET: 7. SBOM entry added in `dashboard/requirements.txt` or `requirements.txt`.
 8. Approval: 2 reviewers, one security-focused.
 9. Pin version SHA or exact version, not `*` or `>=`.
 10. Monitor: Dependabot alerts, CVEs, auto PRs.
@@ -43,7 +43,7 @@ ElinaOS uses open source libraries and external AI models. Supply chain secured.
 - Provider risk: data retention? Contract says no training on our data.
 - Fallback: free LLM alternatives listed in `docs/FREE-LLM-SETUP.md`.
 - Cost cap per session, prevent abuse via free tier.
-- Output from model treated as L0 untrusted, goes through OutputGuard.
+- TARGET: Output from model treated as L0 untrusted, goes through OutputGuard.
 - If provider compromised, can switch via `agents/llm_router.py`.
 
 ## Free LLM API Project (tashfeenahmed/freellmapi)
@@ -68,9 +68,9 @@ ElinaOS uses open source libraries and external AI models. Supply chain secured.
 - If GPL needed for build tool only, isolated to build container.
 
 ## SBOM and Provenance
-- SBOM generated via `syft` and `cyclonedx` on each build.
-- Stored as artifact in Actions: `sbom.json`.
-- Provenance via SLSA GitHub generator: `slsa-framework/slsa-github-generator`.
+- TARGET: SBOM generated via `syft` and `cyclonedx` on each build.
+- TARGET: Stored as artifact in Actions: `sbom.json`.
+- TARGET: Provenance via SLSA GitHub generator: `slsa-framework/slsa-github-generator`.
 - Verify provenance before deploy to prod.
 
 ## Vulnerability Response
@@ -83,22 +83,11 @@ ElinaOS uses open source libraries and external AI models. Supply chain secured.
 ## Continuous Monitoring
 - Dependabot weekly scans enabled.
 - `pip-audit` daily in `daily-content.yml` but only reports.
-- Trivy image scan on push to main.
+- TARGET: Trivy image scan on push to main.
 - Secret scan as per SECRETS doc.
 
 ## Future
-- SLSA level 3 for all builds.
-- Sigstore signing for artifacts.
+- TARGET: SLSA level 3 for all builds.
+- TARGET: Sigstore signing for artifacts.
 - Private registry proxy to filter malicious packages.
 - VEX statements for false positives.
-- Supply note 93: SBOM verified.
-- Supply note 94: SBOM verified.
-- Supply note 95: SBOM verified.
-- Supply note 96: SBOM verified.
-- Supply note 97: SBOM verified.
-- Supply note 98: SBOM verified.
-- Supply note 99: SBOM verified.
-- Supply note 100: SBOM verified.
-- Supply note 101: SBOM verified.
-- Supply note 102: SBOM verified.
-- Supply note 103: SBOM verified.
