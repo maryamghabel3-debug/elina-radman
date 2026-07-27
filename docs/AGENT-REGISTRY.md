@@ -19,7 +19,7 @@ VERSION: 1.0.0
 | ELN-VID-01 | Video Director | PENDING | agents/prompts/video_director.md |
 | ELN-EDIT-01 | Edit Assistant | PENDING | agents/prompts/edit_assistant.md |
 | ELN-COPY-01 | Copywriter | PENDING | agents/prompts/copywriter.md |
-| ELN-SAFE-01 | Safety Guardian | PENDING | agents/prompts/safety_guardian.md |
+| ELN-SAFE-01 | Safety Guardian | CANDIDATE | agents/prompts/safety_guardian.md |
 | ELN-SEC-01 | Security Guardian | PENDING | agents/prompts/security_guardian.md |
 
 **Activation Rule**
