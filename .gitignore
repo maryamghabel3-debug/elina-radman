@@ -33,3 +33,17 @@ content/gemini_models_report.json
 .DS_Store
 Thumbs.db
 images/test_outputs/
+
+# Private character reference assets — never commit to public repository
+content/assets/characters/elina/*.jpg
+content/assets/characters/elina/*.jpeg
+content/assets/characters/elina/*.png
+content/assets/characters/elina/*.webp
+content/assets/characters/elina/*.heic
+content/assets/characters/elina/*.gif
+content/assets/characters/ellie/*.jpg
+content/assets/characters/ellie/*.jpeg
+content/assets/characters/ellie/*.png
+content/assets/characters/ellie/*.webp
+content/assets/characters/ellie/*.heic
+content/assets/characters/ellie/*.gif
