@@ -92,3 +92,13 @@ class ElinaDB:
             .execute()
         )
         return response.data[0] if response.data else None
+
+    def get_due_items(self, now_iso: str):
+        response = (
+            self.client.table("content_items")
+            .select("*")
+            .eq("status", "APPROVED")
+            .lte("scheduled_for", now_iso)
+            .execute()
+        )
+        return response.data or []
