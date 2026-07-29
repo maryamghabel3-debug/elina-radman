@@ -2,7 +2,7 @@
 # مشخصات معماری ادیتور هوشمند الینا
 
 ---
-version: "2.0.0"
+version: "2.1.0"
 status: "APPROVED"
 document_type: "Architecture Specification"
 project: "ElinaOS V2"
@@ -21,6 +21,8 @@ Elina Smart Editor Suite یک ادیتور ساده FFmpeg نیست.
 - ساخت خروجی آماده انتشار برای Instagram Reels، Story، Carousel Video و محتوای مریم
 - حفظ کیفیت تایپوگرافی فارسی
 - حفظ وضوح نریشن
+- پردازش سینمایی صدا
+- تولید موسیقی اختصاصی
 - آماده‌سازی کاور و زیرنویس
 - کنترل کیفیت خروجی
 - آماده‌سازی محتوا قبل از ورود به مرحله تأیید و زمان‌بندی
@@ -49,7 +51,9 @@ TYPOGRAPHY RENDERING
 ↓
 SUBTITLE RENDERING
 ↓
-AUDIO MIXING
+AUDIO PROCESSING (Noise + Cinematic)
+↓
+AUDIO MIXING (Voice + Music + Ducking)
 ↓
 FFMPEG FINAL RENDER
 ↓
@@ -70,6 +74,7 @@ READY_FOR_REVIEW
 - Figma
 - Descript
 - Runway
+- Suno / ElevenLabs
 - ابزارهای بیرونی
 
 می‌توانند برای ادیت دستی استفاده شوند.
@@ -115,8 +120,20 @@ Recipe یک فایل JSON یا رکورد دیتابیس است که می‌گو
     "highlight_keywords": true
   },
   "audio": {
-    "voice_gain_db": 0,
-    "music_gain_db": -12,
+    "voice_processing": {
+      "enabled": true,
+      "preset": "elina_cinematic",
+      "noise_removal": true,
+      "normalize": true
+    },
+    "music": {
+      "source": "library",
+      "key": "music/ambient_deep_01.mp3",
+      "gain_db": -12,
+      "loop": true,
+      "fade_in": 1.0,
+      "fade_out": 2.0
+    },
     "ducking": {
       "enabled": true,
       "target_reduction_db": 6,
@@ -258,7 +275,10 @@ Recipe باید این فیلدها را داشته باشد:
 
 مسئول:
 - اضافه کردن ویس
+- نویزگیری
+- پردازش سینمایی صدا
 - تنظیم gain
+- normalize
 - sync ساده
 - حذف سکوت در فاز بعد
 
@@ -269,6 +289,7 @@ Recipe باید این فیلدها را داشته باشد:
 - loop
 - fade in/out
 - ducking
+- تولید موسیقی اختصاصی از طریق ابزارهای AI
 
 ### ۱۳.۵. Cover Editor
 
@@ -316,6 +337,8 @@ Presetهای اولیه:
 - نسبت تصویر درست است
 - فایل از max_size_mb بزرگ‌تر نیست
 - صدا وجود دارد اگر voice_required=true
+- سطح loudness در محدوده مجاز است
+- clipping صوتی وجود ندارد
 - متن hook داخل safe area است
 - خروجی صفر بایت نیست
 - مدت ویدیو در محدوده مجاز است
@@ -369,6 +392,7 @@ Presetهای اولیه:
 - Pillow
 - arabic_reshaper
 - python-bidi
+- pedalboard
 
 کتابخانه‌های اختیاری فاز بعد:
 
@@ -376,6 +400,9 @@ Presetهای اولیه:
 - faster-whisper
 - auto-editor
 - pydub
+- librosa
+- noisereduce
+- pysndfx
 
 ابزارهای بیرونی:
 
@@ -384,6 +411,9 @@ Presetهای اولیه:
 - Runway
 - Submagic
 - OpusClip
+- Suno
+- ElevenLabs Music
+- MusicAPI
 
 ابزارهای بیرونی می‌توانند در workflow انسانی استفاده شوند، اما هسته سیستم باید قابل اجرا بدون آن‌ها بماند.
 
@@ -397,6 +427,7 @@ Presetهای اولیه:
 - انتخاب خودکار بهترین hook
 - تولید خودکار character animation
 - انتشار مستقیم از ادیتور
+- تولید کاملاً خودکار موسیقی داخل pipeline
 
 این‌ها بعد از MVP قابل اضافه شدن هستند.
 
@@ -407,21 +438,259 @@ Presetهای اولیه:
 1. recipe schema
 2. typography renderer
 3. FFmpeg overlay renderer
-4. audio mixer with ducking
-5. cover generator
-6. QC checker
-7. integration with Supabase Storage
-8. Studio Bot edit commands
-9. tests
+4. voice noise removal
+5. voice cinematic processing chain
+6. music import and normalize
+7. audio mixer with ducking
+8. cover generator
+9. QC checker
+10. integration with Supabase Storage
+11. Studio Bot edit commands
+12. tests
 
-## ۲۲. اصل نهایی
+## ۲۲. اصل نهایی معماری
 
 ادیتور الینا باید خروجی حرفه‌ای و قابل انتشار بسازد، اما نباید از روز اول تلاش کند جای همه ابزارهای تدوین را بگیرد.
 
 هدف MVP:
 - فارسی درست
-- صدای واضح
+- صدای واضح و سینمایی
+- موسیقی اختصاصی
 - خروجی تمیز
 - کنترل‌پذیری
 - حفظ حریم خصوصی
 - اتصال به مسیر تأیید و انتشار
+
+## ۲۳. موتور صوتی
+
+سیستم صوتی الینا از چهار مرحله تشکیل می‌شود:
+
+### ۲۳.۱. نویزگیری
+
+صدای خام ویس یا نریشن قبل از هر پردازش باید تمیز شود.
+
+ابزار پیشنهادی فاز اول:
+- pedalboard (Spotify) با NoiseGate و optional plugins
+
+ابزار پشتیبان:
+- noisereduce
+- pysndfx
+
+ابزار دستی بیرونی:
+- Adobe Podcast Enhance Speech
+
+هدف:
+- حذف نویز پس‌زمینه
+- حذف هوم و هیس
+- حذف صداهای محیطی
+- بدون آسیب به وضوح صدای اصلی
+
+### ۲۳.۲. پردازش سینمایی صدا
+
+صدای الینا باید حس سینمایی، عمیق و صمیمی داشته باشد.
+
+زنجیره پردازش پیشنهادی:
+
+1. Noise Gate برای حذف صداهای ضعیف بین جملات
+2. EQ برای تقویت فرکانس‌های گرم
+3. Compressor برای یکنواخت کردن بلندی
+4. Reverb برای حس فضای بزرگ
+5. Limiter برای جلوگیری از کلیپ
+
+ابزار فاز اول:
+- pedalboard
+
+ابزار فاز بعد:
+- VST3 plugins از طریق pedalboard
+
+### ۲۳.۳. Presetهای صوتی
+
+Presetهای صوتی پیشنهادی:
+
+elina_cinematic_voice:
+- noise_gate_threshold_db: -40
+- eq_low_shelf_gain_db: 3
+- eq_presence_boost_db: 2
+- compressor_threshold_db: -18
+- compressor_ratio: 3
+- reverb_room_size: 0.4
+- reverb_wet_level: 0.15
+- limiter_threshold_db: -1
+
+maryam_natural_voice:
+- noise_gate_threshold_db: -35
+- eq_low_shelf_gain_db: 1
+- compressor_threshold_db: -15
+- compressor_ratio: 2
+- reverb_room_size: 0.2
+- reverb_wet_level: 0.08
+- limiter_threshold_db: -1
+
+crisis_gentle_voice:
+- noise_gate_threshold_db: -45
+- reverb_wet_level: 0.0
+- compressor_threshold_db: -14
+- compressor_ratio: 2
+- limiter_threshold_db: -1
+- توضیح: بدون reverb، بسیار نزدیک و امن
+
+### ۲۳.۴. تولید موسیقی اختصاصی
+
+الینا باید موسیقی ambient مخصوص خودش را داشته باشد که با هیچ برند دیگری اشتراک نداشته باشد.
+
+دو مسیر مجاز:
+
+مسیر ۱: تولید دستی با Suno
+- مریم در suno.com با پرامپت فارسی/انگلیسی آهنگ می‌سازد
+- فایل MP3 دانلود می‌شود
+- در Supabase Storage در پوشه music/ ذخیره می‌شود
+- کلید فایل در recipe به عنوان music_key استفاده می‌شود
+
+مسیر ۲: تولید خودکار با API
+- MusicAPI یا ElevenLabs Music API یا معادل
+- پرامپت mood از recipe خوانده می‌شود
+- فایل تولید و در Supabase Storage ذخیره می‌شود
+- نیاز به اکانت پولی دارد
+- در فاز MVP اختیاری است
+
+قانون لایسنس:
+- تنها موسیقی‌ای مجاز است که licence آن اجازه استفاده تجاری در Instagram را بدهد
+- موسیقی رایگان از منابع نامعتبر ممنوع است
+
+### ۲۳.۵. Presetهای موسیقی
+
+Presetهای mood پیشنهادی برای پرامپت‌های AI music:
+
+elina_deep_ambient:
+- slow tempo
+- minimal piano
+- soft strings
+- dark cinematic
+- persian influence subtle
+
+elina_hopeful_ambient:
+- warm pads
+- gentle acoustic
+- soft rhythm
+- healing tone
+
+maryam_calm_educational:
+- soft background
+- neutral tone
+- non-distracting
+- warm mid frequencies
+
+crisis_silent:
+- ambient only
+- almost silent
+- optional low drone
+- no melody
+
+### ۲۳.۶. Recipe صوتی نمونه
+
+{
+  "audio": {
+    "voice_processing": {
+      "enabled": true,
+      "preset": "elina_cinematic_voice",
+      "noise_removal": true,
+      "normalize": true,
+      "target_lufs": -16
+    },
+    "music": {
+      "source": "library",
+      "key": "music/elina_deep_ambient_01.mp3",
+      "gain_db": -12,
+      "loop": true,
+      "fade_in": 1.0,
+      "fade_out": 2.0
+    },
+    "ducking": {
+      "enabled": true,
+      "target_reduction_db": 6,
+      "attack": 0.2,
+      "release": 0.6
+    },
+    "export": {
+      "format": "aac",
+      "sample_rate": 44100,
+      "channels": 2
+    }
+  }
+}
+
+### ۲۳.۷. QC مخصوص صدا
+
+پس از رندر صوتی، QC باید بررسی کند:
+
+- سطح loudness در محدوده مجاز است
+- clipping صوتی وجود ندارد
+- صدای voice در میکس واضح است
+- موسیقی voice را خفه نمی‌کند
+- طول صدا مطابق ویدیو است
+- فایل خروجی خالی نیست
+
+### ۲۳.۸. مسیرهای فایل صوتی
+
+- voice خام: raw/voices/
+- voice پردازش‌شده: processed/voices/
+- موسیقی: music/
+- میکس نهایی: final/audio/
+
+هیچ فایل صوتی در GitHub ذخیره نمی‌شود.
+
+## ۲۴. حریم خصوصی صدا
+
+- ویس مریم داده حساس است
+- ویس واقعی نباید در تست‌ها یا logها ذخیره شود
+- در تست‌ها فقط صدای مصنوعی مصرف شود
+- فایل‌های صوتی حساس در Supabase Storage خصوصی نگه داشته شوند
+- Signed URL موقت فقط برای زمان انتشار ساخته شود
+
+## ۲۵. اخلاق تولید صدا
+
+- Voice cloning بدون اجازه ممنوع است
+- استفاده از صدای دیگران بدون رضایت ممنوع است
+- در فاز اول فقط صدای مریم یا صداهای شفاف AI مجاز است
+- موسیقی باید licence روشن داشته باشد
+- Track بی‌محتوا از منابع غیرقابل‌اعتماد ممنوع است
+
+## ۲۶. ابزارهای پیشنهادی نهایی صوتی
+
+فاز اول:
+- pedalboard
+- ffmpeg
+- ffprobe
+- pillow
+- arabic_reshaper
+- python-bidi
+
+فاز بعد:
+- noisereduce
+- pysndfx
+- pydub
+- librosa
+- faster-whisper
+- auto-editor
+
+تولید موسیقی:
+- Suno (دستی)
+- ElevenLabs Music (API)
+- MusicAPI (چند مدل)
+
+ادیت دستی صدا:
+- Adobe Podcast Enhance Speech
+- Descript
+- Audacity
+
+## ۲۷. اصل نهایی صدا
+
+ادیتور الینا نباید فقط صدا را «پخش» کند.
+باید صدا را «کارگردانی» کند.
+
+هدف:
+- صدا در خدمت روایت
+- سکوت در جایی که لازم است
+- موسیقی که درد را همراهی می‌کند نه فرار می‌دهد
+- نریشن که دیده شدن ایجاد می‌کند نه سرگرم می‌کند
+- خروجی نهایی که مثل یک صحنه سینمایی حس شود
