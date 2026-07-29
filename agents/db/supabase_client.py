@@ -81,3 +81,14 @@ class ElinaDB:
         }
         response = self.client.table("content_events").insert(data).execute()
         return response.data
+
+    def get_content_by_custom_id(self, custom_id: str) -> dict | None:
+        """Fetch a single content item by custom_id (e.g., ELN-RAW-...)."""
+        response = (
+            self.client.table("content_items")
+            .select("*")
+            .eq("custom_id", custom_id)
+            .limit(1)
+            .execute()
+        )
+        return response.data[0] if response.data else None
