@@ -18,6 +18,8 @@ class InstagramGraphPublisher(BasePublisher):
     Requires:
       IG_USER_ID          - Instagram Business/Creator account ID
       IG_ACCESS_TOKEN     - long-lived access token
+      META_GRAPH_API_BASE - e.g. https://graph.facebook.com
+      META_GRAPH_API_VERSION - e.g. v21.0
     Media must be provided as a publicly reachable URL
     (short-lived signed URL from Supabase Storage).
     """
@@ -26,9 +28,17 @@ class InstagramGraphPublisher(BasePublisher):
         self.ig_user_id = os.environ.get("IG_USER_ID")
         self.access_token = os.environ.get("IG_ACCESS_TOKEN")
         self.api_version = os.environ.get("META_GRAPH_API_VERSION")
+        self.api_base = os.environ.get("META_GRAPH_API_BASE")
+
+        if not self.api_base:
+            raise ValueError("Missing META_GRAPH_API_BASE in environment. Set META_GRAPH_API_BASE, e.g. https://graph.facebook.com")
         if not self.api_version:
             raise ValueError("Missing META_GRAPH_API_VERSION in environment. Set META_GRAPH_API_VERSION, e.g. v21.0")
-        self.graph_base = f"https://graph.facebook.com/{self.api_version}"
+
+        # Strip trailing slash from base
+        self.api_base = self.api_base.rstrip("/")
+        self.graph_base = f"{self.api_base}/{self.api_version}"
+
         if not self.ig_user_id or not self.access_token:
             raise ValueError("Missing IG_USER_ID or IG_ACCESS_TOKEN in environment.")
 

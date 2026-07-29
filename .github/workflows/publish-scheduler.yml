@@ -25,6 +25,10 @@ jobs:
 
       - name: Check required variables
         run: |
+          if [ -z "${{ vars.META_GRAPH_API_BASE }}" ]; then
+            echo "ERROR: META_GRAPH_API_BASE variable is not set in repository variables"
+            exit 1
+          fi
           if [ -z "${{ vars.META_GRAPH_API_VERSION }}" ]; then
             echo "ERROR: META_GRAPH_API_VERSION variable is not set in repository variables"
             exit 1
@@ -33,7 +37,13 @@ jobs:
             echo "ERROR: PUBLISH_MAX_ITEMS_PER_RUN variable is not set in repository variables"
             exit 1
           fi
-          echo "Variables present: META_GRAPH_API_VERSION=${{ vars.META_GRAPH_API_VERSION }}, PUBLISH_MAX_ITEMS_PER_RUN=${{ vars.PUBLISH_MAX_ITEMS_PER_RUN }}"
+          if [ -z "${{ vars.PUBLISH_LIVE_ENABLED }}" ]; then
+            echo "WARNING: PUBLISH_LIVE_ENABLED not set, defaulting to disabled (safe)"
+          fi
+          if [ -z "${{ vars.PUBLISH_RETRY_DELAY_MINUTES }}" ]; then
+            echo "WARNING: PUBLISH_RETRY_DELAY_MINUTES not set, using default 30"
+          fi
+          echo "Variables present: META_GRAPH_API_BASE=${{ vars.META_GRAPH_API_BASE }}, META_GRAPH_API_VERSION=${{ vars.META_GRAPH_API_VERSION }}, PUBLISH_MAX_ITEMS_PER_RUN=${{ vars.PUBLISH_MAX_ITEMS_PER_RUN }}, PUBLISH_LIVE_ENABLED=${{ vars.PUBLISH_LIVE_ENABLED }}, PUBLISH_RETRY_DELAY_MINUTES=${{ vars.PUBLISH_RETRY_DELAY_MINUTES }}"
 
       - name: Install dependencies
         run: |
@@ -46,7 +56,10 @@ jobs:
           SUPABASE_BUCKET_NAME: ${{ secrets.SUPABASE_BUCKET_NAME }}
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          META_GRAPH_API_BASE: ${{ vars.META_GRAPH_API_BASE }}
           META_GRAPH_API_VERSION: ${{ vars.META_GRAPH_API_VERSION }}
           PUBLISH_MAX_ITEMS_PER_RUN: ${{ vars.PUBLISH_MAX_ITEMS_PER_RUN }}
+          PUBLISH_LIVE_ENABLED: ${{ vars.PUBLISH_LIVE_ENABLED }}
+          PUBLISH_RETRY_DELAY_MINUTES: ${{ vars.PUBLISH_RETRY_DELAY_MINUTES }}
         run: |
           python -m agents.scheduler
