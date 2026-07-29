@@ -1,0 +1,65 @@
+name: Publish Scheduler
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elina-publish-scheduler
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check required variables
+        run: |
+          if [ -z "${{ vars.META_GRAPH_API_BASE }}" ]; then
+            echo "ERROR: META_GRAPH_API_BASE variable is not set in repository variables"
+            exit 1
+          fi
+          if [ -z "${{ vars.META_GRAPH_API_VERSION }}" ]; then
+            echo "ERROR: META_GRAPH_API_VERSION variable is not set in repository variables"
+            exit 1
+          fi
+          if [ -z "${{ vars.PUBLISH_MAX_ITEMS_PER_RUN }}" ]; then
+            echo "ERROR: PUBLISH_MAX_ITEMS_PER_RUN variable is not set in repository variables"
+            exit 1
+          fi
+          if [ -z "${{ vars.PUBLISH_LIVE_ENABLED }}" ]; then
+            echo "WARNING: PUBLISH_LIVE_ENABLED not set, defaulting to disabled (safe)"
+          fi
+          if [ -z "${{ vars.PUBLISH_RETRY_DELAY_MINUTES }}" ]; then
+            echo "WARNING: PUBLISH_RETRY_DELAY_MINUTES not set, using default 30"
+          fi
+          echo "Variables present: META_GRAPH_API_BASE=${{ vars.META_GRAPH_API_BASE }}, META_GRAPH_API_VERSION=${{ vars.META_GRAPH_API_VERSION }}, PUBLISH_MAX_ITEMS_PER_RUN=${{ vars.PUBLISH_MAX_ITEMS_PER_RUN }}, PUBLISH_LIVE_ENABLED=${{ vars.PUBLISH_LIVE_ENABLED }}, PUBLISH_RETRY_DELAY_MINUTES=${{ vars.PUBLISH_RETRY_DELAY_MINUTES }}"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-core.txt
+
+      - name: Run publish scheduler
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_BUCKET_NAME: ${{ secrets.SUPABASE_BUCKET_NAME }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          META_GRAPH_API_BASE: ${{ vars.META_GRAPH_API_BASE }}
+          META_GRAPH_API_VERSION: ${{ vars.META_GRAPH_API_VERSION }}
+          PUBLISH_MAX_ITEMS_PER_RUN: ${{ vars.PUBLISH_MAX_ITEMS_PER_RUN }}
+          PUBLISH_LIVE_ENABLED: ${{ vars.PUBLISH_LIVE_ENABLED }}
+          PUBLISH_RETRY_DELAY_MINUTES: ${{ vars.PUBLISH_RETRY_DELAY_MINUTES }}
+        run: |
+          python -m agents.scheduler

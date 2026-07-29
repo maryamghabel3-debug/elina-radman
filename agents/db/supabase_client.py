@@ -36,6 +36,17 @@ class ElinaDB:
         )
         return response.data[0] if response.data else None
 
+    def get_content_by_custom_id(self, custom_id: str) -> dict | None:
+        """Fetch a single content item by custom_id (e.g., ELN-RAW-...)."""
+        response = (
+            self.client.table("content_items")
+            .select("*")
+            .eq("custom_id", custom_id)
+            .limit(1)
+            .execute()
+        )
+        return response.data[0] if response.data else None
+
     def get_items_by_status(self, status: str, limit: int = 20) -> list:
         """Fetch content items with a given status."""
         response = (
@@ -47,6 +58,34 @@ class ElinaDB:
             .execute()
         )
         return response.data
+
+    def get_due_items(self, now_iso: str, limit: int = 1):
+        """Fetch due items for publishing: SCHEDULED or RETRY_PENDING, with approval metadata."""
+        response = (
+            self.client.table("content_items")
+            .select("*")
+            .in_("status", ["SCHEDULED", "RETRY_PENDING"])
+            .not_.is_("scheduled_for", "null")
+            .lte("scheduled_for", now_iso)
+            .not_.is_("approved_at", "null")
+            .not_.is_("approved_by", "null")
+            .order("scheduled_for", desc=False)
+            .limit(limit)
+            .execute()
+        )
+        return response.data or []
+
+    def claim_for_publishing(self, item_id: str, expected_status: str) -> bool:
+        """Atomically claim a content item for publishing to prevent double publish."""
+        response = (
+            self.client.table("content_items")
+            .update({"status": "PUBLISHING"})
+            .eq("id", item_id)
+            .eq("status", expected_status)
+            .execute()
+        )
+        # True only if exactly one record was updated
+        return bool(response.data and len(response.data) == 1)
 
     def update_status(self, item_id: str, new_status: str, extra: dict | None = None) -> list:
         """Update the status (and optional extra fields) of a content item."""
@@ -81,14 +120,3 @@ class ElinaDB:
         }
         response = self.client.table("content_events").insert(data).execute()
         return response.data
-
-    def get_content_by_custom_id(self, custom_id: str) -> dict | None:
-        """Fetch a single content item by custom_id (e.g., ELN-RAW-...)."""
-        response = (
-            self.client.table("content_items")
-            .select("*")
-            .eq("custom_id", custom_id)
-            .limit(1)
-            .execute()
-        )
-        return response.data[0] if response.data else None
