@@ -9,8 +9,6 @@ from agents.publishers.base_publisher import BasePublisher, PublishResult
 
 logger = logging.getLogger(__name__)
 
-GRAPH_BASE = "https://graph.facebook.com/v21.0"
-
 TRANSIENT_ERROR_CODES = {1, 2, 4, 17, 341}
 
 
@@ -27,13 +25,17 @@ class InstagramGraphPublisher(BasePublisher):
     def __init__(self):
         self.ig_user_id = os.environ.get("IG_USER_ID")
         self.access_token = os.environ.get("IG_ACCESS_TOKEN")
+        self.api_version = os.environ.get("META_GRAPH_API_VERSION")
+        if not self.api_version:
+            raise ValueError("Missing META_GRAPH_API_VERSION in environment. Set META_GRAPH_API_VERSION, e.g. v21.0")
+        self.graph_base = f"https://graph.facebook.com/{self.api_version}"
         if not self.ig_user_id or not self.access_token:
             raise ValueError("Missing IG_USER_ID or IG_ACCESS_TOKEN in environment.")
 
     def _post(self, path: str, data: dict) -> dict:
         data = {**data, "access_token": self.access_token}
         with httpx.Client(timeout=60) as client:
-            resp = client.post(f"{GRAPH_BASE}/{path}", data=data)
+            resp = client.post(f"{self.graph_base}/{path}", data=data)
         body = resp.json()
         if resp.status_code >= 400:
             raise InstagramApiError(body)
@@ -42,7 +44,7 @@ class InstagramGraphPublisher(BasePublisher):
     def _get(self, path: str, params: dict) -> dict:
         params = {**params, "access_token": self.access_token}
         with httpx.Client(timeout=60) as client:
-            resp = client.get(f"{GRAPH_BASE}/{path}", params=params)
+            resp = client.get(f"{self.graph_base}/{path}", params=params)
         body = resp.json()
         if resp.status_code >= 400:
             raise InstagramApiError(body)

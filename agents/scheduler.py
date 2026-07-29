@@ -5,18 +5,21 @@ from datetime import datetime, timezone
 from agents.db.supabase_client import ElinaDB
 from agents.storage.supabase_storage import ElinaStorage
 from agents.publishers.instagram_graph import InstagramGraphPublisher
+from agents.publishers.base_publisher import PublishResult
 
 logger = logging.getLogger(__name__)
 
 MAX_ATTEMPTS = 3
 SIGNED_URL_TTL_SECONDS = 3600
+MAX_ITEMS_PER_RUN = int(os.environ.get("PUBLISH_MAX_ITEMS_PER_RUN", "1"))
 
 
 class PublishScheduler:
     """
-    Reads APPROVED items due for publishing from Supabase,
+    Reads SCHEDULED items due for publishing from Supabase,
     creates short-lived signed URLs, publishes via Instagram Graph API,
     and updates statuses. Fail-safe: content is never lost.
+    Only SCHEDULED status with approval metadata is publishable.
     """
 
     def __init__(self, db=None, storage=None, publisher=None):
@@ -26,12 +29,24 @@ class PublishScheduler:
 
     def run_once(self) -> dict:
         now_iso = datetime.now(timezone.utc).isoformat()
-        due_items = self.db.get_due_items(now_iso)
-        summary = {"checked": len(due_items), "published": 0, "failed": 0, "retry": 0}
+        due_items = self.db.get_due_items(now_iso, limit=MAX_ITEMS_PER_RUN)
+        summary = {"checked": len(due_items), "published": 0, "failed": 0, "retry": 0, "skipped": 0}
 
         for item in due_items:
+            # Guard: only SCHEDULED with approval metadata should be processed
+            if item.get("status") != "SCHEDULED":
+                summary["skipped"] += 1
+                continue
+            if not item.get("approved_at") or not item.get("approved_by") or not item.get("scheduled_for"):
+                # Missing approval metadata - skip without changing status
+                self.db.log_event(item["id"], "skipped_missing_approval_metadata", item.get("status", ""), item.get("status", ""), "scheduler", "Missing approved_at/approved_by/scheduled_for")
+                summary["skipped"] += 1
+                continue
             result = self._process_item(item)
-            summary[result] += 1
+            if result in summary:
+                summary[result] += 1
+            else:
+                summary[result] = summary.get(result, 0) + 1
 
         return summary
 
@@ -42,12 +57,21 @@ class PublishScheduler:
         caption = self._build_caption(item)
         media_keys = item.get("media_keys") or []
 
+        # Story handling: manual publish required, not FAILED
+        if content_type == "story":
+            self.db.update_status(item_id, "MANUAL_PUBLISH_REQUIRED", {
+                "last_error": "MANUAL_STORY_REQUIRED: Story must be published manually"
+            })
+            self.db.log_event(item_id, "manual_story_required", item.get("status", ""), "MANUAL_PUBLISH_REQUIRED", "scheduler", "Story type requires manual publish")
+            logger.info("Story %s requires manual publish", custom_id)
+            return "skipped"
+
         if not media_keys:
             self._fail(item, "NO_MEDIA", "Item has no media_keys", retryable=False)
             return "failed"
 
         self.db.update_status(item_id, "PUBLISHING")
-        self.db.log_event(item_id, "publishing_started", "APPROVED", "PUBLISHING", "scheduler")
+        self.db.log_event(item_id, "publishing_started", "SCHEDULED", "PUBLISHING", "scheduler")
 
         try:
             if content_type == "reel":
@@ -72,6 +96,14 @@ class PublishScheduler:
             self.db.log_event(item_id, "published", "PUBLISHING", "PUBLISHED", "scheduler", f"media_id={result.media_id}")
             logger.info("Published %s -> %s", custom_id, result.media_id)
             return "published"
+
+        # Handle manual story requirement
+        if result.error_code == "MANUAL_STORY_REQUIRED":
+            self.db.update_status(item_id, "MANUAL_PUBLISH_REQUIRED", {
+                "last_error": result.error_message,
+            })
+            self.db.log_event(item_id, "manual_publish_required", "PUBLISHING", "MANUAL_PUBLISH_REQUIRED", "scheduler", result.error_message)
+            return "skipped"
 
         if result.retryable:
             self._retry(item, result.error_code, result.error_message)
