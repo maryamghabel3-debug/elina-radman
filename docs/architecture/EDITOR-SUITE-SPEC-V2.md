@@ -2,12 +2,12 @@
 # مشخصات معماری ادیتور هوشمند الینا
 
 ---
-version: "2.1.0"
-status: "APPROVED"
+version: "2.2.0"
+status: "APPROVED_FOR_MVP_IMPLEMENTATION"
 document_type: "Architecture Specification"
 project: "ElinaOS V2"
 module: "Elina Smart Editor Suite"
-last_updated: "2026-07-28"
+last_updated: "2026-07-29"
 ---
 
 ## ۱. هدف
@@ -124,7 +124,11 @@ Recipe یک فایل JSON یا رکورد دیتابیس است که می‌گو
       "enabled": true,
       "preset": "elina_cinematic",
       "noise_removal": true,
-      "normalize": true
+      "normalize": true,
+      "target_lufs": "CONFIGURED_TARGET_LUFS",
+      "max_true_peak_db": "CONFIGURED_MAX_TRUE_PEAK_DB",
+      "loudness_mode": "two_pass",
+      "preserve_original": true
     },
     "music": {
       "source": "library",
@@ -189,6 +193,43 @@ FFmpeg overlay
 - با فونت فارسی روی PNG شفاف رندر می‌شود
 - سپس FFmpeg فقط آن PNG را روی ویدیو overlay می‌کند
 
+مسیر ترجیحی:
+
+Persian text
+↓
+Pillow with libraqm
+↓
+direction = rtl
+↓
+OpenType shaping and kerning
+↓
+transparent PNG
+↓
+FFmpeg overlay
+
+مسیر fallback در محیطی که libraqm در دسترس نیست:
+
+Persian text
+↓
+arabic_reshaper
+↓
+python-bidi
+↓
+Pillow canvas
+↓
+transparent PNG
+↓
+FFmpeg overlay
+
+قواعد:
+
+- وجود libraqm هنگام startup بررسی شود.
+- متن ترکیبی فارسی، انگلیسی، اعداد، ایموجی و علامت‌گذاری جداگانه تست شود.
+- renderer نباید بدون هشدار بین مسیر اصلی و fallback جابه‌جا شود.
+- line wrapping باید براساس اندازه واقعی rendered text انجام شود.
+- تصاویر Hook، Subtitle و Cover باید نسخه‌گذاری و از یکدیگر جدا باشند.
+- متن‌های طولانی نباید خارج از safe area رندر شوند.
+
 ## ۹. موتور Typography
 
 Typography Engine مسئول موارد زیر است:
@@ -221,6 +262,14 @@ Typography Engine مسئول موارد زیر است:
 
 اگر فونت موجود نبود، سیستم باید fail کند و پیام واضح بدهد، نه اینکه متن خراب تولید کند.
 
+
+- Loudness normalization برای فایل نهایی باید ترجیحاً با FFmpeg loudnorm در حالت two-pass انجام شود.
+- مقدار نهایی LUFS و True Peak پس از تست شنیداری و تأیید مالک در preset ثبت می‌شود.
+- هیچ مقدار loudness نباید بدون QC به‌عنوان استاندارد قطعی همه صداها استفاده شود.
+- فایل نهایی ویدیویی با Audio Sample Rate برابر 48 kHz تولید می‌شود.
+- صدای voice می‌تواند mono باقی بماند، اما final mix می‌تواند stereo باشد.
+- Stereo widening روی نریشن پیش‌فرض نیست و فقط با preset تأییدشده مجاز است.
+
 ## ۱۱. Audio Ducking
 
 در ویدیوهای روان‌شناختی، موسیقی Ambient مهم است اما نباید نریشن را خفه کند.
@@ -231,6 +280,14 @@ ElinaOS باید Auto-Ducking را پشتیبانی کند.
 - وقتی voice/narration فعال است، صدای موسیقی پس‌زمینه کاهش پیدا کند
 - وقتی voice سکوت دارد، موسیقی به سطح طبیعی برگردد
 
+- موتور ترجیحی MVP برابر FFmpeg sidechaincompress است.
+- نریشن ورودی sidechain و موسیقی ورودی اصلی تحت compression است.
+- Ducking فقط در بازه حضور واقعی نریشن اعمال می‌شود.
+- attack، release، threshold، ratio و makeup gain باید در Recipe قابل تنظیم باشند.
+- میکس نهایی باید بررسی کند موسیقی در مکث‌ها ناگهان جهش نکند.
+- اگر voice وجود ندارد، ducking باید غیرفعال شود.
+- Ducking نباید جایگزین تنظیم دستی gain موسیقی شود.
+
 ## ۱۲. تنظیمات Ducking
 
 Recipe باید این فیلدها را داشته باشد:
@@ -238,9 +295,13 @@ Recipe باید این فیلدها را داشته باشد:
 {
   "ducking": {
     "enabled": true,
+    "engine": "ffmpeg_sidechaincompress",
     "target_reduction_db": 6,
+    "threshold": "CONFIGURED_DUCKING_THRESHOLD",
+    "ratio": "CONFIGURED_DUCKING_RATIO",
     "attack": 0.2,
-    "release": 0.6
+    "release": 0.6,
+    "makeup_gain_db": 0
   }
 }
 
@@ -337,12 +398,31 @@ Presetهای اولیه:
 - نسبت تصویر درست است
 - فایل از max_size_mb بزرگ‌تر نیست
 - صدا وجود دارد اگر voice_required=true
+- سنجش loudness و true peak
+- تشخیص clipping
+- تشخیص silent audio
+- تشخیص black frame ابتدا و انتها
+- تشخیص frozen frame طولانی
+- بررسی audio/video duration mismatch
+- بررسی subtitle overflow
+- بررسی subtitle reading speed
+- بررسی mixed Persian/English rendering
+- بررسی safe area برای Hook و Caption
+- بررسی وجود Cover در presetهایی که Cover الزامی است
+- بررسی hash و اندازه فایل
+- بررسی پاک‌شدن فایل‌های temp
+- بررسی نبود metadata حساس در خروجی
 - سطح loudness در محدوده مجاز است
 - clipping صوتی وجود ندارد
 - متن hook داخل safe area است
 - خروجی صفر بایت نیست
 - مدت ویدیو در محدوده مجاز است
 - هیچ فایل موقت حساس باقی نمانده
+
+اگر هر بررسی بحرانی fail شد:
+
+- status = edit_failed یا manual_edit_required
+- محتوا نباید READY_FOR_REVIEW شود.
 
 ## ۱۶. مسیرهای فایل
 
@@ -433,20 +513,234 @@ Presetهای اولیه:
 
 ## ۲۱. اولویت کدنویسی
 
-ترتیب پیاده‌سازی:
-
-1. recipe schema
-2. typography renderer
+Phase A — Deterministic MVP:
+1. Recipe schema and validation
+2. Persian Typography Renderer
 3. FFmpeg overlay renderer
-4. voice noise removal
-5. voice cinematic processing chain
-6. music import and normalize
-7. audio mixer with ducking
-8. cover generator
-9. QC checker
-10. integration with Supabase Storage
-11. Studio Bot edit commands
-12. tests
+4. Basic audio decode/resample
+5. Denoise with FFmpeg afftdn
+6. Voice processing with Pedalboard
+7. Sidechain ducking
+8. Loudness normalization
+9. Cover generator
+10. QC checker
+11. Supabase Storage integration
+12. Unit and integration tests
+
+Phase B — Assisted Intelligence:
+1. faster-whisper transcription
+2. Subtitle segmentation
+3. Keyword highlight suggestions
+4. Edit Intelligence recipe generation
+5. Studio Bot recipe review
+6. Preview rendering
+
+Phase C — External Providers:
+1. AI music adapter
+2. Runway/Descript/Submagic adapters
+3. Advanced denoise adapter
+4. Smart clipping and scene analysis
+5. Optional web-based Studio UI
+
+## ۲۸. Transcription and Caption Intelligence
+
+برای ایجاد تجربه‌ای نزدیک به ادیتورهای هوشمند، سیستم باید بتواند نریشن را به زیرنویس زمان‌بندی‌شده تبدیل کند.
+
+قابلیت‌ها:
+
+- speech-to-text فارسی
+- word-level یا segment-level timestamps
+- تقسیم هوشمند جمله‌ها
+- گروه‌بندی کلمات کوتاه و خوانا
+- تشخیص مکث
+- پیشنهاد highlight برای کلمات کلیدی
+- پشتیبانی از اصلاح دستی متن و timestamp
+- ساخت Subtitle Overlayهای فارسی
+- تولید SRT، VTT و Recipe Segment
+- جلوگیری از نمایش بیش از حد کلمه در هر قاب
+
+موتور پیشنهادی:
+
+- faster-whisper به‌عنوان موتور محلی اختیاری
+- transcript آماده‌شده توسط ایجنت خارجی
+- Adapter برای سرویس‌های خارجی در آینده
+
+قواعد:
+
+- Transcript باید قبل از انتشار قابل ویرایش باشد.
+- متن فارسی باید از نظر غلط تایپی و معنایی بازبینی شود.
+- هیچ Transcript حساسی در log ذخیره نشود.
+- تایمینگ و متن اصلاح‌شده باید version داشته باشند.
+- سیستم باید Original Transcript و Corrected Transcript را از هم جدا نگه دارد.
+- کلمات کلیدی فقط پیشنهاد می‌شوند و تصمیم نهایی با انسان است.
+
+Recipe زیرنویس باید بتواند این فیلدها را داشته باشد:
+
+{
+  "subtitles": {
+    "enabled": true,
+    "transcription_source": "provided_text | faster_whisper | external_adapter",
+    "timing_mode": "word | segment",
+    "language": "fa",
+    "max_words_per_segment": "CONFIGURED_MAX_SUBTITLE_WORDS",
+    "max_chars_per_line": "CONFIGURED_MAX_SUBTITLE_CHARS",
+    "highlight_keywords": true,
+    "manual_review_required": true,
+    "style": "farsi_cinematic_bottom"
+  }
+}
+
+---
+
+## ۲۹. Edit Intelligence
+
+Edit Intelligence موتور تصمیم‌گیری است و باید خروجی Recipe تولید کند، نه فایل ویدیویی.
+
+ورودی‌ها:
+
+- نوع محتوا
+- فایل‌های مدیا
+- نریشن
+- کپشن
+- هوک
+- پرسونای هدف
+- preset برند
+- نیازهای ادیت ثبت‌شده در Studio Bot
+
+پیشنهادهای قابل تولید:
+
+- محل Hook
+- طول Hook
+- Subtitle segmentation
+- Highlight keywords
+- Trim points
+- مکث‌های مهم
+- شدت Music
+- نوع Voice Preset
+- نیاز به Cover
+- نیاز به Human Edit
+- ریسک safe-area
+- ریسک خوانایی
+
+قواعد:
+
+- پیشنهادها خودکار اجرا نمی‌شوند مگر Recipe تأیید شده باشد.
+- محتوای L3 و L4 نیازمند بررسی انسانی Recipe است.
+- Edit Intelligence حق تغییر معنای نریشن را ندارد.
+- Edit Intelligence نباید ادیت احساسی دستکاری‌گر پیشنهاد دهد.
+- خروجی آن باید deterministic schema داشته باشد.
+- در صورت ابهام باید manual_edit_required پیشنهاد دهد.
+
+---
+
+## ۳۰. External Editor and AI Provider Adapters
+
+ابزارهای بیرونی باید از طریق Adapterهای مستقل متصل شوند.
+
+Adapterهای احتمالی:
+
+- Runway Adapter
+- Descript Adapter
+- Submagic Adapter
+- OpusClip Adapter
+- Eleven Music Adapter
+- Suno Manual Import Adapter
+
+قواعد:
+
+- هسته سیستم نباید به یک Provider خاص وابسته باشد.
+- نبود API Key نباید کل ادیتور محلی را متوقف کند.
+- ارسال فایل حساس به سرویس خارجی فقط با تأیید انسانی مجاز است.
+- Provider نباید Signed URL بلندمدت دریافت کند.
+- URL باید کوتاه‌عمر و محدود باشد.
+- API Key فقط از environment variable خوانده می‌شود.
+- Responseهای Provider نباید شامل Secret در log باشند.
+- تمام Providerها باید timeout، retry محدود و error classification داشته باشند.
+- قابلیت هر Provider باید با وضعیت ENABLED، DISABLED یا MANUAL_ONLY ثبت شود.
+
+---
+
+## ۳۱. AI Music Provenance and Licensing
+
+هر موسیقی تولیدشده یا واردشده باید یک License Manifest داشته باشد.
+
+فیلدهای لازم:
+
+- provider
+- model
+- generation_mode
+- prompt
+- generated_at
+- provider_track_id
+- subscription_tier
+- license_type
+- terms_version_or_review_date
+- commercial_use_verified
+- attribution_required
+- approved_by
+- source_file_hash
+- storage_key
+
+قواعد:
+
+- استفاده از نام خواننده، گروه، آهنگ یا درخواست تقلید مستقیم از هنرمند ممنوع است.
+- Track بدون وضعیت commercial_use_verified نباید وارد محتوای قابل انتشار شود.
+- وضعیت لایسنس باید پیش از انتشار دوباره بررسی شود.
+- تغییر Provider یا پلن ممکن است شرایط لایسنس را تغییر دهد.
+- فایل موسیقی تولیدشده نباید به‌عنوان دارایی انحصاری فرض شود مگر شرایط Provider آن را تأیید کند.
+- خروجی موسیقی و Manifest باید به‌صورت خصوصی نگهداری شوند.
+- استفاده تجاری فقط در محدوده مجوز پلن و Provider مجاز است.
+
+---
+
+## ۳۲. Render Jobs, Versioning and Idempotency
+
+هر عملیات رندر باید یک Render Job مستقل باشد.
+
+وضعیت‌ها:
+
+- queued
+- validating
+- downloading_assets
+- preparing_typography
+- processing_audio
+- rendering
+- quality_check
+- completed
+- failed
+- cancelled
+- manual_edit_required
+
+هر Job باید شامل این فیلدها باشد:
+
+- job_id
+- content_id
+- recipe_version
+- input_asset_versions
+- output_asset_key
+- status
+- attempts
+- error_code
+- error_detail_sanitized
+- created_at
+- started_at
+- completed_at
+- approved_by
+
+قواعد:
+
+- فایل ورودی overwrite نشود.
+- هر خروجی نسخه جدید بگیرد.
+- اجرای دوباره همان recipe نباید چند خروجی نامشخص تولید کند.
+- Recipe hash برای idempotency استفاده شود.
+- Retry محدود و قابل تنظیم باشد.
+- خروجی failed نباید READY_FOR_REVIEW شود.
+- Cancel باید قابل audit باشد.
+- فایل‌های temp بعد از success یا failure پاک شوند.
+
+---
+
+## ۲۲. اصل نهایی
 
 ## ۲۲. اصل نهایی معماری
 
@@ -465,25 +759,38 @@ Presetهای اولیه:
 
 سیستم صوتی الینا از چهار مرحله تشکیل می‌شود:
 
-### ۲۳.۱. نویزگیری
+### ۲۳.۱. نویزگیری و پاک‌سازی صدای خام
 
-صدای خام ویس یا نریشن قبل از هر پردازش باید تمیز شود.
+NoiseGate یک موتور کامل Noise Reduction نیست.
 
-ابزار پیشنهادی فاز اول:
-- pedalboard (Spotify) با NoiseGate و optional plugins
+NoiseGate فقط می‌تواند صدای کم‌حجم بین جمله‌ها را کاهش دهد و نباید به‌عنوان راه‌حل حذف نویز هنگام صحبت معرفی شود.
 
-ابزار پشتیبان:
-- noisereduce
-- pysndfx
+مسیر پیشنهادی MVP:
 
-ابزار دستی بیرونی:
-- Adobe Podcast Enhance Speech
+1. بررسی ورودی با FFprobe
+2. High-pass filter برای حذف rumble بسیار پایین
+3. حذف hum در صورت تشخیص
+4. Denoise با FFmpeg afftdn
+5. NoiseGate ملایم فقط برای فاصله بین جمله‌ها
+6. بررسی مصنوعی‌شدن یا افت وضوح صدا
+7. ارسال به مرحله EQ و Compression
 
-هدف:
-- حذف نویز پس‌زمینه
-- حذف هوم و هیس
-- حذف صداهای محیطی
-- بدون آسیب به وضوح صدای اصلی
+مسیرهای پیشرفته و اختیاری:
+
+- FFmpeg arnndn در صورت وجود model تأییدشده
+- DeepFilterNet یا RNNoise از طریق Adapter جدا
+- noisereduce برای پردازش کنترل‌شده و آزمایشی
+- ابزارهای بیرونی مانند Adobe Podcast یا Descript فقط با تأیید انسانی
+
+قواعد:
+
+- Denoise نباید به‌صورت غیرقابل‌بازگشت روی فایل اصلی اعمال شود.
+- فایل خام باید immutable باقی بماند.
+- خروجی denoise در یک asset جدید ذخیره شود.
+- اگر پردازش باعث صدای رباتی، metallic artifact یا افت حروف فارسی شد، وضعیت باید manual_edit_required شود.
+- مقدار denoise باید توسط preset تعیین شود، نه hardcode در کد.
+- ویس واقعی مریم نباید بدون تأیید انسانی به سرویس خارجی ارسال شود.
+
 
 ### ۲۳.۲. پردازش سینمایی صدا
 
@@ -595,7 +902,11 @@ crisis_silent:
       "preset": "elina_cinematic_voice",
       "noise_removal": true,
       "normalize": true,
-      "target_lufs": -16
+      "target_lufs": "CONFIGURED_TARGET_LUFS",
+      "max_true_peak_db": "CONFIGURED_MAX_TRUE_PEAK_DB",
+      "loudness_mode": "two_pass",
+      "preserve_original": true,
+      "target_lufs_example": -16
     },
     "music": {
       "source": "library",
@@ -613,7 +924,7 @@ crisis_silent:
     },
     "export": {
       "format": "aac",
-      "sample_rate": 44100,
+      "sample_rate": 48000,
       "channels": 2
     }
   }
