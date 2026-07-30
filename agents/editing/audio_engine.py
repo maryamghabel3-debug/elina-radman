@@ -2,7 +2,7 @@ import os
 import logging
 import numpy as np
 import soundfile as sf
-from pedalboard import Pedalboard, NoiseGate, Compressor, Reverb, Gain, Limiter, HighpassFilter
+from pedalboard import Pedalboard, NoiseGate, Compressor, Reverb, Limiter, HighpassFilter
 
 logger = logging.getLogger(__name__)
 
@@ -37,11 +37,34 @@ VOICE_PRESETS = {
 }
 
 
+def build_ffmpeg_afftdn_filter(noise_floor_db: int = -30) -> str:
+    """
+    Returns an ffmpeg afftdn filter string for broadband denoise.
+    Example output: 'afftdn=nf=-30'
+    """
+    if noise_floor_db > 0:
+        raise ValueError("noise_floor_db must be 0 or negative.")
+    return f"afftdn=nf={noise_floor_db}"
+
+
+def build_ffmpeg_loudnorm_filter(
+    target_i: int = -16,
+    target_lra: int = 11,
+    target_tp: float = -1.5
+) -> str:
+    """
+    Returns an ffmpeg loudnorm filter string for final loudness normalization.
+    """
+    return f"loudnorm=I={target_i}:LRA={target_lra}:TP={target_tp}"
+
+
 class AudioEngine:
     """
     Processes voice audio: applies noise gating, EQ (highpass), compression,
     cinematic reverb, and limiting according to a named preset.
     Uses Pedalboard (Spotify) for DSP processing.
+    AudioEngine handles cinematic voice styling in-memory via Pedalboard.
+    True denoise and final loudness normalization for export are handled by FFmpeg helpers.
     """
 
     def __init__(self, sample_rate: int = 48000):

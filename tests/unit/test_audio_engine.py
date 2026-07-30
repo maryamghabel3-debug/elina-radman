@@ -59,3 +59,23 @@ def test_calculate_peak_db_full_scale_near_zero():
     full_scale = np.ones(1000, dtype=np.float32)
     db = engine.calculate_peak_db(full_scale)
     assert db >= -1.0
+
+def test_build_ffmpeg_afftdn_filter_default():
+    from agents.editing.audio_engine import build_ffmpeg_afftdn_filter
+    assert build_ffmpeg_afftdn_filter() == "afftdn=nf=-30"
+
+
+def test_build_ffmpeg_afftdn_filter_rejects_positive_noise_floor():
+    from agents.editing.audio_engine import build_ffmpeg_afftdn_filter
+    import pytest
+    with pytest.raises(ValueError):
+        build_ffmpeg_afftdn_filter(5)
+
+
+def test_build_ffmpeg_loudnorm_filter_contains_expected_values():
+    from agents.editing.audio_engine import build_ffmpeg_loudnorm_filter
+    filt = build_ffmpeg_loudnorm_filter()
+    assert "loudnorm" in filt
+    assert "I=-16" in filt
+    assert "LRA=11" in filt
+    assert "TP=-1.5" in filt
