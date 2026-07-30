@@ -1,0 +1,223 @@
+import os
+import logging
+import subprocess
+from typing import Optional, List
+
+from agents.editing.recipe_schema import EditRecipe
+from agents.editing.audio_engine import (
+    build_ffmpeg_afftdn_filter,
+    build_ffmpeg_loudnorm_filter,
+)
+from agents.editing.ducking import DuckingParams, build_ffmpeg_sidechain_filter
+
+logger = logging.getLogger(__name__)
+
+
+class MediaAssemblyEngine:
+    """
+    Assembles final MP4 output by combining:
+    - Base video
+    - Voice narration (with denoise + cinematic processing)
+    - Background music (with ducking)
+    - Text overlays (hook PNG, subtitle PNG)
+    - Final loudness normalization
+    """
+
+    def __init__(self, ffmpeg_binary: str = "ffmpeg"):
+        self.ffmpeg_binary = ffmpeg_binary
+
+    def build_assembly_command(
+        self,
+        recipe: EditRecipe,
+        video_path: str,
+        voice_path: Optional[str],
+        music_path: Optional[str],
+        hook_png_path: Optional[str],
+        output_path: str,
+    ) -> List[str]:
+        """
+        Constructs the ffmpeg command as a list of arguments.
+        Does NOT execute; returns the command for testing or later execution.
+        """
+        if not recipe.content_id:
+            raise ValueError("Recipe must have content_id.")
+        if not video_path:
+            raise ValueError("video_path is required.")
+
+        cmd = [self.ffmpeg_binary, "-y"]
+
+        # Inputs
+        cmd += ["-i", video_path]
+        if voice_path:
+            cmd += ["-i", voice_path]
+        if music_path:
+            cmd += ["-i", music_path]
+        if hook_png_path:
+            cmd += ["-i", hook_png_path]
+
+        # Filter complex
+        filter_parts = []
+
+        # Denoise voice if present
+        voice_index = 1 if voice_path else None
+        if voice_index is not None:
+            afftdn = build_ffmpeg_afftdn_filter(-30)
+            filter_parts.append(f"[{voice_index}:a]{afftdn}[voice_clean]")
+
+        # Ducking if both voice and music
+        music_index = None
+        if voice_path and music_path:
+            music_index = 2
+            duck_params = DuckingParams(
+                target_reduction_db=recipe.audio.ducking.target_reduction_db,
+                attack=recipe.audio.ducking.attack,
+                release=recipe.audio.ducking.release,
+            )
+            duck_filter = build_ffmpeg_sidechain_filter(
+                duck_params,
+                voice_stream="voice_clean",
+                music_stream=f"{music_index}:a",
+            )
+            filter_parts.append(duck_filter)
+            # Mix ducked music with voice
+            filter_parts.append(
+                "[ducked_music][voice_clean]amix=inputs=2:duration=first[mixed_audio]"
+            )
+            audio_out = "mixed_audio"
+        elif voice_path:
+            audio_out = "voice_clean"
+        elif music_path:
+            music_index = 1
+            audio_out = f"{music_index}:a"
+        else:
+            audio_out = None
+
+        # Loudness normalize the final audio
+        if audio_out:
+            loudnorm = build_ffmpeg_loudnorm_filter()
+            filter_parts.append(f"[{audio_out}]{loudnorm}[final_audio]")
+            final_audio_label = "final_audio"
+        else:
+            final_audio_label = None
+
+        # Video overlay for hook
+        if hook_png_path:
+            overlay_index = 1 + (1 if voice_path else 0) + (1 if music_path else 0)
+            filter_parts.append(
+                f"[0:v][{overlay_index}:v]overlay=(W-w)/2:(H-h)/3:"
+                f"enable='between(t,{recipe.hook.start_sec},{recipe.hook.end_sec})'[final_video]"
+            )
+            final_video_label = "final_video"
+        else:
+            final_video_label = "0:v"
+
+        if filter_parts:
+            cmd += ["-filter_complex", ";".join(filter_parts)]
+            cmd += ["-map", f"[{final_video_label}]"]
+            if final_audio_label:
+                cmd += ["-map", f"[{final_audio_label}]"]
+
+        # Encoding
+        cmd += [
+            "-c:v", "libx264",
+            "-preset", "medium",
+            "-crf", "23",
+            "-c:a", "aac",
+            "-b:a", "192k",
+            "-ar", "48000",
+        ]
+
+        # Resolution
+        if recipe.export.resolution:
+            width, height = recipe.export.resolution.split("x")
+            cmd += ["-s", f"{width}x{height}"]
+
+        cmd += ["-r", str(recipe.export.fps)]
+        cmd += [output_path]
+
+        return cmd
+
+    def run_assembly(
+        self,
+        recipe: EditRecipe,
+        video_path: str,
+        voice_path: Optional[str],
+        music_path: Optional[str],
+        hook_png_path: Optional[str],
+        output_path: str,
+        timeout_seconds: int = 300,
+    ) -> str:
+        """
+        Executes the ffmpeg assembly command.
+        Returns the output_path on success.
+        """
+        cmd = self.build_assembly_command(
+            recipe=recipe,
+            video_path=video_path,
+            voice_path=voice_path,
+            music_path=music_path,
+            hook_png_path=hook_png_path,
+            output_path=output_path,
+        )
+
+        out_dir = os.path.dirname(output_path)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
+
+        logger.info("Running ffmpeg assembly for %s", recipe.content_id)
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+        )
+
+        if result.returncode != 0:
+            logger.error("FFmpeg failed: %s", result.stderr[:500])
+            raise RuntimeError(
+                f"FFmpeg assembly failed for {recipe.content_id}: {result.stderr[:200]}"
+            )
+
+        return output_path
+
+
+def run_qc_checks(
+    output_path: str,
+    recipe: EditRecipe,
+    ffprobe_binary: str = "ffprobe",
+) -> List[str]:
+    """
+    Runs post-render quality checks.
+    Returns a list of QC error strings. Empty list means pass.
+    """
+    errors = []
+
+    if not os.path.exists(output_path):
+        errors.append("Output file does not exist.")
+        return errors
+
+    size_mb = os.path.getsize(output_path) / (1024 * 1024)
+    if size_mb > recipe.export.max_size_mb:
+        errors.append(
+            f"Output size {size_mb:.1f}MB exceeds max {recipe.export.max_size_mb}MB."
+        )
+    if size_mb < 0.01:
+        errors.append("Output file is nearly empty.")
+
+    # Optional: run ffprobe if available
+    try:
+        result = subprocess.run(
+            [ffprobe_binary, "-v", "error", "-show_entries",
+             "stream=width,height,duration", "-of", "csv=p=0", output_path],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            # Basic sanity check on output
+            if not result.stdout.strip():
+                errors.append("ffprobe returned no stream info.")
+    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        logger.warning("ffprobe check skipped: %s", exc)
+
+    return errors
