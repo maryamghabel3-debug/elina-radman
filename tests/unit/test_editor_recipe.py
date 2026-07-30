@@ -3,28 +3,29 @@ from agents.editing.recipe_schema import EditRecipe
 
 pytestmark = pytest.mark.unit
 
-def test_recipe_from_dict_minimal():
+def test_recipe_validation_passes():
+    data = {"content_id": "test-123", "input_media": {"video_key": "v.mp4"}}
+    recipe = EditRecipe.from_dict(data)
+    assert not recipe.validate()
+
+def test_recipe_validation_fails_no_content_id():
+    data = {"input_media": {"video_key": "v.mp4"}}
+    recipe = EditRecipe.from_dict(data)
+    assert "content_id is required." in recipe.validate()
+
+def test_recipe_validation_fails_no_media():
     data = {"content_id": "test-123"}
     recipe = EditRecipe.from_dict(data)
-    assert recipe.content_id == "test-123"
-    assert recipe.hook.enabled is False
-    assert recipe.export.fps == 30
+    assert any("At least one" in e for e in recipe.validate())
 
-def test_recipe_validation_fails_on_empty_hook_text():
-    data = {
-        "content_id": "test-456",
-        "hook": {"enabled": True, "text": ""}
-    }
-    recipe = EditRecipe.from_dict(data)
-    errors = recipe.validate()
-    assert len(errors) > 0
-    assert "Hook is enabled" in errors[0]
+def test_recipe_validation_fails_invalid_project_type():
+    data = {"content_id": "test", "project_type": "invalid", "input_media": {"video_key": "v"}}
+    assert any("invalid project_type" in e for e in EditRecipe.from_dict(data).validate())
 
-def test_recipe_validation_passes_valid_data():
-    data = {
-        "content_id": "test-789",
-        "hook": {"enabled": True, "text": "سلام دنیا"}
-    }
-    recipe = EditRecipe.from_dict(data)
-    errors = recipe.validate()
-    assert len(errors) == 0
+def test_recipe_validation_fails_empty_hook():
+    data = {"content_id": "test", "input_media": {"video_key": "v"}, "hook": {"enabled": True, "text": "   "}}
+    assert any("Hook is enabled but text is empty" in e for e in EditRecipe.from_dict(data).validate())
+
+def test_from_dict_handles_invalid_type():
+    with pytest.raises(TypeError):
+        EditRecipe.from_dict(["not", "a", "dict"])

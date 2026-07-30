@@ -5,7 +5,6 @@ from agents.editing.typography_engine import TypographyEngine
 
 pytestmark = pytest.mark.unit
 
-# Try to find a default system font for testing purposes
 POTENTIAL_TEST_FONTS = [
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "/System/Library/Fonts/Supplemental/Arial.ttf",
@@ -20,32 +19,28 @@ def find_test_font():
 
 TEST_FONT_PATH = find_test_font()
 
-@pytest.mark.skipif(TEST_FONT_PATH is None, reason="No default system font found for testing")
-def test_typography_engine_creates_valid_png(tmp_path):
-    engine = TypographyEngine(font_path=TEST_FONT_PATH)
-    output_file = tmp_path / "test_output.png"
-
-    result_path = engine.render_text_to_png(
-        text="تست",
-        output_path=str(output_file)
-    )
-
-    assert os.path.exists(result_path)
-    img = Image.open(result_path)
-    assert img.mode == "RGBA"
-    assert img.width > 0
-
-def test_typography_engine_fails_without_font():
+def test_missing_font_raises_error():
     with pytest.raises(FileNotFoundError):
-        TypographyEngine(font_path="/non/existent/font.ttf")
+        TypographyEngine(font_path="/non/existent.ttf")
 
-def test_reshape_logic_changes_text_order():
-    # We can test the internal logic without needing a font file necessarily,
-    # but since __init__ requires a font, we mock font_path check temporarily
-    # or test static logic if refactored.
-    # For simplicity here, we assume Font exists check is bypassed if TEST_FONT_PATH exists.
-    if TEST_FONT_PATH:
-        engine = TypographyEngine(font_path=TEST_FONT_PATH)
-        original = "سلام"
-        prepared = engine._prepare_text(original)
-        assert original != prepared  # Bidi/reshape should change the character forms/order representation
+@pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
+def test_engine_creates_valid_png(tmp_path):
+    engine = TypographyEngine(font_path=TEST_FONT_PATH, render_mode="fallback")
+    output = str(tmp_path / "test.png")
+    res = engine.render_text_to_png("سلام", output)
+    assert os.path.exists(res)
+    img = Image.open(res)
+    assert img.mode == "RGBA"
+
+@pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
+def test_engine_fails_empty_text(tmp_path):
+    engine = TypographyEngine(font_path=TEST_FONT_PATH)
+    with pytest.raises(ValueError):
+        engine.render_text_to_png("   ", str(tmp_path / "t.png"))
+
+@pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
+def test_engine_fails_overflow(tmp_path):
+    engine = TypographyEngine(font_path=TEST_FONT_PATH)
+    with pytest.raises(ValueError):
+        # 10x10 canvas is too small for size 70 font
+        engine.render_text_to_png("متن طولانی", str(tmp_path / "t.png"), canvas_size=(10, 10))

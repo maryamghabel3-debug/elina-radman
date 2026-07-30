@@ -2,6 +2,13 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any
 
 @dataclass
+class InputMediaConfig:
+    video_key: Optional[str] = None
+    image_keys: List[str] = field(default_factory=list)
+    voice_key: Optional[str] = None
+    music_key: Optional[str] = None
+
+@dataclass
 class HookConfig:
     enabled: bool = False
     text: str = ""
@@ -12,7 +19,9 @@ class HookConfig:
 @dataclass
 class SubtitleConfig:
     enabled: bool = False
+    source_text: str = ""
     style: str = "farsi_cinematic_bottom"
+    highlight_keywords: bool = False
 
 @dataclass
 class AudioDucking:
@@ -29,6 +38,12 @@ class AudioConfig:
     ducking: AudioDucking = field(default_factory=AudioDucking)
 
 @dataclass
+class CoverConfig:
+    enabled: bool = False
+    text: str = ""
+    style: str = "cover_dark_gold"
+
+@dataclass
 class ExportConfig:
     resolution: str = "1080x1920"
     fps: int = 30
@@ -37,45 +52,105 @@ class ExportConfig:
 
 @dataclass
 class EditRecipe:
-    """
-    Represents a single, validated instruction set for the render engine.
-    """
     content_id: str
-    video_key: Optional[str] = None
+    recipe_version: str = "1.0"
+    project_type: str = "reel"
+    preset: str = "elina_cinematic_reel"
+    input_media: InputMediaConfig = field(default_factory=InputMediaConfig)
     hook: HookConfig = field(default_factory=HookConfig)
     subtitles: SubtitleConfig = field(default_factory=SubtitleConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
+    cover: CoverConfig = field(default_factory=CoverConfig)
     export: ExportConfig = field(default_factory=ExportConfig)
 
     def validate(self) -> List[str]:
-        """Returns a list of error strings. Empty list means valid."""
         errors = []
         if not self.content_id:
             errors.append("content_id is required.")
-        if self.hook.enabled and not self.hook.text:
-            errors.append("Hook is enabled but text is empty.")
-        if self.video_key is None and self.subtitles.enabled:
-             errors.append("Subtitles enabled but no video_key provided for context.")
+        valid_types = ["reel", "story", "carousel_video", "maryam_video", "preview"]
+        if self.project_type not in valid_types:
+            errors.append(f"invalid project_type. Must be one of {valid_types}")
+        if not self.input_media.video_key and not self.input_media.image_keys:
+            errors.append("At least one of video_key or image_keys must be provided.")
+        if self.hook.enabled:
+            if not self.hook.text.strip():
+                errors.append("Hook is enabled but text is empty.")
+            if self.hook.start_sec < 0:
+                errors.append("Hook start_sec cannot be negative.")
+            if self.hook.end_sec <= self.hook.start_sec:
+                errors.append("Hook end_sec must be greater than start_sec.")
+        if self.subtitles.enabled and not self.subtitles.source_text.strip():
+            errors.append("Subtitles enabled but source_text is empty.")
+        if self.export.fps <= 0:
+            errors.append("Export fps must be greater than 0.")
+        if self.export.max_size_mb <= 0:
+            errors.append("Export max_size_mb must be greater than 0.")
+        if "x" not in self.export.resolution:
+            errors.append("Export resolution must follow WIDTHxHEIGHT pattern.")
+        if self.export.format not in ["mp4", "jpg", "png"]:
+            errors.append("Export format must be mp4, jpg, or png.")
+        if self.audio.ducking.enabled:
+            if self.audio.ducking.attack < 0 or self.audio.ducking.release < 0:
+                errors.append("Audio ducking attack and release cannot be negative.")
         return errors
 
     @staticmethod
     def from_dict(data: Dict[str, Any]) -> "EditRecipe":
+        if not isinstance(data, dict):
+            raise TypeError("Input data must be a dictionary.")
+
+        im_data = data.get("input_media", {})
         hook_data = data.get("hook", {})
         sub_data = data.get("subtitles", {})
         audio_data = data.get("audio", {})
-        ducking_data = audio_data.get("ducking", {})
-        export_data = data.get("export", {})
+        duck_data = audio_data.get("ducking", {}) if isinstance(audio_data, dict) else {}
+        cov_data = data.get("cover", {})
+        exp_data = data.get("export", {})
 
         return EditRecipe(
-            content_id=data.get("content_id"),
-            video_key=data.get("video_key"),
-            hook=HookConfig(**hook_data),
-            subtitles=SubtitleConfig(**sub_data),
+            content_id=data.get("content_id", ""),
+            recipe_version=data.get("recipe_version", "1.0"),
+            project_type=data.get("project_type", "reel"),
+            preset=data.get("preset", "elina_cinematic_reel"),
+            input_media=InputMediaConfig(
+                video_key=im_data.get("video_key"),
+                image_keys=im_data.get("image_keys", []),
+                voice_key=im_data.get("voice_key"),
+                music_key=im_data.get("music_key"),
+            ),
+            hook=HookConfig(
+                enabled=hook_data.get("enabled", False),
+                text=hook_data.get("text", ""),
+                style=hook_data.get("style", "hook_bold_center"),
+                start_sec=hook_data.get("start_sec", 0.0),
+                end_sec=hook_data.get("end_sec", 3.0),
+            ),
+            subtitles=SubtitleConfig(
+                enabled=sub_data.get("enabled", False),
+                source_text=sub_data.get("source_text", ""),
+                style=sub_data.get("style", "farsi_cinematic_bottom"),
+                highlight_keywords=sub_data.get("highlight_keywords", False),
+            ),
             audio=AudioConfig(
                 voice_key=audio_data.get("voice_key"),
                 music_key=audio_data.get("music_key"),
                 music_gain_db=audio_data.get("music_gain_db", -12),
-                ducking=AudioDucking(**ducking_data)
+                ducking=AudioDucking(
+                    enabled=duck_data.get("enabled", True),
+                    target_reduction_db=duck_data.get("target_reduction_db", 6),
+                    attack=duck_data.get("attack", 0.2),
+                    release=duck_data.get("release", 0.6),
+                )
             ),
-            export=ExportConfig(**export_data)
+            cover=CoverConfig(
+                enabled=cov_data.get("enabled", False),
+                text=cov_data.get("text", ""),
+                style=cov_data.get("style", "cover_dark_gold"),
+            ),
+            export=ExportConfig(
+                resolution=exp_data.get("resolution", "1080x1920"),
+                fps=exp_data.get("fps", 30),
+                format=exp_data.get("format", "mp4"),
+                max_size_mb=exp_data.get("max_size_mb", 18),
+            )
         )
