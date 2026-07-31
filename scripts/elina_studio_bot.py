@@ -1,4 +1,5 @@
 import os
+import asyncio
 import sys
 import logging
 from pathlib import Path
@@ -11,6 +12,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 load_dotenv(PROJECT_ROOT / ".env")
 
 from agents.studio.approval import ApprovalManager
+from agents.editing.orchestrator import EditOrchestrator
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -98,6 +100,41 @@ async def cmd_editdone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ ادیت تمام شد: {result['custom_id']}" if result["ok"] else f"❌ {result['error']}")
 
 
+async def cmd_render(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_owner(update):
+        return
+
+    if len(context.args) < 1:
+        await update.message.reply_text("استفاده: /render ELN-... [متن هوک]")
+        return
+
+    custom_id = context.args[0]
+    hook_text = " ".join(context.args[1:]) if len(context.args) > 1 else None
+    actor = actor_name(update)
+
+    msg = await update.message.reply_text(f"⏳ در حال رندر {custom_id}...\nلطفاً صبر کنید.")
+
+    def run_render():
+        return EditOrchestrator().render_content(
+            custom_id=custom_id,
+            hook_text=hook_text,
+            actor=actor,
+        )
+
+    loop = asyncio.get_running_loop()
+    try:
+        result = await loop.run_in_executor(None, run_render)
+        if result.get("ok"):
+            await msg.edit_text(
+                f"✅ رندر تمام شد.\nشناسه: {result['custom_id']}\nخروجی: {result['output_key']}\nوضعیت: {result['status']}"
+            )
+        else:
+            await msg.edit_text(f"❌ رندر ناموفق:\n{result.get('error')}")
+    except Exception as exc:
+        logger.exception("Render failed for %s", custom_id)
+        await msg.edit_text(f"❌ خطای سیستمی:\n{type(exc).__name__}: {exc}")
+
+
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update):
         return
@@ -109,6 +146,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/reject ELN-... دلیل\n"
         "/edit ELN-... توضیح\n"
         "/editdone ELN-...\n"
+        "/render ELN-... [متن هوک] — رندر ادیت‌شده با هوک فارسی\n"
     )
 
 
@@ -121,6 +159,7 @@ def main():
         ("pending", cmd_pending), ("promote", cmd_promote),
         ("approve", cmd_approve), ("reject", cmd_reject),
         ("edit", cmd_edit), ("editdone", cmd_editdone),
+        ("render", cmd_render),
         ("help", cmd_help), ("start", cmd_help),
     ]:
         app.add_handler(CommandHandler(cmd, handler))
