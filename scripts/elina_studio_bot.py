@@ -110,30 +110,29 @@ async def cmd_render(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     custom_id = context.args[0]
     hook_text = " ".join(context.args[1:]) if len(context.args) > 1 else None
+    actor = actor_name(update)
 
-    msg = await update.message.reply_text("🎬 رندر شروع شد. لطفاً چند لحظه صبر کن...")
+    msg = await update.message.reply_text(f"⏳ در حال رندر {custom_id}...\nلطفاً صبر کنید.")
 
+    def run_render():
+        return EditOrchestrator().render_content(
+            custom_id=custom_id,
+            hook_text=hook_text,
+            actor=actor,
+        )
+
+    loop = asyncio.get_running_loop()
     try:
-        def run_render():
-            orchestrator = EditOrchestrator()
-            return orchestrator.render_content(
-                custom_id=custom_id,
-                hook_text=hook_text,
-                actor=actor_name(update),
-            )
-        
-        loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(None, run_render)
-        
         if result.get("ok"):
             await msg.edit_text(
                 f"✅ رندر تمام شد.\nشناسه: {result['custom_id']}\nخروجی: {result['output_key']}\nوضعیت: {result['status']}"
             )
         else:
-            await msg.edit_text(f"❌ رندر ناموفق بود:\n{result.get('error')}")
+            await msg.edit_text(f"❌ رندر ناموفق:\n{result.get('error')}")
     except Exception as exc:
-        logger.exception("Render command failed")
-        await msg.edit_text(f"❌ خطای غیرمنتظره در رندر:\n{type(exc).__name__}: {exc}")
+        logger.exception("Render failed for %s", custom_id)
+        await msg.edit_text(f"❌ خطای سیستمی:\n{type(exc).__name__}: {exc}")
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
