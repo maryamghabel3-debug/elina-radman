@@ -11,6 +11,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 load_dotenv(PROJECT_ROOT / ".env")
 
 from agents.studio.approval import ApprovalManager
+from agents.editing.orchestrator import EditOrchestrator
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -98,6 +99,36 @@ async def cmd_editdone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ ادیت تمام شد: {result['custom_id']}" if result["ok"] else f"❌ {result['error']}")
 
 
+async def cmd_render(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_owner(update):
+        return
+
+    if len(context.args) < 1:
+        await update.message.reply_text("استفاده: /render ELN-... [متن هوک]")
+        return
+
+    custom_id = context.args[0]
+    hook_text = " ".join(context.args[1:]) if len(context.args) > 1 else None
+
+    await update.message.reply_text("🎬 رندر شروع شد. لطفاً چند لحظه صبر کن...")
+
+    try:
+        orchestrator = EditOrchestrator()
+        result = orchestrator.render_content(
+            custom_id=custom_id,
+            hook_text=hook_text,
+            actor=actor_name(update),
+        )
+        if result.get("ok"):
+            await update.message.reply_text(
+                f"✅ رندر تمام شد.\nشناسه: {result['custom_id']}\nخروجی: {result['output_key']}\nوضعیت: {result['status']}"
+            )
+        else:
+            await update.message.reply_text(f"❌ رندر ناموفق بود:\n{result.get('error')}")
+    except Exception as exc:
+        await update.message.reply_text(f"❌ خطای غیرمنتظره در رندر:\n{type(exc).__name__}: {exc}")
+
+
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update):
         return
@@ -109,6 +140,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/reject ELN-... دلیل\n"
         "/edit ELN-... توضیح\n"
         "/editdone ELN-...\n"
+        "/render ELN-... [متن هوک] — رندر ادیت‌شده با هوک فارسی\n"
     )
 
 
@@ -121,6 +153,7 @@ def main():
         ("pending", cmd_pending), ("promote", cmd_promote),
         ("approve", cmd_approve), ("reject", cmd_reject),
         ("edit", cmd_edit), ("editdone", cmd_editdone),
+        ("render", cmd_render),
         ("help", cmd_help), ("start", cmd_help),
     ]:
         app.add_handler(CommandHandler(cmd, handler))
