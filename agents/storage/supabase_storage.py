@@ -56,3 +56,13 @@ class ElinaStorage:
     def list_files(self, folder: str = "") -> list:
         """List files inside a folder of the bucket."""
         return self.client.storage.from_(self.bucket).list(folder)
+
+    def download_file(self, storage_path: str, local_path: str) -> str:
+        data = self.client.storage.from_(self.bucket).download(storage_path)
+        os.makedirs(os.path.dirname(local_path) or ".", exist_ok=True)
+        with open(local_path, "wb") as f:
+            if isinstance(data, bytes):
+                f.write(data)
+            else:
+                f.write(bytes(data))
+        return local_path

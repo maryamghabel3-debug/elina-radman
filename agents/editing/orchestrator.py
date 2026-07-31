@@ -1,0 +1,133 @@
+import os
+import tempfile
+import logging
+from pathlib import Path
+from typing import Optional, Dict, Any
+
+from agents.db.supabase_client import ElinaDB
+from agents.storage.supabase_storage import ElinaStorage
+from agents.editing.recipe_schema import EditRecipe
+from agents.editing.typography_engine import TypographyEngine
+from agents.editing.media_assembly import MediaAssemblyEngine, run_qc_checks
+
+logger = logging.getLogger(__name__)
+
+
+class EditOrchestrator:
+    """
+    Coordinates the complete edit flow:
+    Supabase DB -> Storage download -> typography PNG -> media assembly -> QC -> Storage upload -> DB update.
+    """
+
+    def __init__(
+        self,
+        db: Optional[ElinaDB] = None,
+        storage: Optional[ElinaStorage] = None,
+        typography: Optional[TypographyEngine] = None,
+        assembler: Optional[MediaAssemblyEngine] = None,
+    ):
+        self.db = db or ElinaDB()
+        self.storage = storage or ElinaStorage()
+        self.typography = typography
+        self.assembler = assembler or MediaAssemblyEngine()
+
+    def build_recipe_from_item(self, item: Dict[str, Any], hook_text: Optional[str] = None) -> EditRecipe:
+        media_keys = item.get("media_keys") or []
+        if not media_keys:
+            raise ValueError("content item has no media_keys")
+
+        recipe_data = {
+            "content_id": item["id"],
+            "project_type": "reel" if item.get("content_type") == "reel" else "preview",
+            "preset": "elina_cinematic_reel",
+            "input_media": {
+                "video_key": media_keys[0],
+                "image_keys": [],
+                "voice_key": None,
+                "music_key": None,
+            },
+            "hook": {
+                "enabled": bool(hook_text),
+                "text": hook_text or "",
+                "style": "hook_bold_center",
+                "start_sec": 0.0,
+                "end_sec": 3.0,
+            },
+            "export": {
+                "resolution": "1080x1920",
+                "fps": 30,
+                "format": "mp4",
+                "max_size_mb": 50,
+            },
+        }
+        recipe = EditRecipe.from_dict(recipe_data)
+        errors = recipe.validate()
+        if errors:
+            raise ValueError("; ".join(errors))
+        return recipe
+
+    def render_content(self, custom_id: str, hook_text: Optional[str] = None, actor: str = "editor") -> Dict[str, Any]:
+        item = self.db.get_content_by_custom_id(custom_id)
+        if not item:
+            return {"ok": False, "error": f"Item not found: {custom_id}"}
+
+        original_status = item.get("status")
+        self.db.update_status(item["id"], "EDIT_RENDERING")
+        self.db.log_event(item["id"], "edit_rendering_started", original_status, "EDIT_RENDERING", actor)
+
+        try:
+            recipe = self.build_recipe_from_item(item, hook_text=hook_text)
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                tmp = Path(tmpdir)
+                input_video = tmp / "input.mp4"
+                output_video = tmp / "output.mp4"
+                hook_png = tmp / "hook.png"
+
+                # Download base video
+                self.storage.download_file(recipe.input_media.video_key, str(input_video))
+
+                # Render hook PNG if requested
+                hook_png_path = None
+                if recipe.hook.enabled:
+                    if not self.typography:
+                        self.typography = TypographyEngine()
+                    self.typography.render_text_to_png(
+                        text=recipe.hook.text,
+                        output_path=str(hook_png),
+                        font_size=72,
+                        canvas_size=(1080, 300),
+                    )
+                    hook_png_path = str(hook_png)
+
+                # Assemble video
+                self.assembler.run_assembly(
+                    recipe=recipe,
+                    video_path=str(input_video),
+                    voice_path=None,
+                    music_path=None,
+                    hook_png_path=hook_png_path,
+                    output_path=str(output_video),
+                )
+
+                qc_errors = run_qc_checks(str(output_video), recipe)
+                if qc_errors:
+                    self.db.update_status(item["id"], "EDIT_FAILED", {"last_error": "; ".join(qc_errors)})
+                    self.db.log_event(item["id"], "edit_failed", "EDIT_RENDERING", "EDIT_FAILED", actor, "; ".join(qc_errors))
+                    return {"ok": False, "error": "; ".join(qc_errors)}
+
+                output_key = f"edited/{custom_id}/final.mp4"
+                self.storage.upload_file(str(output_video), output_key, content_type="video/mp4")
+
+            self.db.update_status(item["id"], "READY_FOR_REVIEW", {
+                "media_keys": [output_key],
+                "edit_status": "done",
+            })
+            self.db.log_event(item["id"], "edit_done", "EDIT_RENDERING", "READY_FOR_REVIEW", actor, output_key)
+            return {"ok": True, "custom_id": custom_id, "output_key": output_key, "status": "READY_FOR_REVIEW"}
+
+        except Exception as exc:
+            logger.exception("Edit failed for %s", custom_id)
+            self.db.update_status(item["id"], "EDIT_FAILED", {"last_error": str(exc)})
+            self.db.log_event(item["id"], "edit_failed", "EDIT_RENDERING", "EDIT_FAILED", actor, str(exc))
+            return {"ok": False, "error": str(exc)}
