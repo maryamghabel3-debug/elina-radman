@@ -111,3 +111,147 @@ def test_qc_returns_error_when_file_too_small(tmp_path):
     recipe = make_recipe()
     errors = run_qc_checks(str(output), recipe)
     assert any("nearly empty" in e for e in errors)
+
+
+def test_command_includes_adelay_for_sfx():
+    engine = MediaAssemblyEngine()
+    recipe = make_recipe()
+    sfx_items = [
+        {
+            "path": "sfx.mp3",
+            "start_sec": 2.5,
+            "gain_db": -5,
+            "fade_in_sec": 0.5,
+            "fade_out_sec": 1.0,
+            "attribution": None,
+        }
+    ]
+    cmd = engine.build_assembly_command(
+        recipe=recipe,
+        video_path="/tmp/v.mp4",
+        voice_path=None,
+        music_path=None,
+        hook_png_path=None,
+        output_path="/tmp/o.mp4",
+        sfx_items=sfx_items,
+    )
+    filter_arg = cmd[cmd.index("-filter_complex") + 1]
+    assert "adelay=2500|2500" in filter_arg
+
+
+def test_command_includes_volume_gain_for_sfx():
+    engine = MediaAssemblyEngine()
+    recipe = make_recipe()
+    sfx_items = [
+        {
+            "path": "sfx.mp3",
+            "start_sec": 0.0,
+            "gain_db": -8,
+            "fade_in_sec": 0.0,
+            "fade_out_sec": 0.0,
+            "attribution": None,
+        }
+    ]
+    cmd = engine.build_assembly_command(
+        recipe=recipe,
+        video_path="/tmp/v.mp4",
+        voice_path=None,
+        music_path=None,
+        hook_png_path=None,
+        output_path="/tmp/o.mp4",
+        sfx_items=sfx_items,
+    )
+    filter_arg = cmd[cmd.index("-filter_complex") + 1]
+    assert "volume=-8dB" in filter_arg
+
+
+def test_command_without_sfx_is_backward_compatible():
+    engine = MediaAssemblyEngine()
+    recipe = make_recipe()
+    cmd = engine.build_assembly_command(
+        recipe=recipe,
+        video_path="/tmp/v.mp4",
+        voice_path=None,
+        music_path=None,
+        hook_png_path=None,
+        output_path="/tmp/o.mp4",
+        sfx_items=None,
+    )
+    if "-filter_complex" in cmd:
+        filter_arg = cmd[cmd.index("-filter_complex") + 1]
+        assert "adelay" not in filter_arg
+    else:
+        assert True
+
+
+def test_multiple_sfx_inputs_are_included():
+    engine = MediaAssemblyEngine()
+    recipe = make_recipe()
+    sfx_items = [
+        {
+            "path": "sfx1.mp3",
+            "start_sec": 1.0,
+            "gain_db": -3,
+            "fade_in_sec": 0.0,
+            "fade_out_sec": 0.0,
+            "attribution": "Attribution 1",
+        },
+        {
+            "path": "sfx2.mp3",
+            "start_sec": 4.5,
+            "gain_db": -6,
+            "fade_in_sec": 1.0,
+            "fade_out_sec": 0.5,
+            "attribution": "Attribution 2",
+        },
+    ]
+    cmd = engine.build_assembly_command(
+        recipe=recipe,
+        video_path="/tmp/v.mp4",
+        voice_path="/tmp/voice.wav",
+        music_path="/tmp/music.mp3",
+        hook_png_path="/tmp/hook.png",
+        output_path="/tmp/o.mp4",
+        sfx_items=sfx_items,
+    )
+
+    # Assert both paths are added as ffmpeg inputs
+    inputs = [cmd[i+1] for i in range(len(cmd)) if cmd[i] == "-i"]
+    assert "sfx1.mp3" in inputs
+    assert "sfx2.mp3" in inputs
+
+    # Assert final filter has both
+    filter_arg = cmd[cmd.index("-filter_complex") + 1]
+    assert "sfx_0_clean" in filter_arg
+    assert "sfx_1_clean" in filter_arg
+
+
+def test_overlay_ducking_loudnorm_and_sfx_can_coexist():
+    engine = MediaAssemblyEngine()
+    recipe = make_recipe()
+    sfx_items = [
+        {
+            "path": "sfx1.mp3",
+            "start_sec": 1.5,
+            "gain_db": -3,
+            "fade_in_sec": 0.5,
+            "fade_out_sec": 0.5,
+            "attribution": None,
+        }
+    ]
+    cmd = engine.build_assembly_command(
+        recipe=recipe,
+        video_path="/tmp/v.mp4",
+        voice_path="/tmp/voice.wav",
+        music_path="/tmp/music.mp3",
+        hook_png_path="/tmp/hook.png",
+        output_path="/tmp/o.mp4",
+        sfx_items=sfx_items,
+    )
+    filter_arg = cmd[cmd.index("-filter_complex") + 1]
+    assert "afftdn" in filter_arg
+    assert "sidechaincompress" in filter_arg
+    assert "amix" in filter_arg
+    assert "loudnorm" in filter_arg
+    assert "overlay" in filter_arg
+    assert "adelay" in filter_arg
