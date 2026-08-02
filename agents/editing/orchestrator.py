@@ -9,6 +9,7 @@ from agents.storage.supabase_storage import ElinaStorage
 from agents.editing.recipe_schema import EditRecipe
 from agents.editing.typography_engine import TypographyEngine
 from agents.editing.media_assembly import MediaAssemblyEngine, run_qc_checks
+from agents.editing.concatenator import VideoConcatenator
 
 logger = logging.getLogger(__name__)
 
@@ -33,18 +34,21 @@ class EditOrchestrator:
 
     def build_recipe_from_item(self, item: Dict[str, Any], hook_text: Optional[str] = None) -> EditRecipe:
         media_keys = item.get("media_keys") or []
-        if not media_keys:
-            raise ValueError("content item has no media_keys")
+        video_segments = item.get("video_segments", [])
+
+        if not media_keys and not video_segments:
+            raise ValueError("content item has no media_keys or video_segments")
 
         recipe_data = {
             "content_id": item["id"],
             "project_type": "reel" if item.get("content_type") == "reel" else "preview",
             "preset": "elina_cinematic_reel",
             "input_media": {
-                "video_key": media_keys[0],
+                "video_keys": media_keys,
+                "video_segments": video_segments,
                 "image_keys": [],
-                "voice_key": None,
-                "music_key": None,
+                "voice_key": item.get("voice_key"),
+                "music_key": item.get("music_key"),
             },
             "hook": {
                 "enabled": bool(hook_text),
@@ -80,12 +84,44 @@ class EditOrchestrator:
 
             with tempfile.TemporaryDirectory() as tmpdir:
                 tmp = Path(tmpdir)
-                input_video = tmp / "input.mp4"
+                base_video = tmp / "base_video.mp4"
                 output_video = tmp / "output.mp4"
                 hook_png = tmp / "hook.png"
 
-                # Download base video
-                self.storage.download_file(recipe.input_media.video_key, str(input_video))
+                # Download all videos and concatenate if multiple using segments
+                segments = recipe.input_media.video_segments
+                if not segments:
+                    # Convert video_keys to segments if no segments provided
+                    video_keys = recipe.input_media.video_keys
+                    if not video_keys:
+                        raise ValueError("No video_segments or video_keys available for rendering")
+                    segments = [{"key": vk} for vk in video_keys]
+
+                # Download all segment files and build local segment dicts
+                local_segments = []
+                for idx, seg in enumerate(segments):
+                    vpath = tmp / f"clip_{idx}.mp4"
+                    self.storage.download_file(seg.key, str(vpath))
+                    local_segments.append({
+                        "path": str(vpath),
+                        "start_sec": seg.start_sec,
+                        "end_sec": seg.end_sec,
+                    })
+
+                # Concatenate segments (with optional trimming)
+                VideoConcatenator().concat_segments(local_segments, str(base_video))
+
+                # Download voice track if present
+                voice_path = None
+                if recipe.input_media.voice_key:
+                    voice_path = str(tmp / "voice.mp3")
+                    self.storage.download_file(recipe.input_media.voice_key, voice_path)
+
+                # Download music track if present
+                music_path = None
+                if recipe.input_media.music_key:
+                    music_path = str(tmp / "music.mp3")
+                    self.storage.download_file(recipe.input_media.music_key, music_path)
 
                 # Render hook PNG if requested
                 hook_png_path = None
@@ -103,9 +139,9 @@ class EditOrchestrator:
                 # Assemble video
                 self.assembler.run_assembly(
                     recipe=recipe,
-                    video_path=str(input_video),
-                    voice_path=None,
-                    music_path=None,
+                    video_path=str(base_video),
+                    voice_path=voice_path,
+                    music_path=music_path,
                     hook_png_path=hook_png_path,
                     output_path=str(output_video),
                 )

@@ -2,8 +2,15 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any
 
 @dataclass
+class VideoSegmentConfig:
+    key: str
+    start_sec: float = 0.0
+    end_sec: Optional[float] = None
+
+@dataclass
 class InputMediaConfig:
-    video_key: Optional[str] = None
+    video_keys: List[str] = field(default_factory=list)
+    video_segments: List[VideoSegmentConfig] = field(default_factory=list)
     image_keys: List[str] = field(default_factory=list)
     voice_key: Optional[str] = None
     music_key: Optional[str] = None
@@ -70,8 +77,20 @@ class EditRecipe:
         valid_types = ["reel", "story", "carousel_video", "maryam_video", "preview"]
         if self.project_type not in valid_types:
             errors.append(f"invalid project_type. Must be one of {valid_types}")
-        if not self.input_media.video_key and not self.input_media.image_keys:
-            errors.append("At least one of video_key or image_keys must be provided.")
+
+        # Validate video segments or video_keys
+        has_video_segments = self.input_media.video_segments or self.input_media.video_keys
+        if not has_video_segments and not self.input_media.image_keys:
+            errors.append("At least one of video_segments, video_keys, or image_keys must be provided.")
+
+        # Validate each video segment
+        for seg in self.input_media.video_segments:
+            if not seg.key:
+                errors.append("Video segment must have a key.")
+            if seg.start_sec < 0:
+                errors.append(f"Video segment start_sec cannot be negative: {seg.start_sec}.")
+            if seg.end_sec is not None and seg.end_sec <= seg.start_sec:
+                errors.append(f"Video segment end_sec must be greater than start_sec: end={seg.end_sec}, start={seg.start_sec}.")
         if self.hook.enabled:
             if not self.hook.text.strip():
                 errors.append("Hook is enabled but text is empty.")
@@ -100,6 +119,29 @@ class EditRecipe:
             raise TypeError("Input data must be a dictionary.")
 
         im_data = data.get("input_media", {})
+
+        # Parse video_segments
+        raw_segments = im_data.get("video_segments", [])
+        video_segments = []
+        for seg in raw_segments:
+            if isinstance(seg, dict):
+                key = seg.get("key", "")
+                start = float(seg.get("start", seg.get("start_sec", 0.0)))
+                end = seg.get("end", seg.get("end_sec"))
+                end = float(end) if end is not None else None
+                video_segments.append(VideoSegmentConfig(key=key, start_sec=start, end_sec=end))
+
+        # Support legacy video_keys list (convert to segments if no segments provided)
+        v_keys = im_data.get("video_keys", [])
+        # Support legacy single video_key if present
+        v_key = im_data.get("video_key")
+        if v_key and v_key not in v_keys:
+            v_keys.append(v_key)
+
+        # If no video_segments but video_keys exist, convert keys to segments
+        if not video_segments and v_keys:
+            video_segments = [VideoSegmentConfig(key=k) for k in v_keys]
+
         hook_data = data.get("hook", {})
         sub_data = data.get("subtitles", {})
         audio_data = data.get("audio", {})
@@ -113,7 +155,8 @@ class EditRecipe:
             project_type=data.get("project_type", "reel"),
             preset=data.get("preset", "elina_cinematic_reel"),
             input_media=InputMediaConfig(
-                video_key=im_data.get("video_key"),
+                video_keys=v_keys,
+                video_segments=video_segments,
                 image_keys=im_data.get("image_keys", []),
                 voice_key=im_data.get("voice_key"),
                 music_key=im_data.get("music_key"),

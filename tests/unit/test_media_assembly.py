@@ -9,7 +9,7 @@ def make_recipe():
     return EditRecipe(
         content_id="test-1",
         project_type="reel",
-        input_media=InputMediaConfig(video_key="v.mp4"),
+        input_media=InputMediaConfig(video_keys=["v.mp4"]),
         hook=HookConfig(enabled=True, text="تو تنبل نیستی", start_sec=0.0, end_sec=3.0),
         audio=AudioConfig(
             voice_key="voice.wav",
