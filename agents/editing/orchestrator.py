@@ -34,8 +34,10 @@ class EditOrchestrator:
 
     def build_recipe_from_item(self, item: Dict[str, Any], hook_text: Optional[str] = None) -> EditRecipe:
         media_keys = item.get("media_keys") or []
-        if not media_keys:
-            raise ValueError("content item has no media_keys")
+        video_segments = item.get("video_segments", [])
+
+        if not media_keys and not video_segments:
+            raise ValueError("content item has no media_keys or video_segments")
 
         recipe_data = {
             "content_id": item["id"],
@@ -43,6 +45,7 @@ class EditOrchestrator:
             "preset": "elina_cinematic_reel",
             "input_media": {
                 "video_keys": media_keys,
+                "video_segments": video_segments,
                 "image_keys": [],
                 "voice_key": item.get("voice_key"),
                 "music_key": item.get("music_key"),
@@ -85,19 +88,28 @@ class EditOrchestrator:
                 output_video = tmp / "output.mp4"
                 hook_png = tmp / "hook.png"
 
-                # Download all videos and concatenate if multiple
-                video_keys = recipe.input_media.video_keys
-                if len(video_keys) > 1:
-                    video_paths = []
-                    for idx, vk in enumerate(video_keys):
-                        vpath = tmp / f"clip_{idx}.mp4"
-                        self.storage.download_file(vk, str(vpath))
-                        video_paths.append(str(vpath))
-                    VideoConcatenator().concat_videos(video_paths, str(base_video))
-                elif len(video_keys) == 1:
-                    self.storage.download_file(video_keys[0], str(base_video))
-                else:
-                    raise ValueError("No video_keys available for rendering")
+                # Download all videos and concatenate if multiple using segments
+                segments = recipe.input_media.video_segments
+                if not segments:
+                    # Convert video_keys to segments if no segments provided
+                    video_keys = recipe.input_media.video_keys
+                    if not video_keys:
+                        raise ValueError("No video_segments or video_keys available for rendering")
+                    segments = [{"key": vk} for vk in video_keys]
+
+                # Download all segment files and build local segment dicts
+                local_segments = []
+                for idx, seg in enumerate(segments):
+                    vpath = tmp / f"clip_{idx}.mp4"
+                    self.storage.download_file(seg.key, str(vpath))
+                    local_segments.append({
+                        "path": str(vpath),
+                        "start_sec": seg.start_sec,
+                        "end_sec": seg.end_sec,
+                    })
+
+                # Concatenate segments (with optional trimming)
+                VideoConcatenator().concat_segments(local_segments, str(base_video))
 
                 # Download voice track if present
                 voice_path = None

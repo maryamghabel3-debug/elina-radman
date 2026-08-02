@@ -88,10 +88,10 @@ def test_render_content_with_multiple_video_keys(monkeypatch):
 
     # Mock VideoConcatenator to avoid needing ffmpeg
     class MockConcatenator:
-        def concat_videos(self, input_paths, output_path):
-            # Copy the first input to output
-            import shutil
-            shutil.copy2(input_paths[0], output_path)
+        def concat_segments(self, segments, output_path):
+            # Create output file
+            with open(output_path, "wb") as f:
+                f.write(b"0" * 20000)
             return output_path
 
     monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
@@ -113,6 +113,49 @@ def test_render_content_with_multiple_video_keys(monkeypatch):
     assert len(storage.downloads) == 5
     video_downloads = [d for d in storage.downloads if "clip_" in d[1] or "base_video" in d[1]]
     assert len(video_downloads) >= 3
+
+
+def test_render_content_with_video_segments(monkeypatch):
+    """Test that item with video_segments downloads each key with correct start/end."""
+    import agents.editing.orchestrator as orch_mod
+
+    captured_segments = []
+
+    class MockConcatenator:
+        def concat_segments(self, segments, output_path):
+            captured_segments.extend(segments)
+            with open(output_path, "wb") as f:
+                f.write(b"0" * 20000)
+            return output_path
+
+    monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
+
+    db = FakeDB(item={
+        "id": "uuid-segments",
+        "custom_id": "ELN-SEG-TEST",
+        "content_type": "reel",
+        "video_segments": [
+            {"key": "raw/clip1.mp4", "start": 1.2, "end": 5.8},
+            {"key": "raw/clip2.mp4", "start": 0.0, "end": 4.0},
+            {"key": "raw/clip3.mp4", "start": 2.5},
+        ],
+        "voice_key": "audio/voice.mp3",
+        "status": "NEEDS_EDIT",
+    })
+    storage = FakeStorage()
+    o = EditOrchestrator(db=db, storage=storage, typography=FakeTypography(), assembler=FakeAssembler())
+    result = o.render_content("ELN-SEG-TEST", actor="tester")
+    assert result["ok"] is True
+    # Should have downloaded 3 segments + 1 voice = 4 downloads
+    assert len(storage.downloads) == 4
+    # Verify segments were captured with correct start/end
+    assert len(captured_segments) == 3
+    assert captured_segments[0]["start_sec"] == 1.2
+    assert captured_segments[0]["end_sec"] == 5.8
+    assert captured_segments[1]["start_sec"] == 0.0
+    assert captured_segments[1]["end_sec"] == 4.0
+    assert captured_segments[2]["start_sec"] == 2.5
+    assert captured_segments[2]["end_sec"] is None
 
 
 def test_render_content_not_found():
