@@ -1,8 +1,10 @@
 import os
+import re
 import asyncio
 import sys
 import logging
 from pathlib import Path
+from typing import Optional, Dict, List
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
@@ -28,6 +30,140 @@ def is_owner(update: Update) -> bool:
 def actor_name(update: Update) -> str:
     user = update.effective_user
     return user.username or user.first_name or "unknown"
+
+
+def parse_render_command(message_text: str) -> Dict:
+    """
+    Parse /render command with extended syntax.
+
+    Extended syntax (multi-line):
+        /render ELN-XXX
+        hook=تو تنبل نیستی
+        voice=voices/voice_a.wav
+        music=music/ambient_deep.mp3
+        clip1=raw/shot1.mp4:0-3
+        clip2=raw/shot2.mp4:1.2-4
+        clip3=raw/shot3.mp4:0-
+
+    Legacy syntax (single line):
+        /render ELN-XXX hook text here
+
+    Returns:
+        {
+            "custom_id": str,
+            "hook": Optional[str],
+            "voice_key": Optional[str],
+            "music_key": Optional[str],
+            "segments": List[dict],  # [{"key": str, "start_sec": float, "end_sec": Optional[float]}]
+            "legacy_hook_text": Optional[str],
+        }
+    Raises ValueError on malformed input.
+    """
+    # Strip /render prefix and leading/trailing whitespace
+    text = message_text.strip()
+    if text.startswith("/render"):
+        text = text[len("/render"):].strip()
+
+    lines = text.split("\n")
+    if not lines or not lines[0].strip():
+        raise ValueError("Custom ID required")
+
+    # First non-empty token is custom_id
+    first_line = lines[0].strip()
+    tokens = first_line.split()
+
+    custom_id = tokens[0] if tokens else ""
+    # Validate custom_id pattern
+    if not re.match(r"^ELN-[A-Za-z0-9_-]+$", custom_id):
+        raise ValueError(f"Invalid custom_id format: {custom_id}")
+
+    result = {
+        "custom_id": custom_id,
+        "hook": None,
+        "voice_key": None,
+        "music_key": None,
+        "segments": [],
+        "legacy_hook_text": None,
+    }
+
+    # If only custom_id on first line, treat remainder as legacy hook text
+    if len(tokens) > 1:
+        result["legacy_hook_text"] = " ".join(tokens[1:])
+
+    # Parse key=value lines (skip first line for key=value, process all remaining lines)
+    remaining_lines = lines[1:]
+    for line in remaining_lines:
+        stripped = line.strip()
+        # Ignore empty lines and comments
+        if not stripped or stripped.startswith("#"):
+            continue
+
+        # Case-insensitive key=value
+        if "=" not in stripped:
+            continue
+
+        key_eq, _, value = stripped.partition("=")
+        key = key_eq.strip().lower()
+        val = value.strip()
+
+        if key == "hook":
+            result["hook"] = val
+        elif key == "voice":
+            result["voice_key"] = val
+        elif key == "music":
+            result["music_key"] = val
+        elif key.startswith("clip") and key[4:].isdigit():
+            # Parse clipN=STORAGE_KEY[:START-END]
+            segment = _parse_clip_spec(key, val)
+            if segment:
+                result["segments"].append(segment)
+
+    return result
+
+
+def _parse_clip_spec(key: str, spec: str) -> Optional[Dict]:
+    """
+    Parse clip spec: STORAGE_KEY[:START-END]
+
+    Examples:
+        "raw/shot1.mp4:0-3"     -> start=0.0, end=3.0
+        "raw/shot2.mp4:1.2-4"   -> start=1.2, end=4.0
+        "raw/shot3.mp4:0-"      -> start=0.0, end=None
+        "raw/shot4.mp4"         -> start=0.0, end=None (no trim)
+    """
+    parts = spec.split(":", 1)
+    storage_key = parts[0].strip()
+    if not storage_key:
+        raise ValueError(f"{key}: empty storage key")
+
+    segment = {"key": storage_key, "start_sec": 0.0, "end_sec": None}
+
+    if len(parts) == 2:
+        trim_part = parts[1].strip()
+        if trim_part:
+            # Parse START-END format using regex for robustness
+            # Match: optional_START-optional_END where START and END are floats
+            import re
+            match = re.match(r'^(-?[\d.]+)?-(-?[\d.]+)?$', trim_part)
+            if not match:
+                raise ValueError(f"{key}: invalid time format: {trim_part}")
+
+            start_str = match.group(1)
+            end_str = match.group(2)
+
+            if start_str is not None and start_str != '':
+                start = float(start_str)
+                if start < 0:
+                    raise ValueError(f"{key}: negative start_sec not allowed: {start}")
+                segment["start_sec"] = start
+
+            if end_str is not None and end_str != '':
+                end = float(end_str)
+                if segment["start_sec"] >= end:
+                    raise ValueError(f"{key}: end_sec must be greater than start_sec")
+                segment["end_sec"] = end
+
+    return segment
 
 
 async def cmd_pending(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -104,34 +240,45 @@ async def cmd_render(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update):
         return
 
-    if len(context.args) < 1:
-        await update.message.reply_text("استفاده: /render ELN-... [متن هوک]")
-        return
-
-    custom_id = context.args[0]
-    hook_text = " ".join(context.args[1:]) if len(context.args) > 1 else None
+    text = update.message.text or ""
     actor = actor_name(update)
 
-    msg = await update.message.reply_text(f"⏳ در حال رندر {custom_id}...\nلطفاً صبر کنید.")
+    try:
+        parsed = parse_render_command(text)
+    except ValueError as e:
+        await update.message.reply_text(f"❌ ورودی نامعتبر:\n{e}")
+        return
 
-    def run_render():
-        return EditOrchestrator().render_content(
+    custom_id = parsed["custom_id"]
+    hook_text = parsed.get("hook") or parsed.get("legacy_hook_text")
+    voice_key = parsed.get("voice_key")
+    music_key = parsed.get("music_key")
+    segments = parsed.get("segments") or None
+
+    msg = await update.message.reply_text(f"⏳ در حال رندر {custom_id}...")
+
+    def run():
+        orchestrator = EditOrchestrator()
+        return orchestrator.render_content(
             custom_id=custom_id,
             hook_text=hook_text,
             actor=actor,
+            video_segments=segments,
+            voice_key=voice_key,
+            music_key=music_key,
         )
 
     loop = asyncio.get_running_loop()
     try:
-        result = await loop.run_in_executor(None, run_render)
+        result = await loop.run_in_executor(None, run)
         if result.get("ok"):
             await msg.edit_text(
-                f"✅ رندر تمام شد.\nشناسه: {result['custom_id']}\nخروجی: {result['output_key']}\nوضعیت: {result['status']}"
+                f"✅ رندر تمام شد\nID: {result['custom_id']}\nStatus: {result['status']}\nOutput: {result.get('output_key','')}"
             )
         else:
             await msg.edit_text(f"❌ رندر ناموفق:\n{result.get('error')}")
     except Exception as exc:
-        logger.exception("Render failed for %s", custom_id)
+        logger.exception("render failed")
         await msg.edit_text(f"❌ خطای سیستمی:\n{type(exc).__name__}: {exc}")
 
 

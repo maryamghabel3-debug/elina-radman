@@ -2,7 +2,7 @@ import os
 import tempfile
 import logging
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 from agents.db.supabase_client import ElinaDB
 from agents.storage.supabase_storage import ElinaStorage
@@ -70,7 +70,15 @@ class EditOrchestrator:
             raise ValueError("; ".join(errors))
         return recipe
 
-    def render_content(self, custom_id: str, hook_text: Optional[str] = None, actor: str = "editor") -> Dict[str, Any]:
+    def render_content(
+        self,
+        custom_id: str,
+        hook_text: Optional[str] = None,
+        actor: str = "editor",
+        video_segments: Optional[List[Dict[str, Any]]] = None,
+        voice_key: Optional[str] = None,
+        music_key: Optional[str] = None,
+    ) -> Dict[str, Any]:
         item = self.db.get_content_by_custom_id(custom_id)
         if not item:
             return {"ok": False, "error": f"Item not found: {custom_id}"}
@@ -81,6 +89,21 @@ class EditOrchestrator:
 
         try:
             recipe = self.build_recipe_from_item(item, hook_text=hook_text)
+
+            # Apply overrides if provided (from /render command)
+            if video_segments:
+                # Convert dicts to VideoSegmentConfig-like dicts
+                recipe.input_media.video_segments = [
+                    type("VSC", (), {"key": s["key"], "start_sec": s.get("start_sec", 0.0), "end_sec": s.get("end_sec")})()
+                    for s in video_segments
+                ]
+                recipe.input_media.video_keys = []
+
+            if voice_key:
+                recipe.input_media.voice_key = voice_key
+
+            if music_key:
+                recipe.input_media.music_key = music_key
 
             with tempfile.TemporaryDirectory() as tmpdir:
                 tmp = Path(tmpdir)
