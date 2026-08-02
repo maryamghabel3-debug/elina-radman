@@ -82,6 +82,39 @@ def test_render_content_success_with_hook(monkeypatch):
     assert "READY_FOR_REVIEW" in statuses
 
 
+def test_render_content_with_multiple_video_keys(monkeypatch):
+    """Test that multiple video_keys result in multiple downloads and concat."""
+    import agents.editing.orchestrator as orch_mod
+
+    # Mock VideoConcatenator to avoid needing ffmpeg
+    class MockConcatenator:
+        def concat_videos(self, input_paths, output_path):
+            # Copy the first input to output
+            import shutil
+            shutil.copy2(input_paths[0], output_path)
+            return output_path
+
+    monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
+
+    db = FakeDB(item={
+        "id": "uuid-multi",
+        "custom_id": "ELN-MULTI-TEST",
+        "content_type": "reel",
+        "media_keys": ["raw/clip1.mp4", "raw/clip2.mp4", "raw/clip3.mp4"],
+        "voice_key": "audio/voice.mp3",
+        "music_key": "audio/music.mp3",
+        "status": "NEEDS_EDIT",
+    })
+    storage = FakeStorage()
+    o = EditOrchestrator(db=db, storage=storage, typography=FakeTypography(), assembler=FakeAssembler())
+    result = o.render_content("ELN-MULTI-TEST", actor="tester")
+    assert result["ok"] is True
+    # Should have downloaded 3 videos + 1 voice + 1 music = 5 downloads
+    assert len(storage.downloads) == 5
+    video_downloads = [d for d in storage.downloads if "clip_" in d[1] or "base_video" in d[1]]
+    assert len(video_downloads) >= 3
+
+
 def test_render_content_not_found():
     db = FakeDB()
     o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=FakeAssembler())

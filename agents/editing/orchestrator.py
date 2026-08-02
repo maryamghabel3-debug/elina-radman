@@ -9,6 +9,7 @@ from agents.storage.supabase_storage import ElinaStorage
 from agents.editing.recipe_schema import EditRecipe
 from agents.editing.typography_engine import TypographyEngine
 from agents.editing.media_assembly import MediaAssemblyEngine, run_qc_checks
+from agents.editing.concatenator import VideoConcatenator
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +42,10 @@ class EditOrchestrator:
             "project_type": "reel" if item.get("content_type") == "reel" else "preview",
             "preset": "elina_cinematic_reel",
             "input_media": {
-                "video_key": media_keys[0],
+                "video_keys": media_keys,
                 "image_keys": [],
-                "voice_key": None,
-                "music_key": None,
+                "voice_key": item.get("voice_key"),
+                "music_key": item.get("music_key"),
             },
             "hook": {
                 "enabled": bool(hook_text),
@@ -80,12 +81,35 @@ class EditOrchestrator:
 
             with tempfile.TemporaryDirectory() as tmpdir:
                 tmp = Path(tmpdir)
-                input_video = tmp / "input.mp4"
+                base_video = tmp / "base_video.mp4"
                 output_video = tmp / "output.mp4"
                 hook_png = tmp / "hook.png"
 
-                # Download base video
-                self.storage.download_file(recipe.input_media.video_key, str(input_video))
+                # Download all videos and concatenate if multiple
+                video_keys = recipe.input_media.video_keys
+                if len(video_keys) > 1:
+                    video_paths = []
+                    for idx, vk in enumerate(video_keys):
+                        vpath = tmp / f"clip_{idx}.mp4"
+                        self.storage.download_file(vk, str(vpath))
+                        video_paths.append(str(vpath))
+                    VideoConcatenator().concat_videos(video_paths, str(base_video))
+                elif len(video_keys) == 1:
+                    self.storage.download_file(video_keys[0], str(base_video))
+                else:
+                    raise ValueError("No video_keys available for rendering")
+
+                # Download voice track if present
+                voice_path = None
+                if recipe.input_media.voice_key:
+                    voice_path = str(tmp / "voice.mp3")
+                    self.storage.download_file(recipe.input_media.voice_key, voice_path)
+
+                # Download music track if present
+                music_path = None
+                if recipe.input_media.music_key:
+                    music_path = str(tmp / "music.mp3")
+                    self.storage.download_file(recipe.input_media.music_key, music_path)
 
                 # Render hook PNG if requested
                 hook_png_path = None
@@ -103,9 +127,9 @@ class EditOrchestrator:
                 # Assemble video
                 self.assembler.run_assembly(
                     recipe=recipe,
-                    video_path=str(input_video),
-                    voice_path=None,
-                    music_path=None,
+                    video_path=str(base_video),
+                    voice_path=voice_path,
+                    music_path=music_path,
                     hook_png_path=hook_png_path,
                     output_path=str(output_video),
                 )

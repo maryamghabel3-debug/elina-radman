@@ -3,7 +3,7 @@ from typing import List, Optional, Dict, Any
 
 @dataclass
 class InputMediaConfig:
-    video_key: Optional[str] = None
+    video_keys: List[str] = field(default_factory=list)
     image_keys: List[str] = field(default_factory=list)
     voice_key: Optional[str] = None
     music_key: Optional[str] = None
@@ -70,8 +70,8 @@ class EditRecipe:
         valid_types = ["reel", "story", "carousel_video", "maryam_video", "preview"]
         if self.project_type not in valid_types:
             errors.append(f"invalid project_type. Must be one of {valid_types}")
-        if not self.input_media.video_key and not self.input_media.image_keys:
-            errors.append("At least one of video_key or image_keys must be provided.")
+        if not self.input_media.video_keys and not self.input_media.image_keys:
+            errors.append("At least one of video_keys or image_keys must be provided.")
         if self.hook.enabled:
             if not self.hook.text.strip():
                 errors.append("Hook is enabled but text is empty.")
@@ -100,6 +100,12 @@ class EditRecipe:
             raise TypeError("Input data must be a dictionary.")
 
         im_data = data.get("input_media", {})
+        v_keys = im_data.get("video_keys", [])
+        # Support legacy single video_key if present
+        v_key = im_data.get("video_key")
+        if v_key and v_key not in v_keys:
+            v_keys.append(v_key)
+
         hook_data = data.get("hook", {})
         sub_data = data.get("subtitles", {})
         audio_data = data.get("audio", {})
@@ -113,7 +119,7 @@ class EditRecipe:
             project_type=data.get("project_type", "reel"),
             preset=data.get("preset", "elina_cinematic_reel"),
             input_media=InputMediaConfig(
-                video_key=im_data.get("video_key"),
+                video_keys=v_keys,
                 image_keys=im_data.get("image_keys", []),
                 voice_key=im_data.get("voice_key"),
                 music_key=im_data.get("music_key"),
