@@ -146,6 +146,47 @@ class EditOrchestrator:
                     music_path = str(tmp / "music.mp3")
                     self.storage.download_file(recipe.input_media.music_key, music_path)
 
+                # Process sound effects if available
+                sfx_items = []
+                raw_sfx_list = getattr(recipe, "sound_effects", None) or item.get("sound_effects") or item.get("sfx_items")
+                if raw_sfx_list:
+                    for s_idx, sfx in enumerate(raw_sfx_list):
+                        if not isinstance(sfx, dict):
+                            continue
+
+                        sfx_key = sfx.get("key") or sfx.get("storage_key")
+                        sfx_path = sfx.get("path") or sfx.get("local_path")
+
+                        local_path = None
+                        if sfx_key:
+                            ext = os.path.splitext(sfx_key)[1] or ".mp3"
+                            local_path = str(tmp / f"sfx_{s_idx}{ext}")
+                            self.storage.download_file(sfx_key, local_path)
+                        elif sfx_path and not os.path.exists(sfx_path):
+                            try:
+                                ext = os.path.splitext(sfx_path)[1] or ".mp3"
+                                local_path = str(tmp / f"sfx_{s_idx}{ext}")
+                                self.storage.download_file(sfx_path, local_path)
+                            except Exception:
+                                local_path = sfx_path
+                        else:
+                            local_path = sfx_path or ""
+
+                        start_sec = float(sfx.get("start_sec", sfx.get("start", sfx.get("start_time", 0.0))))
+                        gain_db = int(sfx.get("gain_db", sfx.get("gain", sfx.get("volume", 0))))
+                        fade_in_sec = float(sfx.get("fade_in_sec", sfx.get("fade_in", 0.0)))
+                        fade_out_sec = float(sfx.get("fade_out_sec", sfx.get("fade_out", 0.0)))
+                        attribution = sfx.get("attribution")
+
+                        sfx_items.append({
+                            "path": local_path,
+                            "start_sec": start_sec,
+                            "gain_db": gain_db,
+                            "fade_in_sec": fade_in_sec,
+                            "fade_out_sec": fade_out_sec,
+                            "attribution": attribution,
+                        })
+
                 # Render hook PNG if requested
                 hook_png_path = None
                 if recipe.hook.enabled:
@@ -167,6 +208,7 @@ class EditOrchestrator:
                     music_path=music_path,
                     hook_png_path=hook_png_path,
                     output_path=str(output_video),
+                    sfx_items=sfx_items if sfx_items else None,
                 )
 
                 qc_errors = run_qc_checks(str(output_video), recipe)

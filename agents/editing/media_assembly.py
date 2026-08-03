@@ -13,6 +13,32 @@ from agents.editing.ducking import DuckingParams, build_ffmpeg_sidechain_filter
 logger = logging.getLogger(__name__)
 
 
+def _get_audio_duration(path: str, ffprobe_binary: str = "ffprobe") -> float:
+    """
+    Get duration of audio file using ffprobe.
+    """
+    if not path or not os.path.exists(path):
+        return 0.0
+    try:
+        result = subprocess.run(
+            [
+                ffprobe_binary,
+                "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                path
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return float(result.stdout.strip())
+    except Exception:
+        pass
+    return 0.0
+
+
 class MediaAssemblyEngine:
     """
     Assembles final MP4 output by combining:
@@ -20,11 +46,13 @@ class MediaAssemblyEngine:
     - Voice narration (with denoise + cinematic processing)
     - Background music (with ducking)
     - Text overlays (hook PNG, subtitle PNG)
+    - Sound effects (SFX) mixed with specific timings, gains, and fades
     - Final loudness normalization
     """
 
-    def __init__(self, ffmpeg_binary: str = "ffmpeg"):
+    def __init__(self, ffmpeg_binary: str = "ffmpeg", ffprobe_binary: str = "ffprobe"):
         self.ffmpeg_binary = ffmpeg_binary
+        self.ffprobe_binary = ffprobe_binary
 
     def build_assembly_command(
         self,
@@ -34,6 +62,7 @@ class MediaAssemblyEngine:
         music_path: Optional[str],
         hook_png_path: Optional[str],
         output_path: str,
+        sfx_items: Optional[List[dict]] = None,
     ) -> List[str]:
         """
         Constructs the ffmpeg command as a list of arguments.
@@ -54,6 +83,14 @@ class MediaAssemblyEngine:
             cmd += ["-i", music_path]
         if hook_png_path:
             cmd += ["-i", hook_png_path]
+
+        sfx_indices = []
+        if sfx_items:
+            current_input_index = 1 + (1 if voice_path else 0) + (1 if music_path else 0) + (1 if hook_png_path else 0)
+            for sfx in sfx_items:
+                cmd += ["-i", sfx["path"]]
+                sfx_indices.append(current_input_index)
+                current_input_index += 1
 
         # Filter complex
         filter_parts = []
@@ -89,6 +126,56 @@ class MediaAssemblyEngine:
         elif music_path:
             music_index = 1
             audio_out = f"{music_index}:a"
+        else:
+            audio_out = None
+
+        # Process each SFX item and generate clean audio stream
+        if sfx_items:
+            for i, sfx in enumerate(sfx_items):
+                idx = sfx_indices[i]
+                filters = []
+
+                # Fade in
+                fade_in_sec = sfx.get("fade_in_sec", 0.0)
+                if fade_in_sec > 0:
+                    filters.append(f"afade=t=in:st=0:d={fade_in_sec}")
+
+                # Fade out
+                fade_out_sec = sfx.get("fade_out_sec", 0.0)
+                if fade_out_sec > 0:
+                    duration = sfx.get("duration") or sfx.get("duration_sec") or _get_audio_duration(sfx["path"], ffprobe_binary=self.ffprobe_binary)
+                    if duration > fade_out_sec:
+                        filters.append(f"afade=t=out:st={duration - fade_out_sec}:d={fade_out_sec}")
+
+                # Volume / gain
+                gain_db = sfx.get("gain_db", 0)
+                filters.append(f"volume={gain_db}dB")
+
+                # Adelay
+                start_sec = sfx.get("start_sec", 0.0)
+                delay_ms = int(start_sec * 1000)
+                filters.append(f"adelay={delay_ms}|{delay_ms}")
+
+                filter_str = ",".join(filters)
+                filter_parts.append(f"[{idx}:a]{filter_str}[sfx_{i}_clean]")
+
+        # Mix all SFX streams with existing audio_out stream
+        mix_inputs = []
+        if audio_out:
+            mix_inputs.append(audio_out)
+
+        if sfx_items:
+            for i in range(len(sfx_items)):
+                mix_inputs.append(f"sfx_{i}_clean")
+
+        if len(mix_inputs) > 1:
+            inputs_str = "".join(f"[{stream}]" for stream in mix_inputs)
+            filter_parts.append(
+                f"{inputs_str}amix=inputs={len(mix_inputs)}:duration=first[mixed_final]"
+            )
+            audio_out = "mixed_final"
+        elif len(mix_inputs) == 1:
+            audio_out = mix_inputs[0]
         else:
             audio_out = None
 
@@ -146,6 +233,7 @@ class MediaAssemblyEngine:
         hook_png_path: Optional[str],
         output_path: str,
         timeout_seconds: int = 300,
+        sfx_items: Optional[List[dict]] = None,
     ) -> str:
         """
         Executes the ffmpeg assembly command.
@@ -158,6 +246,7 @@ class MediaAssemblyEngine:
             music_path=music_path,
             hook_png_path=hook_png_path,
             output_path=output_path,
+            sfx_items=sfx_items,
         )
 
         out_dir = os.path.dirname(output_path)

@@ -54,7 +54,19 @@ class FakeTypography:
 
 
 class FakeAssembler:
-    def run_assembly(self, recipe, video_path, voice_path, music_path, hook_png_path, output_path):
+    def __init__(self):
+        self.calls = []
+
+    def run_assembly(self, recipe, video_path, voice_path, music_path, hook_png_path, output_path, sfx_items=None, **kwargs):
+        self.calls.append({
+            "recipe": recipe,
+            "video_path": video_path,
+            "voice_path": voice_path,
+            "music_path": music_path,
+            "hook_png_path": hook_png_path,
+            "output_path": output_path,
+            "sfx_items": sfx_items,
+        })
         # Write 20KB to pass QC "nearly empty" check (0.01 MB = 10KB)
         with open(output_path, "wb") as f:
             f.write(b"0" * 20000)
@@ -176,3 +188,45 @@ def test_render_content_handles_assembler_failure():
     assert result["ok"] is False
     statuses = [s[0] for s in db.status_updates]
     assert "EDIT_FAILED" in statuses
+
+
+def test_orchestrator_passes_sfx_items_to_assembler():
+    db = FakeDB(item={
+        "id": "uuid-sfx",
+        "custom_id": "ELN-SFX-TEST",
+        "content_type": "reel",
+        "media_keys": ["raw/video.mp4"],
+        "status": "NEEDS_EDIT",
+        "sound_effects": [
+            {
+                "key": "sfx/boom.mp3",
+                "start": 1.5,
+                "volume": -3,
+                "fade_in": 0.5,
+                "fade_out": 0.2,
+                "attribution": "Creative Commons Boom",
+            }
+        ]
+    })
+    storage = FakeStorage()
+    assembler = FakeAssembler()
+    o = EditOrchestrator(db=db, storage=storage, typography=FakeTypography(), assembler=assembler)
+    result = o.render_content("ELN-SFX-TEST", actor="tester")
+
+    assert result["ok"] is True
+    assert len(assembler.calls) == 1
+    passed_sfx = assembler.calls[0]["sfx_items"]
+    assert passed_sfx is not None
+    assert len(passed_sfx) == 1
+
+    # Assert transformed fields
+    sfx0 = passed_sfx[0]
+    assert "sfx_0.mp3" in sfx0["path"]
+    assert sfx0["start_sec"] == 1.5
+    assert sfx0["gain_db"] == -3
+    assert sfx0["fade_in_sec"] == 0.5
+    assert sfx0["fade_out_sec"] == 0.2
+    assert sfx0["attribution"] == "Creative Commons Boom"
+
+    # Assert download was called for the SFX
+    assert any("sfx/boom.mp3" in d[0] for d in storage.downloads)
