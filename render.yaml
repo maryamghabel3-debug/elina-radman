@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: elina-bots
+    env: python
+    buildCommand: "pip install -r requirements-core.txt"
+    startCommand: "python scripts/run_server.py"
