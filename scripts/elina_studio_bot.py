@@ -3,8 +3,11 @@ import re
 import sys
 import logging
 import asyncio
+import datetime
+import json
 from pathlib import Path
 from typing import Optional, Dict, List
+from functools import wraps
 
 # Force unbuffered output so logs appear instantly in Render
 sys.stdout.reconfigure(line_buffering=True)
@@ -29,6 +32,23 @@ logger = logging.getLogger(__name__)
 
 OWNER_CHAT_ID = str(os.environ.get("OWNER_CHAT_ID", "")).strip()
 STUDIO_BOT_TOKEN = str(os.environ.get("STUDIO_BOT_TOKEN", "")).strip()
+
+
+def record_update():
+    try:
+        path = "/tmp/elina_studio_last_update.json"
+        with open(path, "w") as f:
+            json.dump({"timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()}, f)
+    except Exception as e:
+        logger.error(f"Failed to record update timestamp: {e}")
+
+
+def record_update_decorator(func):
+    @wraps(func)
+    async def wrapper(update, context, *args, **kwargs):
+        record_update()
+        return await func(update, context, *args, **kwargs)
+    return wrapper
 
 
 def is_owner(update: Update) -> bool:
@@ -158,6 +178,7 @@ def _parse_clip_spec(key: str, spec: str) -> Optional[Dict]:
     return segment
 
 
+@record_update_decorator
 async def cmd_whoami(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.effective_chat.id)
     if chat_id == OWNER_CHAT_ID:
@@ -166,6 +187,7 @@ async def cmd_whoami(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ آیدی شما: {chat_id}\nتنظیم شده در سرور: {OWNER_CHAT_ID or 'NOT SET'}")
 
 
+@record_update_decorator
 async def cmd_start_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update):
         await update.message.reply_text("⛔ دسترسی فقط برای مالک است. برای بررسی آیدی خود /whoami را بزنید.")
@@ -184,6 +206,7 @@ async def cmd_start_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text)
 
 
+@record_update_decorator
 async def cmd_pending(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update): return
     items = ApprovalManager().get_pending_items()
@@ -194,6 +217,7 @@ async def cmd_pending(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines))
 
 
+@record_update_decorator
 async def cmd_promote(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update): return
     if not context.args:
@@ -203,6 +227,7 @@ async def cmd_promote(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ {result.get('new_status', result.get('error'))}")
 
 
+@record_update_decorator
 async def cmd_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update): return
     if len(context.args) < 2:
@@ -215,6 +240,7 @@ async def cmd_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ {result.get('error')}")
 
 
+@record_update_decorator
 async def cmd_reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update): return
     if len(context.args) < 2:
@@ -224,6 +250,7 @@ async def cmd_reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🚫 رد شد" if result.get("ok") else f"❌ {result.get('error')}")
 
 
+@record_update_decorator
 async def cmd_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update): return
     if len(context.args) < 2:
@@ -233,6 +260,7 @@ async def cmd_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✏️ نیازمند ادیت" if result.get("ok") else f"❌ {result.get('error')}")
 
 
+@record_update_decorator
 async def cmd_editdone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update): return
     if not context.args:
@@ -242,6 +270,7 @@ async def cmd_editdone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ ادیت تمام شد" if result.get("ok") else f"❌ {result.get('error')}")
 
 
+@record_update_decorator
 async def cmd_render(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update): return
     text = update.message.text or ""
@@ -288,8 +317,12 @@ async def post_init(application):
     try:
         await application.bot.send_message(chat_id=OWNER_CHAT_ID, text="🎬 Studio Bot روشن شد. /help را بزنید.")
         logger.info("Startup message sent successfully.")
+        with open("/tmp/elina_studio_startup.json", "w") as f:
+            json.dump({"ok": True, "error": None}, f)
     except Exception as e:
         logger.error(f"Failed to send startup message: {e}")
+        with open("/tmp/elina_studio_startup.json", "w") as f:
+            json.dump({"ok": False, "error": str(e)}, f)
 
 
 def main():
