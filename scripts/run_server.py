@@ -5,6 +5,8 @@ import threading
 import time
 import json
 import logging
+import urllib.request
+from typing import Optional
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 logging.basicConfig(
@@ -24,6 +26,36 @@ REQUIRED_ENV = [
 
 _processes = {}
 _start_times = {}
+
+BOT_DIAG = {
+    "intake_getme_ok": False,
+    "intake_bot_username": None,
+    "intake_bot_id": None,
+    "studio_getme_ok": False,
+    "studio_bot_username": None,
+    "studio_bot_id": None,
+    "same_bot_tokens": False,
+    "last_startup_message_ok": None,
+    "last_startup_message_error": None,
+    "last_intake_update_ts": None,
+    "last_studio_update_ts": None
+}
+
+
+def fetch_bot_getme(token: str) -> Optional[dict]:
+    if not token:
+        return None
+    url = f"https://api.telegram.org/bot{token}/getMe"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "ElinaDiagnostics"})
+        with urllib.request.urlopen(req, timeout=5) as response:
+            if response.status == 200:
+                data = json.loads(response.read().decode())
+                if data.get("ok"):
+                    return data.get("result")
+    except Exception as e:
+        logger.error(f"Failed to fetch getMe for bot: {e}")
+    return None
 
 
 def check_env():
@@ -98,6 +130,62 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps(body).encode())
             return
+        elif self.path == "/diag":
+            intake_last_update = None
+            intake_last_update_path = "/tmp/elina_intake_last_update.json"
+            if os.path.exists(intake_last_update_path):
+                try:
+                    with open(intake_last_update_path, "r") as f:
+                        intake_last_update = json.load(f).get("timestamp")
+                except Exception:
+                    pass
+
+            studio_last_update = None
+            studio_last_update_path = "/tmp/elina_studio_last_update.json"
+            if os.path.exists(studio_last_update_path):
+                try:
+                    with open(studio_last_update_path, "r") as f:
+                        studio_last_update = json.load(f).get("timestamp")
+                except Exception:
+                    pass
+
+            startup_ok = None
+            startup_error = None
+            studio_startup_path = "/tmp/elina_studio_startup.json"
+            if os.path.exists(studio_startup_path):
+                try:
+                    with open(studio_startup_path, "r") as f:
+                        startup_data = json.load(f)
+                        startup_ok = startup_data.get("ok")
+                        startup_error = startup_data.get("error")
+                except Exception:
+                    pass
+
+            body = {
+                "intake": {
+                    "getme_ok": BOT_DIAG["intake_getme_ok"],
+                    "bot_username": BOT_DIAG["intake_bot_username"],
+                    "bot_id": BOT_DIAG["intake_bot_id"],
+                    "last_update_ts": intake_last_update
+                },
+                "studio": {
+                    "getme_ok": BOT_DIAG["studio_getme_ok"],
+                    "bot_username": BOT_DIAG["studio_bot_username"],
+                    "bot_id": BOT_DIAG["studio_bot_id"],
+                    "last_update_ts": studio_last_update
+                },
+                "same_bot_tokens": BOT_DIAG["same_bot_tokens"],
+                "startup_message": {
+                    "ok": startup_ok,
+                    "error": startup_error
+                }
+            }
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(body).encode())
+            return
+
         self.send_response(200)
         self.send_header("Content-type", "text/plain; charset=utf-8")
         self.end_headers()
@@ -109,6 +197,25 @@ class HealthHandler(BaseHTTPRequestHandler):
 
 def main():
     check_env()
+
+    intake_token = os.environ.get("INTAKE_BOT_TOKEN", "").strip()
+    studio_token = os.environ.get("STUDIO_BOT_TOKEN", "").strip()
+
+    intake_info = fetch_bot_getme(intake_token)
+    if intake_info:
+        BOT_DIAG["intake_getme_ok"] = True
+        BOT_DIAG["intake_bot_username"] = intake_info.get("username")
+        BOT_DIAG["intake_bot_id"] = intake_info.get("id")
+
+    studio_info = fetch_bot_getme(studio_token)
+    if studio_info:
+        BOT_DIAG["studio_getme_ok"] = True
+        BOT_DIAG["studio_bot_username"] = studio_info.get("username")
+        BOT_DIAG["studio_bot_id"] = studio_info.get("id")
+
+    if BOT_DIAG["intake_bot_id"] and BOT_DIAG["studio_bot_id"]:
+        if BOT_DIAG["intake_bot_id"] == BOT_DIAG["studio_bot_id"]:
+            BOT_DIAG["same_bot_tokens"] = True
 
     start_bot("INTAKE", "scripts/elina_intake_bot.py")
     watch_bot_health("INTAKE")

@@ -2,6 +2,8 @@ import os
 import sys
 import logging
 import tempfile
+import datetime
+import json
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -20,7 +22,17 @@ logger = logging.getLogger(__name__)
 RAW_CHAT_ID = os.environ.get("RAW_CHAT_ID")
 
 
+def record_update():
+    try:
+        path = "/tmp/elina_intake_last_update.json"
+        with open(path, "w") as f:
+            json.dump({"timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()}, f)
+    except Exception as e:
+        logger.error(f"Failed to record update timestamp: {e}")
+
+
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    record_update()
     if not update.message or str(update.message.chat_id) != str(RAW_CHAT_ID):
         return
 
