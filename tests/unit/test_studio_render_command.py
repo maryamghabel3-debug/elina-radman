@@ -254,3 +254,56 @@ async def test_cmd_render_calls_orchestrator():
     # Orchestrator should be called
     assert len(orchestrator_called) == 1
     assert orchestrator_called[0]["custom_id"] == "ELN-TEST"
+
+
+# === Tests for /whoami and non-owner responses ===
+
+@pytest.mark.asyncio
+async def test_cmd_whoami_when_owner():
+    """whoami should reply confirming owner status"""
+    import scripts.elina_studio_bot as bot_module
+
+    # Mock OWNER_CHAT_ID to match chat_id "12345"
+    with patch.object(bot_module, "OWNER_CHAT_ID", "12345"):
+        mock_update, mock_context, _ = make_mock_update(is_owner=True, chat_id="12345")
+        await bot_module.cmd_whoami(mock_update, mock_context)
+
+    mock_update.message.reply_text.assert_called_once()
+    text = mock_update.message.reply_text.call_args[0][0]
+    assert "✅" in text
+    assert "مالک" in text
+    assert "12345" in text
+
+
+@pytest.mark.asyncio
+async def test_cmd_whoami_when_not_owner():
+    """whoami should reply explaining owner mismatch and instructions to change in Render"""
+    import scripts.elina_studio_bot as bot_module
+
+    with patch.object(bot_module, "OWNER_CHAT_ID", "12345"):
+        mock_update, mock_context, _ = make_mock_update(is_owner=False, chat_id="99999")
+        await bot_module.cmd_whoami(mock_update, mock_context)
+
+    mock_update.message.reply_text.assert_called_once()
+    text = mock_update.message.reply_text.call_args[0][0]
+    assert "❌" in text
+    assert "تنظیمات سرور" in text
+    assert "99999" in text
+    assert "12345" in text
+    assert "OWNER_CHAT_ID" in text
+
+
+@pytest.mark.asyncio
+async def test_cmd_help_when_not_owner():
+    """help/start should reply with access denied and /whoami prompt if not owner"""
+    import scripts.elina_studio_bot as bot_module
+
+    with patch.object(bot_module, "OWNER_CHAT_ID", "12345"):
+        mock_update, mock_context, _ = make_mock_update(is_owner=False, chat_id="99999")
+        await bot_module.cmd_help(mock_update, mock_context)
+
+    mock_update.message.reply_text.assert_called_once()
+    text = mock_update.message.reply_text.call_args[0][0]
+    assert "⛔" in text
+    assert "دسترسی فقط برای مالک است" in text
+    assert "/whoami" in text
