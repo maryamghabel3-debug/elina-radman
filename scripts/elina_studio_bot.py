@@ -14,7 +14,7 @@ sys.stdout.reconfigure(line_buffering=True)
 
 from dotenv import load_dotenv
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -189,18 +189,41 @@ async def cmd_whoami(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @record_update_decorator
 async def cmd_start_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update):
-        await update.message.reply_text("⛔ دسترسی فقط برای مالک است. برای بررسی آیدی خود /whoami را بزنید.")
+        await update.message.reply_text("⛔ دسترسی فقط برای مالک است. /whoami را بزنید.")
         return
     text = (
-        "دستورهای Studio Bot:\n\n"
+        "راهنمای Elina Studio Bot\n\n"
+        "۱) ارسال فایل به استودیو\n"
+        "- ویدیو، عکس، صدا یا فایل نهایی/منتخب را همین‌جا بفرست.\n"
+        "- ربات آن را ذخیره می‌کند و یک شناسه ELN-RAW می‌دهد.\n\n"
+        "۲) بررسی محتوا\n"
         "/pending\n"
+        "نمایش محتواهای منتظر بررسی\n\n"
+        "۳) انتقال به بررسی رسمی\n"
         "/promote ELN-RAW-...\n"
-        "/approve ELN-... prime_evening|afternoon|morning|night\n"
-        "/reject ELN-... دلیل\n"
-        "/edit ELN-... توضیح\n"
-        "/editdone ELN-...\n"
-        "/render ELN-RAW-... [متن هوک]\n"
+        "محتوا را آماده بازبینی می‌کند\n\n"
+        "۴) ادیت\n"
+        "/edit ELN-RAW-... توضیح ادیت\n"
+        "مثال:\n"
+        "/edit ELN-RAW-123 اضافه کردن تایپوگرافی و هوک اول ویدیو\n\n"
+        "۵) رندر\n"
+        "/render ELN-RAW-... متن هوک\n"
+        "مثال:\n"
+        "/render ELN-RAW-123 تو تنبل نیستی\n\n"
+        "۶) تأیید و زمان‌بندی\n"
+        "/approve ELN-... prime_evening\n"
+        "اسلات‌ها:\n"
+        "prime_evening\n"
+        "afternoon\n"
+        "morning\n"
+        "night\n\n"
+        "۷) رد محتوا\n"
+        "/reject ELN-... دلیل\n\n"
+        "۸) آیدی من\n"
         "/whoami\n"
+        "برای بررسی OWNER_CHAT_ID\n\n"
+        "نکته:\n"
+        "هیچ محتوایی بدون تأیید و زمان‌بندی شما منتشر نمی‌شود."
     )
     await update.message.reply_text(text)
 
@@ -312,6 +335,76 @@ async def cmd_render(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.edit_text(f"❌ خطای سیستمی: {exc}")
 
 
+@record_update_decorator
+async def handle_studio_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_owner(update):
+        await update.message.reply_text("⛔ دسترسی فقط برای مالک است.")
+        return
+
+    message = update.message
+    if not message:
+        return
+
+    file_obj = None
+    ext = ".txt"
+
+    if message.video:
+        file_obj = await message.video.get_file()
+        ext = ".mp4"
+    elif message.photo:
+        file_obj = await message.photo[-1].get_file()
+        ext = ".jpg"
+    elif message.document:
+        file_obj = await message.document.get_file()
+        ext = Path(message.document.file_name).suffix if message.document.file_name else ".bin"
+    elif message.audio:
+        file_obj = await message.audio.get_file()
+        ext = Path(message.audio.file_name).suffix if message.audio.file_name else ".mp3"
+    elif message.voice:
+        file_obj = await message.voice.get_file()
+        ext = ".ogg"
+
+    caption = message.caption or message.text or ""
+
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmpdir:
+        local_path = os.path.join(tmpdir, f"temp_studio{ext}")
+
+        if file_obj:
+            await file_obj.download_to_drive(local_path)
+        else:
+            with open(local_path, "w", encoding="utf-8") as f:
+                f.write(caption)
+            caption = "Text-only intake"
+            ext = ".txt"
+
+        try:
+            from agents.intake.telegram_intake import IntakeProcessor
+            processor = IntakeProcessor()
+            result = processor.process_incoming_media(
+                local_file_path=local_path,
+                file_ext=ext,
+                caption=caption,
+                telegram_message_id=str(message.message_id),
+                sender_name=actor_name(update),
+                source="telegram_studio_upload"
+            )
+
+            response_text = (
+                f"✅ فایل وارد استودیو شد.\n"
+                f"شناسه: {result['custom_id']}\n"
+                f"وضعیت: RAW_RECEIVED\n"
+                f"مرحله بعد:\n"
+                f"/promote {result['custom_id']}\n"
+                f"یا اگر نیاز به ادیت دارد:\n"
+                f"/edit {result['custom_id']} توضیح ادیت"
+            )
+            await message.reply_text(response_text)
+        except Exception as e:
+            logger.error(f"Error processing studio media: {e}", exc_info=True)
+            await message.reply_text(f"❌ خطا در پردازش سیستم: {str(e)}")
+
+
 async def post_init(application):
     logger.info(f"Bot initialized. Sending startup message to {OWNER_CHAT_ID}...")
     try:
@@ -345,6 +438,8 @@ def main():
     app.add_handler(CommandHandler("edit", cmd_edit))
     app.add_handler(CommandHandler("editdone", cmd_editdone))
     app.add_handler(CommandHandler("render", cmd_render))
+
+    app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_studio_media))
 
     logger.info("Starting polling...")
     app.run_polling(drop_pending_updates=True)
