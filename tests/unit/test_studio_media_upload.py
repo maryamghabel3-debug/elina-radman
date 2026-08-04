@@ -125,3 +125,27 @@ async def test_help_text_contains_all_commands():
     assert "/promote" in reply_text
     assert "/approve" in reply_text
     assert "/whoami" in reply_text
+
+
+@pytest.mark.asyncio
+async def test_owner_media_upload_handles_failure_and_replies():
+    import scripts.elina_studio_bot as bot_module
+
+    mock_update, mock_context = make_mock_update(is_owner=True, message_text="فایل ناموفق")
+
+    with patch("agents.intake.telegram_intake.IntakeProcessor") as MockProcessor:
+        instance = MockProcessor.return_value
+        instance.process_incoming_media.side_effect = Exception("Database connection timeout")
+
+        with patch.object(bot_module, "OWNER_CHAT_ID", "12345"):
+            await bot_module.handle_studio_media(mock_update, mock_context)
+
+        # Assert process_incoming_media was called
+        instance.process_incoming_media.assert_called_once()
+
+        # Assert reply is sent with specific Persian error message
+        mock_update.message.reply_text.assert_called_once()
+        reply_text = mock_update.message.reply_text.call_args[0][0]
+        assert "❌ خطا در پردازش فایل" in reply_text
+        assert "Database connection timeout" in reply_text
+        assert "دوباره امتحان کنید" in reply_text
