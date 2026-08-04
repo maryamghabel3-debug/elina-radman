@@ -59,7 +59,6 @@ def parse_render_command(message_text: str) -> Dict:
         }
     Raises ValueError on malformed input.
     """
-    # Strip /render prefix and leading/trailing whitespace
     text = message_text.strip()
     if text.startswith("/render"):
         text = text[len("/render"):].strip()
@@ -68,12 +67,10 @@ def parse_render_command(message_text: str) -> Dict:
     if not lines or not lines[0].strip():
         raise ValueError("Custom ID required")
 
-    # First non-empty token is custom_id
     first_line = lines[0].strip()
     tokens = first_line.split()
 
     custom_id = tokens[0] if tokens else ""
-    # Validate custom_id pattern
     if not re.match(r"^ELN-[A-Za-z0-9_-]+$", custom_id):
         raise ValueError(f"Invalid custom_id format: {custom_id}")
 
@@ -86,19 +83,15 @@ def parse_render_command(message_text: str) -> Dict:
         "legacy_hook_text": None,
     }
 
-    # If only custom_id on first line, treat remainder as legacy hook text
     if len(tokens) > 1:
         result["legacy_hook_text"] = " ".join(tokens[1:])
 
-    # Parse key=value lines (skip first line for key=value, process all remaining lines)
     remaining_lines = lines[1:]
     for line in remaining_lines:
         stripped = line.strip()
-        # Ignore empty lines and comments
         if not stripped or stripped.startswith("#"):
             continue
 
-        # Case-insensitive key=value
         if "=" not in stripped:
             continue
 
@@ -113,7 +106,6 @@ def parse_render_command(message_text: str) -> Dict:
         elif key == "music":
             result["music_key"] = val
         elif key.startswith("clip") and key[4:].isdigit():
-            # Parse clipN=STORAGE_KEY[:START-END]
             segment = _parse_clip_spec(key, val)
             if segment:
                 result["segments"].append(segment)
@@ -141,8 +133,6 @@ def _parse_clip_spec(key: str, spec: str) -> Optional[Dict]:
     if len(parts) == 2:
         trim_part = parts[1].strip()
         if trim_part:
-            # Parse START-END format using regex for robustness
-            # Match: optional_START-optional_END where START and END are floats
             import re
             match = re.match(r'^(-?[\d.]+)?-(-?[\d.]+)?$', trim_part)
             if not match:
@@ -284,6 +274,9 @@ async def cmd_render(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update):
+        await update.message.reply_text(
+            "⛔ دسترسی فقط برای مالک است. برای بررسی آیدی خود /whoami را بزنید."
+        )
         return
     await update.message.reply_text(
         "دستورهای Studio Bot:\n\n"
@@ -297,6 +290,24 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def cmd_whoami(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = str(update.effective_chat.id)
+    configured = str(OWNER_CHAT_ID or "NOT SET")
+    if chat_id == configured:
+        await update.message.reply_text(
+            f"✅ شما مالک هستید.\nآیدی شما: {chat_id}\n"
+            "ربات باید به همه دستورات جواب بدهد."
+        )
+    else:
+        await update.message.reply_text(
+            "❌ آیدی شما با تنظیمات سرور یکی نیست.\n"
+            f"آیدی واقعی شما: {chat_id}\n"
+            f"آیدی تنظیم‌شده در سرور: {configured}\n\n"
+            "راه حل: در پنل Render مقدار OWNER_CHAT_ID را به "
+            f"{chat_id} تغییر دهید و Save کنید."
+        )
+
+
 def main():
     if not STUDIO_BOT_TOKEN or not OWNER_CHAT_ID:
         logger.error("Missing STUDIO_BOT_TOKEN or OWNER_CHAT_ID")
@@ -308,6 +319,7 @@ def main():
         ("edit", cmd_edit), ("editdone", cmd_editdone),
         ("render", cmd_render),
         ("help", cmd_help), ("start", cmd_help),
+        ("whoami", cmd_whoami),
     ]:
         app.add_handler(CommandHandler(cmd, handler))
     logger.info("Elina Studio Bot is running...")
