@@ -341,44 +341,44 @@ async def handle_studio_media(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("⛔ دسترسی فقط برای مالک است.")
         return
 
-    message = update.message
-    if not message:
-        return
+    try:
+        message = update.message
+        if not message:
+            return
 
-    file_obj = None
-    ext = ".txt"
+        file_obj = None
+        ext = ".txt"
 
-    if message.video:
-        file_obj = await message.video.get_file()
-        ext = ".mp4"
-    elif message.photo:
-        file_obj = await message.photo[-1].get_file()
-        ext = ".jpg"
-    elif message.document:
-        file_obj = await message.document.get_file()
-        ext = Path(message.document.file_name).suffix if message.document.file_name else ".bin"
-    elif message.audio:
-        file_obj = await message.audio.get_file()
-        ext = Path(message.audio.file_name).suffix if message.audio.file_name else ".mp3"
-    elif message.voice:
-        file_obj = await message.voice.get_file()
-        ext = ".ogg"
+        if message.video:
+            file_obj = await message.video.get_file()
+            ext = ".mp4"
+        elif message.photo:
+            file_obj = await message.photo[-1].get_file()
+            ext = ".jpg"
+        elif message.document:
+            file_obj = await message.document.get_file()
+            ext = Path(message.document.file_name).suffix if message.document.file_name else ".bin"
+        elif message.audio:
+            file_obj = await message.audio.get_file()
+            ext = Path(message.audio.file_name).suffix if message.audio.file_name else ".mp3"
+        elif message.voice:
+            file_obj = await message.voice.get_file()
+            ext = ".ogg"
 
-    caption = message.caption or message.text or ""
+        caption = message.caption or message.text or ""
 
-    import tempfile
-    with tempfile.TemporaryDirectory() as tmpdir:
-        local_path = os.path.join(tmpdir, f"temp_studio{ext}")
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            local_path = os.path.join(tmpdir, f"temp_studio{ext}")
 
-        if file_obj:
-            await file_obj.download_to_drive(local_path)
-        else:
-            with open(local_path, "w", encoding="utf-8") as f:
-                f.write(caption)
-            caption = "Text-only intake"
-            ext = ".txt"
+            if file_obj:
+                await file_obj.download_to_drive(local_path)
+            else:
+                with open(local_path, "w", encoding="utf-8") as f:
+                    f.write(caption)
+                caption = "Text-only intake"
+                ext = ".txt"
 
-        try:
             from agents.intake.telegram_intake import IntakeProcessor
             processor = IntakeProcessor()
             result = processor.process_incoming_media(
@@ -400,9 +400,16 @@ async def handle_studio_media(update: Update, context: ContextTypes.DEFAULT_TYPE
                 f"/edit {result['custom_id']} توضیح ادیت"
             )
             await message.reply_text(response_text)
-        except Exception as e:
-            logger.error(f"Error processing studio media: {e}", exc_info=True)
-            await message.reply_text(f"❌ خطا در پردازش سیستم: {str(e)}")
+
+    except Exception as e:
+        logger.exception("Studio media handler failed")
+        try:
+            await update.message.reply_text(
+                f"❌ خطا در پردازش فایل:\n{type(e).__name__}: {str(e)[:200]}\n\n"
+                "لطفاً چند دقیقه صبر کنید و دوباره امتحان کنید."
+            )
+        except Exception as reply_err:
+            logger.error(f"Failed to send reply text after handler crash: {reply_err}")
 
 
 async def post_init(application):
