@@ -275,7 +275,7 @@ async def cmd_render(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update):
         await update.message.reply_text(
-            "⛔ دسترسی فقط برای مالک است. برای بررسی آیدی خود /whoami را بزنید."
+            "⛔ دسترسی فقط برای مالک است. /whoami را بزنید."
         )
         return
     await update.message.reply_text(
@@ -308,11 +308,44 @@ async def cmd_whoami(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+async def post_init(application):
+    """
+    On startup, send proactive message to OWNER_CHAT_ID.
+    """
+    try:
+        await application.bot.send_message(
+            chat_id=OWNER_CHAT_ID,
+            text="🎬 Studio Bot روشن شد. /help را بزنید."
+        )
+        logger.info("Sent startup message to owner %s", OWNER_CHAT_ID)
+    except Exception as e:
+        logger.error("Failed to send proactive startup message to owner %s: %s", OWNER_CHAT_ID, e)
+
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Log Telegram-related errors.
+    """
+    logger.error("Exception while handling an update:", exc_info=context.error)
+
+
 def main():
-    if not STUDIO_BOT_TOKEN or not OWNER_CHAT_ID:
-        logger.error("Missing STUDIO_BOT_TOKEN or OWNER_CHAT_ID")
-        return
-    app = ApplicationBuilder().token(STUDIO_BOT_TOKEN).build()
+    if not STUDIO_BOT_TOKEN:
+        logger.error("CRITICAL: STUDIO_BOT_TOKEN is missing!")
+        sys.exit(1)
+    if not OWNER_CHAT_ID:
+        logger.error("CRITICAL: OWNER_CHAT_ID is missing!")
+        sys.exit(1)
+
+    app = (
+        ApplicationBuilder()
+        .token(STUDIO_BOT_TOKEN)
+        .post_init(post_init)
+        .build()
+    )
+
+    app.add_error_handler(error_handler)
+
     for cmd, handler in [
         ("pending", cmd_pending), ("promote", cmd_promote),
         ("approve", cmd_approve), ("reject", cmd_reject),
@@ -322,6 +355,7 @@ def main():
         ("whoami", cmd_whoami),
     ]:
         app.add_handler(CommandHandler(cmd, handler))
+
     logger.info("Elina Studio Bot is running...")
     app.run_polling()
 
