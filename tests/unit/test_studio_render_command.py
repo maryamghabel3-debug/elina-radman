@@ -167,7 +167,7 @@ async def test_cmd_render_with_segments():
             })
             return {"ok": True, "custom_id": custom_id, "output_key": "out.mp4", "status": "READY_FOR_REVIEW"}
 
-    with patch.object(bot_module, "EditOrchestrator", lambda: FakeOrchestrator()):
+    with patch("agents.editing.orchestrator.EditOrchestrator", lambda: FakeOrchestrator()):
         with patch.object(bot_module, "OWNER_CHAT_ID", "12345"):
             await bot_module.cmd_render(mock_update, mock_context)
 
@@ -200,7 +200,7 @@ async def test_cmd_render_with_voice_and_music():
             })
             return {"ok": True, "custom_id": custom_id, "output_key": "out.mp4", "status": "READY_FOR_REVIEW"}
 
-    with patch.object(bot_module, "EditOrchestrator", lambda: FakeOrchestrator()):
+    with patch("agents.editing.orchestrator.EditOrchestrator", lambda: FakeOrchestrator()):
         with patch.object(bot_module, "OWNER_CHAT_ID", "12345"):
             await bot_module.cmd_render(mock_update, mock_context)
 
@@ -243,7 +243,7 @@ async def test_cmd_render_calls_orchestrator():
             })
             return {"ok": True, "custom_id": "ELN-TEST", "output_key": "out.mp4", "status": "READY_FOR_REVIEW"}
 
-    with patch.object(bot_module, "EditOrchestrator", lambda: FakeOrchestrator()):
+    with patch("agents.editing.orchestrator.EditOrchestrator", lambda: FakeOrchestrator()):
         with patch.object(bot_module, "OWNER_CHAT_ID", "12345"):
             await bot_module.cmd_render(mock_update, mock_context)
 

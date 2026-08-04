@@ -21,7 +21,6 @@ sys.path.insert(0, str(PROJECT_ROOT))
 load_dotenv(PROJECT_ROOT / ".env")
 
 from agents.studio.approval import ApprovalManager
-from agents.editing.orchestrator import EditOrchestrator
 
 logging.basicConfig(
     level=logging.INFO,
@@ -291,6 +290,7 @@ async def cmd_render(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text(f"⏳ در حال رندر {custom_id}...")
 
     def run():
+        from agents.editing.orchestrator import EditOrchestrator
         return EditOrchestrator().render_content(
             custom_id=custom_id,
             hook_text=hook_text,
