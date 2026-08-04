@@ -23,7 +23,8 @@ class IntakeProcessor:
         file_ext: str,
         caption: Optional[str],
         telegram_message_id: str,
-        sender_name: str
+        sender_name: str,
+        source: str = "telegram_intake"
     ) -> Dict[str, Any]:
         internal_id = str(uuid.uuid4())
         date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
@@ -47,7 +48,7 @@ class IntakeProcessor:
             "caption_fa": caption or "",
             "status": "RAW_RECEIVED",
             "media_keys": [storage_path],
-            "source": "telegram_intake",
+            "source": source,
             "telegram_message_id": str(telegram_message_id)
         }
         self.db.insert_content(db_payload)
