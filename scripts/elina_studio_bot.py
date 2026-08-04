@@ -1,8 +1,10 @@
 import os
+import re
 import sys
 import logging
 import asyncio
 from pathlib import Path
+from typing import Optional, Dict, List
 
 # Force unbuffered output so logs appear instantly in Render
 sys.stdout.reconfigure(line_buffering=True)
@@ -28,12 +30,133 @@ logger = logging.getLogger(__name__)
 OWNER_CHAT_ID = str(os.environ.get("OWNER_CHAT_ID", "")).strip()
 STUDIO_BOT_TOKEN = str(os.environ.get("STUDIO_BOT_TOKEN", "")).strip()
 
+
 def is_owner(update: Update) -> bool:
     return str(update.effective_chat.id) == OWNER_CHAT_ID
+
 
 def actor_name(update: Update) -> str:
     user = update.effective_user
     return user.username or user.first_name or "unknown"
+
+
+def parse_render_command(message_text: str) -> Dict:
+    """
+    Parse /render command with extended syntax.
+
+    Extended syntax (multi-line):
+        /render ELN-XXX
+        hook=تو تنبل نیستی
+        voice=voices/voice_a.wav
+        music=music/ambient_deep.mp3
+        clip1=raw/shot1.mp4:0-3
+        clip2=raw/shot2.mp4:1.2-4
+        clip3=raw/shot3.mp4:0-
+
+    Legacy syntax (single line):
+        /render ELN-XXX hook text here
+
+    Returns:
+        {
+            "custom_id": str,
+            "hook": Optional[str],
+            "voice_key": Optional[str],
+            "music_key": Optional[str],
+            "segments": List[dict],  # [{"key": str, "start_sec": float, "end_sec": Optional[float]}]
+            "legacy_hook_text": Optional[str],
+        }
+    Raises ValueError on malformed input.
+    """
+    text = message_text.strip()
+    if text.startswith("/render"):
+        text = text[len("/render"):].strip()
+
+    lines = text.split("\n")
+    if not lines or not lines[0].strip():
+        raise ValueError("Custom ID required")
+
+    first_line = lines[0].strip()
+    tokens = first_line.split()
+
+    custom_id = tokens[0] if tokens else ""
+    if not re.match(r"^ELN-[A-Za-z0-9_-]+$", custom_id):
+        raise ValueError(f"Invalid custom_id format: {custom_id}")
+
+    result = {
+        "custom_id": custom_id,
+        "hook": None,
+        "voice_key": None,
+        "music_key": None,
+        "segments": [],
+        "legacy_hook_text": None,
+    }
+
+    if len(tokens) > 1:
+        result["legacy_hook_text"] = " ".join(tokens[1:])
+
+    remaining_lines = lines[1:]
+    for line in remaining_lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+
+        if "=" not in stripped:
+            continue
+
+        key_eq, _, value = stripped.partition("=")
+        key = key_eq.strip().lower()
+        val = value.strip()
+
+        if key == "hook":
+            result["hook"] = val
+        elif key == "voice":
+            result["voice_key"] = val
+        elif key == "music":
+            result["music_key"] = val
+        elif key.startswith("clip") and key[4:].isdigit():
+            segment = _parse_clip_spec(key, val)
+            if segment:
+                result["segments"].append(segment)
+
+    return result
+
+
+def _parse_clip_spec(key: str, spec: str) -> Optional[Dict]:
+    """
+    Parse clip spec: STORAGE_KEY[:START-END]
+    """
+    parts = spec.split(":", 1)
+    storage_key = parts[0].strip()
+    if not storage_key:
+        raise ValueError(f"{key}: empty storage key")
+
+    segment = {"key": storage_key, "start_sec": 0.0, "end_sec": None}
+
+    if len(parts) == 2:
+        trim_part = parts[1].strip()
+        if trim_part:
+            import re
+            match = re.match(r'^(-?[\d.]+)?-(-?[\d.]+)?$', trim_part)
+            if not match:
+                raise ValueError(f"{key}: invalid time format: {trim_part}")
+
+            start_str = match.group(1)
+            end_str = match.group(2)
+
+            if start_str is not None and start_str != '':
+                start = float(start_str)
+                if start < 0:
+                    raise ValueError(f"{key}: negative start_sec not allowed: {start}")
+                segment["start_sec"] = start
+
+            if end_str is not None and end_str != '':
+                end = float(end_str)
+                if segment["start_sec"] >= end:
+                    raise ValueError(f"{key}: end_sec must be greater than start_sec")
+                segment["end_sec"] = end
+
+    return segment
+
 
 async def cmd_whoami(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.effective_chat.id)
@@ -41,6 +164,7 @@ async def cmd_whoami(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"✅ شما مالک هستید.\nآیدی شما: {chat_id}")
     else:
         await update.message.reply_text(f"❌ آیدی شما: {chat_id}\nتنظیم شده در سرور: {OWNER_CHAT_ID or 'NOT SET'}")
+
 
 async def cmd_start_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update):
@@ -59,6 +183,7 @@ async def cmd_start_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(text)
 
+
 async def cmd_pending(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update): return
     items = ApprovalManager().get_pending_items()
@@ -68,6 +193,7 @@ async def cmd_pending(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines = [f"- {i['custom_id']} | {i['content_type']} | {i['status']}" for i in items]
     await update.message.reply_text("\n".join(lines))
 
+
 async def cmd_promote(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update): return
     if not context.args:
@@ -75,6 +201,7 @@ async def cmd_promote(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     result = ApprovalManager().promote_to_review(context.args[0], actor_name(update))
     await update.message.reply_text(f"✅ {result.get('new_status', result.get('error'))}")
+
 
 async def cmd_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update): return
@@ -87,6 +214,7 @@ async def cmd_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(f"❌ {result.get('error')}")
 
+
 async def cmd_reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update): return
     if len(context.args) < 2:
@@ -94,6 +222,7 @@ async def cmd_reject(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     result = ApprovalManager().reject_item(context.args[0], " ".join(context.args[1:]), actor_name(update))
     await update.message.reply_text("🚫 رد شد" if result.get("ok") else f"❌ {result.get('error')}")
+
 
 async def cmd_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update): return
@@ -103,6 +232,7 @@ async def cmd_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result = ApprovalManager().mark_needs_edit(context.args[0], " ".join(context.args[1:]), actor_name(update))
     await update.message.reply_text("✏️ نیازمند ادیت" if result.get("ok") else f"❌ {result.get('error')}")
 
+
 async def cmd_editdone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update): return
     if not context.args:
@@ -111,17 +241,35 @@ async def cmd_editdone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result = ApprovalManager().mark_edit_done(context.args[0], actor_name(update))
     await update.message.reply_text("✅ ادیت تمام شد" if result.get("ok") else f"❌ {result.get('error')}")
 
+
 async def cmd_render(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update): return
-    if not context.args:
-        await update.message.reply_text("استفاده: /render ELN-RAW-...")
+    text = update.message.text or ""
+    actor = actor_name(update)
+
+    try:
+        parsed = parse_render_command(text)
+    except ValueError as e:
+        await update.message.reply_text(f"❌ ورودی نامعتبر:\n{e}")
         return
-    custom_id = context.args[0]
-    hook_text = " ".join(context.args[1:]) if len(context.args) > 1 else None
+
+    custom_id = parsed["custom_id"]
+    hook_text = parsed.get("hook") or parsed.get("legacy_hook_text")
+    voice_key = parsed.get("voice_key")
+    music_key = parsed.get("music_key")
+    segments = parsed.get("segments") or None
+
     msg = await update.message.reply_text(f"⏳ در حال رندر {custom_id}...")
 
     def run():
-        return EditOrchestrator().render_content(custom_id, hook_text=hook_text, actor=actor_name(update))
+        return EditOrchestrator().render_content(
+            custom_id=custom_id,
+            hook_text=hook_text,
+            actor=actor,
+            video_segments=segments,
+            voice_key=voice_key,
+            music_key=music_key,
+        )
 
     try:
         loop = asyncio.get_running_loop()
@@ -134,6 +282,7 @@ async def cmd_render(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.exception("Render failed")
         await msg.edit_text(f"❌ خطای سیستمی: {exc}")
 
+
 async def post_init(application):
     logger.info(f"Bot initialized. Sending startup message to {OWNER_CHAT_ID}...")
     try:
@@ -141,6 +290,7 @@ async def post_init(application):
         logger.info("Startup message sent successfully.")
     except Exception as e:
         logger.error(f"Failed to send startup message: {e}")
+
 
 def main():
     if not STUDIO_BOT_TOKEN or not OWNER_CHAT_ID:
@@ -165,6 +315,7 @@ def main():
 
     logger.info("Starting polling...")
     app.run_polling(drop_pending_updates=True)
+
 
 if __name__ == "__main__":
     main()
