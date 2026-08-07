@@ -222,6 +222,13 @@ async def cmd_start_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "۸) آیدی من\n"
         "/whoami\n"
         "برای بررسی OWNER_CHAT_ID\n\n"
+        "۹) ساخت ویدیوی چندشاتی\n\n"
+        "ابتدا تمام شات‌ها را جداگانه به همین ربات بفرست و شناسه هر کدام را نگه دار.\n\n"
+        "سپس آن‌ها را به ترتیب با دستور زیر در یک بسته قرار بده:\n\n"
+        "/bundle نام-پروژه ID1 ID2 ID3 ID4 ID5\n\n"
+        "مثال:\n\n"
+        "/bundle shot-zero ELN-RAW-001 ELN-RAW-002 ELN-RAW-003\n\n"
+        "ربات یک شناسه ELN-BUNDLE به تو می‌دهد. ادیت، کات و رندر نهایی روی همان شناسه انجام می‌شود.\n\n"
         "نکته:\n"
         "هیچ محتوایی بدون تأیید و زمان‌بندی شما منتشر نمی‌شود."
     )
@@ -336,6 +343,57 @@ async def cmd_render(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 @record_update_decorator
+async def cmd_bundle(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_owner(update):
+        await update.message.reply_text("⛔ دسترسی فقط برای مالک است.")
+        return
+
+    if not context.args or len(context.args) < 3:
+        usage = (
+            "❌ دستور نامعتبر است.\n"
+            "راهنمای استفاده:\n"
+            "/bundle نام-پروژه ID1 ID2 [ID3 ...]\n"
+            "مثال:\n"
+            "/bundle shot-zero ELN-RAW-001 ELN-RAW-002"
+        )
+        await update.message.reply_text(usage)
+        return
+
+    bundle_name = context.args[0]
+    source_ids = context.args[1:]
+
+    try:
+        from agents.studio.bundle_manager import VideoBundleManager
+        manager = VideoBundleManager()
+        result = manager.create_bundle(
+            bundle_name=bundle_name,
+            source_custom_ids=source_ids,
+            actor=actor_name(update)
+        )
+
+        if result.get("ok"):
+            success_text = (
+                "✅ بسته ویدیویی ساخته شد.\n"
+                f"نام: {result['bundle_name']}\n"
+                f"شناسه: {result['custom_id']}\n"
+                f"تعداد شات‌ها: {result['clip_count']}\n"
+                f"وضعیت: NEEDS_EDIT\n\n"
+                "مرحله بعد:\n"
+                "برای مشاهده یا ادیت این بسته از شناسه جدید استفاده کن."
+            )
+            await update.message.reply_text(success_text)
+        else:
+            await update.message.reply_text(
+                f"❌ بسته ساخته نشد:\n{result.get('error')}"
+            )
+    except Exception as e:
+        logger.exception("Bundle creation command failed")
+        await update.message.reply_text(
+            f"❌ خطای سیستم در ساخت بسته:\n{type(e).__name__}: {e}"
+        )
+
+
+@record_update_decorator
 async def handle_studio_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update):
         await update.message.reply_text("⛔ دسترسی فقط برای مالک است.")
@@ -445,6 +503,7 @@ def main():
     app.add_handler(CommandHandler("edit", cmd_edit))
     app.add_handler(CommandHandler("editdone", cmd_editdone))
     app.add_handler(CommandHandler("render", cmd_render))
+    app.add_handler(CommandHandler("bundle", cmd_bundle))
 
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_studio_media))
 
