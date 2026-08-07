@@ -20,7 +20,7 @@ def make_mock_update(is_owner=True, chat_id="12345", username="tester", message_
     mock_message.from_user = mock_user
     mock_message.reply_text = AsyncMock()
     mock_message.message_id = 1
-    mock_message.caption = None
+    mock_message.caption = message_text
     mock_message.text = message_text
 
     mock_message.video = video
@@ -58,7 +58,15 @@ async def test_non_owner_media_upload_gets_access_denied():
 async def test_owner_text_only_upload_calls_intake_processor_with_source():
     import scripts.elina_studio_bot as bot_module
 
-    mock_update, mock_context = make_mock_update(is_owner=True, message_text="فایل متنی منتخب")
+    # Use document mock instead of plain text, to go to the media upload path
+    mock_file = MagicMock()
+    mock_file.download_to_drive = AsyncMock()
+
+    mock_doc = MagicMock()
+    mock_doc.get_file = AsyncMock(return_value=mock_file)
+    mock_doc.file_name = "document.txt"
+
+    mock_update, mock_context = make_mock_update(is_owner=True, document=mock_doc, message_text="فایل متنی منتخب")
 
     mock_result = {"custom_id": "ELN-RAW-20260804-abcdef", "status": "RAW_RECEIVED"}
 
@@ -72,7 +80,7 @@ async def test_owner_text_only_upload_calls_intake_processor_with_source():
         instance.process_incoming_media.assert_called_once_with(
             local_file_path=ANY,
             file_ext=".txt",
-            caption="Text-only intake",
+            caption="فایل متنی منتخب",
             telegram_message_id="1",
             sender_name="tester",
             source="telegram_studio_upload"
@@ -131,7 +139,13 @@ async def test_help_text_contains_all_commands():
 async def test_owner_media_upload_handles_failure_and_replies():
     import scripts.elina_studio_bot as bot_module
 
-    mock_update, mock_context = make_mock_update(is_owner=True, message_text="فایل ناموفق")
+    mock_file = MagicMock()
+    mock_file.download_to_drive = AsyncMock()
+
+    mock_video = MagicMock()
+    mock_video.get_file = AsyncMock(return_value=mock_file)
+
+    mock_update, mock_context = make_mock_update(is_owner=True, video=mock_video, message_text="فایل ناموفق")
 
     with patch("agents.intake.telegram_intake.IntakeProcessor") as MockProcessor:
         instance = MockProcessor.return_value

@@ -21,6 +21,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 load_dotenv(PROJECT_ROOT / ".env")
 
 from agents.studio.approval import ApprovalManager
+from agents.editing.persian_edit_interpreter import PersianEditInterpreter, format_plan_preview_fa
 
 logging.basicConfig(
     level=logging.INFO,
@@ -229,6 +230,18 @@ async def cmd_start_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "مثال:\n\n"
         "/bundle shot-zero ELN-RAW-001 ELN-RAW-002 ELN-RAW-003\n\n"
         "ربات یک شناسه ELN-BUNDLE به تو می‌دهد. ادیت، کات و رندر نهایی روی همان شناسه انجام می‌شود.\n\n"
+        "۱۰) برنامه‌ریزی ادیت با متن فارسی\n"
+        "/plan ELN-BUNDLE-...\n"
+        "حالت برنامه‌ریزی را فعال می‌کند\n\n"
+        "بعد از آن، برنامه را به فارسی بنویس:\n"
+        "- شات اول از صفر تا ۲.۸\n"
+        "- شات دوم از ۱.۲ تا ۳.۸\n"
+        "- صدای اصلی قطع شود\n"
+        "- هوک: ...\n\n"
+        "/plan_ok\n"
+        "ثبت برنامه (فعلاً بدون اجرای رندر)\n\n"
+        "/plan_cancel\n"
+        "خروج از حالت برنامه‌ریزی\n\n"
         "نکته:\n"
         "هیچ محتوایی بدون تأیید و زمان‌بندی شما منتشر نمی‌شود."
     )
@@ -394,6 +407,70 @@ async def cmd_bundle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 @record_update_decorator
+async def cmd_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_owner(update):
+        await update.message.reply_text("⛔ دسترسی فقط برای مالک است.")
+        return
+
+    if not context.args:
+        await update.message.reply_text("استفاده: /plan ELN-BUNDLE-...")
+        return
+
+    target_id = context.args[0]
+    if context.chat_data is None:
+        context.chat_data = {}
+    context.chat_data["plan_mode"] = True
+    context.chat_data["plan_target_id"] = target_id
+
+    reply_text = (
+        "📝 حالت برنامه‌ریزی ادیت فعال شد.\n"
+        f"شناسه هدف: {target_id}\n"
+        "حالا برنامه ادیت را به فارسی برای من بنویس.\n\n"
+        "مثال:\n"
+        "شات اول از صفر تا ۲.۸\n"
+        "شات دوم از ۱.۲ تا ۳.۸\n"
+        "صدای اصلی همه شات‌ها قطع شود\n"
+        "در ثانیه ۰.۵ صدای چرخیدن کلید اضافه شود\n"
+        "هوک: تو تنبل نیستی"
+    )
+    await update.message.reply_text(reply_text)
+
+
+@record_update_decorator
+async def cmd_plan_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_owner(update):
+        await update.message.reply_text("⛔ دسترسی فقط برای مالک است.")
+        return
+
+    if context.chat_data is not None:
+        context.chat_data["plan_mode"] = False
+        context.chat_data["plan_target_id"] = None
+        context.chat_data["plan_preview"] = None
+
+    await update.message.reply_text("❌ حالت برنامه‌ریزی ادیت لغو شد.")
+
+
+@record_update_decorator
+async def cmd_plan_ok(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_owner(update):
+        await update.message.reply_text("⛔ دسترسی فقط برای مالک است.")
+        return
+
+    plan_preview = None
+    if context.chat_data:
+        plan_preview = context.chat_data.get("plan_preview")
+
+    if not plan_preview:
+        await update.message.reply_text("هیچ برنامه‌ای برای تأیید وجود ندارد.")
+        return
+
+    await update.message.reply_text(
+        "✅ برنامه ادیت ثبت شد.\n"
+        "اجرای رندر در مرحله بعدی اضافه می‌شود."
+    )
+
+
+@record_update_decorator
 async def handle_studio_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update):
         await update.message.reply_text("⛔ دسترسی فقط برای مالک است.")
@@ -402,6 +479,41 @@ async def handle_studio_media(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         message = update.message
         if not message:
+            return
+
+        is_plain_text = (
+            not message.video
+            and not message.photo
+            and not message.document
+            and not message.audio
+            and not message.voice
+        )
+
+        if is_plain_text:
+            plan_mode = False
+            if context.chat_data and context.chat_data.get("plan_mode"):
+                plan_mode = True
+
+            if plan_mode:
+                text = message.text or ""
+                interpreter = PersianEditInterpreter()
+                plan = interpreter.parse(text)
+
+                target_id = context.chat_data.get("plan_target_id")
+                plan.target_custom_id = target_id
+                plan.target_mode = "custom_id"
+
+                context.chat_data["plan_preview"] = plan
+
+                preview_text = format_plan_preview_fa(plan)
+                reply = preview_text + "\n\nبرای ادامه:\n/plan_ok\nیا\n/plan_cancel"
+                await message.reply_text(reply)
+            else:
+                reply = (
+                    "برای ارسال فایل، ویدیو یا عکس بفرست.\n"
+                    "برای برنامه‌ریزی ادیت اول /plan ELN-BUNDLE-... را بزن."
+                )
+                await message.reply_text(reply)
             return
 
         file_obj = None
@@ -504,6 +616,9 @@ def main():
     app.add_handler(CommandHandler("editdone", cmd_editdone))
     app.add_handler(CommandHandler("render", cmd_render))
     app.add_handler(CommandHandler("bundle", cmd_bundle))
+    app.add_handler(CommandHandler("plan", cmd_plan))
+    app.add_handler(CommandHandler("plan_cancel", cmd_plan_cancel))
+    app.add_handler(CommandHandler("plan_ok", cmd_plan_ok))
 
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_studio_media))
 
