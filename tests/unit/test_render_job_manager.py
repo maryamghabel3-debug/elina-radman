@@ -53,6 +53,7 @@ def test_get_next_queued_job_returns_oldest():
     assert job is not None
     assert job["id"] == "job-1"
     assert job["status"] == "IN_PROGRESS"
+    mock_query.order.assert_called_once_with("created_at", desc=False)
 
 
 def test_get_next_queued_job_returns_none_when_empty():
