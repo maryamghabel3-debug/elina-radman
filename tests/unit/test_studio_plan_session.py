@@ -94,14 +94,12 @@ async def test_plain_text_in_plan_mode_returns_preview():
     import scripts.elina_studio_bot as bot_module
 
     chat_data = {"plan_mode": True, "plan_target_id": "ELN-BUNDLE-123"}
-    # Plain text instruction
     text = "شات اول از صفر تا 2.5\nصدای اصلی قطع شود"
     mock_update, mock_context = make_mock_update(is_owner=True, message_text=text, chat_data=chat_data)
 
     with patch.object(bot_module, "OWNER_CHAT_ID", "12345"):
         await bot_module.handle_studio_media(mock_update, mock_context)
 
-    # Assert plan was parsed and saved to preview
     assert chat_data.get("plan_preview") is not None
     plan = chat_data["plan_preview"]
     assert plan.target_custom_id == "ELN-BUNDLE-123"
@@ -111,7 +109,6 @@ async def test_plain_text_in_plan_mode_returns_preview():
     assert plan.shots[0].end_sec == 2.5
     assert plan.mute_original_audio is True
 
-    # Assert preview reply was sent with transition options
     mock_update.message.reply_text.assert_called_once()
     reply = mock_update.message.reply_text.call_args[0][0]
     assert "برداشت من از برنامه ادیت:" in reply
@@ -130,7 +127,6 @@ async def test_plain_text_outside_plan_mode_returns_guidance():
     with patch.object(bot_module, "OWNER_CHAT_ID", "12345"):
         await bot_module.handle_studio_media(mock_update, mock_context)
 
-    # Check that guidance message is sent, no intake upload
     mock_update.message.reply_text.assert_called_once()
     reply = mock_update.message.reply_text.call_args[0][0]
     assert "برای برنامه‌ریزی ادیت" in reply
@@ -142,21 +138,7 @@ async def test_plain_text_outside_plan_mode_returns_guidance():
 async def test_cmd_plan_ok_without_preview():
     import scripts.elina_studio_bot as bot_module
 
-    chat_data = {"plan_mode": True, "plan_preview": None}
-    mock_update, mock_context = make_mock_update(is_owner=True, chat_data=chat_data)
-
-    with patch.object(bot_module, "OWNER_CHAT_ID", "12345"):
-        await bot_module.cmd_plan_ok(mock_update, mock_context)
-
-    mock_update.message.reply_text.assert_called_once_with("هیچ برنامه‌ای برای تأیید وجود ندارد.")
-
-
-# 7. /plan_ok with preview returns success registration message
-@pytest.mark.asyncio
-async def test_cmd_plan_ok_with_preview():
-    import scripts.elina_studio_bot as bot_module
-
-    chat_data = {"plan_mode": True, "plan_preview": "fake_plan_object"}
+    chat_data = {"plan_mode": True, "plan_preview": None, "plan_target_id": "ELN-BUNDLE-123"}
     mock_update, mock_context = make_mock_update(is_owner=True, chat_data=chat_data)
 
     with patch.object(bot_module, "OWNER_CHAT_ID", "12345"):
@@ -164,11 +146,98 @@ async def test_cmd_plan_ok_with_preview():
 
     mock_update.message.reply_text.assert_called_once()
     reply = mock_update.message.reply_text.call_args[0][0]
-    assert "ثبت شد" in reply
-    assert "اجرای رندر" in reply
+    assert "هیچ برنامه‌ای برای تأیید وجود ندارد" in reply
 
 
-# 8. non-owner cannot use /plan
+# 7. /plan_ok with preview calls orchestrator in executor and updates message
+@pytest.mark.asyncio
+async def test_cmd_plan_ok_with_preview():
+    import scripts.elina_studio_bot as bot_module
+    from agents.editing.persian_edit_interpreter import PersianEditPlan, PersianShotInstruction, PersianSFXInstruction
+
+    plan = PersianEditPlan(
+        target_mode="custom_id",
+        target_custom_id="ELN-BUNDLE-123",
+        shots=[PersianShotInstruction(shot_index=1, start_sec=0.0, end_sec=3.0)],
+        sound_effects=[PersianSFXInstruction(query_fa="صدای کلید", start_sec=1.5)],
+        hook_text="هوک تست",
+        confidence=1.0
+    )
+    chat_data = {"plan_mode": True, "plan_preview": plan, "plan_target_id": "ELN-BUNDLE-123"}
+    mock_update, mock_context = make_mock_update(is_owner=True, chat_data=chat_data)
+
+    mock_msg = MagicMock()
+    mock_msg.edit_text = AsyncMock()
+    mock_update.message.reply_text = AsyncMock(return_value=mock_msg)
+
+    orchestrator_calls = []
+    class FakeOrchestrator:
+        def render_content(self, **kwargs):
+            orchestrator_calls.append(kwargs)
+            return {"ok": True, "custom_id": "ELN-BUNDLE-123", "output_key": "edited/out.mp4", "status": "READY_FOR_REVIEW"}
+
+    with patch("agents.editing.orchestrator.EditOrchestrator", lambda: FakeOrchestrator()):
+        with patch.object(bot_module, "OWNER_CHAT_ID", "12345"):
+            await bot_module.cmd_plan_ok(mock_update, mock_context)
+
+    # Check orchestrator was called with correct parameters
+    assert len(orchestrator_calls) == 1
+    call = orchestrator_calls[0]
+    assert call["custom_id"] == "ELN-BUNDLE-123"
+    assert call["hook_text"] == "هوک تست"
+    assert call["clip_timings"] == [{"start_sec": 0.0, "end_sec": 3.0}]
+
+    # Check chat_data was cleared
+    assert "plan_preview" not in chat_data
+    assert "plan_target_id" not in chat_data
+    assert "plan_mode" not in chat_data
+
+    # Check message was updated to success
+    mock_update.message.reply_text.assert_called_once()
+    mock_msg.edit_text.assert_called_once()
+    success_reply = mock_msg.edit_text.call_args[0][0]
+    assert "✅ رندر با موفقیت انجام شد!" in success_reply
+    assert "edited/out.mp4" in success_reply
+
+
+# 8. failed render shows error and keeps plan
+@pytest.mark.asyncio
+async def test_cmd_plan_ok_failed_render():
+    import scripts.elina_studio_bot as bot_module
+    from agents.editing.persian_edit_interpreter import PersianEditPlan
+
+    plan = PersianEditPlan(
+        target_mode="custom_id",
+        target_custom_id="ELN-BUNDLE-123",
+        confidence=1.0
+    )
+    chat_data = {"plan_mode": True, "plan_preview": plan, "plan_target_id": "ELN-BUNDLE-123"}
+    mock_update, mock_context = make_mock_update(is_owner=True, chat_data=chat_data)
+
+    mock_msg = MagicMock()
+    mock_msg.edit_text = AsyncMock()
+    mock_update.message.reply_text = AsyncMock(return_value=mock_msg)
+
+    class FakeOrchestrator:
+        def render_content(self, **kwargs):
+            return {"ok": False, "error": "Missing media assets"}
+
+    with patch("agents.editing.orchestrator.EditOrchestrator", lambda: FakeOrchestrator()):
+        with patch.object(bot_module, "OWNER_CHAT_ID", "12345"):
+            await bot_module.cmd_plan_ok(mock_update, mock_context)
+
+    # Check plan was NOT cleared on failure
+    assert chat_data.get("plan_preview") is plan
+    assert chat_data.get("plan_target_id") == "ELN-BUNDLE-123"
+
+    # Check message was updated to failure
+    mock_msg.edit_text.assert_called_once()
+    fail_reply = mock_msg.edit_text.call_args[0][0]
+    assert "❌ رندر ناموفق بود" in fail_reply
+    assert "Missing media assets" in fail_reply
+
+
+# 9. non-owner cannot use /plan
 @pytest.mark.asyncio
 async def test_non_owner_cannot_use_plan():
     import scripts.elina_studio_bot as bot_module
@@ -181,7 +250,7 @@ async def test_non_owner_cannot_use_plan():
     mock_update.message.reply_text.assert_called_once_with("⛔ دسترسی فقط برای مالک است.")
 
 
-# 9. media upload still works while not in plan mode
+# 10. media upload still works while not in plan mode
 @pytest.mark.asyncio
 async def test_media_upload_works_outside_plan_mode():
     import scripts.elina_studio_bot as bot_module
@@ -213,3 +282,23 @@ async def test_media_upload_works_outside_plan_mode():
         mock_update.message.reply_text.assert_called_once()
         reply_text = mock_update.message.reply_text.call_args[0][0]
         assert "ELN-RAW-20260804-video123" in reply_text
+
+
+# 11. Bundle ID fix produces correct format
+def test_bundle_id_fix_produces_correct_format():
+    from agents.studio.bundle_manager import VideoBundleManager
+
+    mock_db = MagicMock()
+    mock_db.get_content_by_custom_id.side_effect = lambda cid: {
+        "id": "1", "custom_id": cid, "content_type": "reel", "media_keys": ["path/1.mp4"]
+    }
+
+    manager = VideoBundleManager(db=mock_db)
+    result = manager.create_bundle("shot-zero", ["ELN-RAW-1", "ELN-RAW-2"], "owner")
+
+    assert result["ok"] is True
+    custom_id = result["custom_id"]
+
+    # Assert f"ELN-BUNDLE-ELN-BUNDLE-..." is NOT produced, but only exactly f"ELN-BUNDLE-..."
+    assert custom_id.startswith("ELN-BUNDLE-")
+    assert not custom_id.startswith("ELN-BUNDLE-ELN-BUNDLE-")
