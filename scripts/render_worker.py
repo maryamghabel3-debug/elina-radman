@@ -11,6 +11,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 load_dotenv(PROJECT_ROOT / ".env")
 
 from agents.rendering.job_manager import RenderJobManager
+from agents.db.supabase_client import ElinaDB
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("RenderWorker")
@@ -41,19 +42,29 @@ def process_job(job):
     try:
         from agents.editing.orchestrator import EditOrchestrator
 
-        clip_timings = []
+        # 1. Fetch content item to get its media_keys
+        db = ElinaDB()
+        item = db.get_content_by_custom_id(content_id)
+        media_keys = item.get("media_keys") if item else []
+
+        # 2. Map shots to video_segments
+        video_segments = []
         for shot in plan.get("shots", []):
-            clip_timings.append({
-                "start_sec": shot.get("start", 0),
-                "end_sec": shot.get("end"),
-            })
+            idx = shot.get("index", 1) - 1  # 0-based index
+            if idx < len(media_keys):
+                key = media_keys[idx]
+                video_segments.append({
+                    "key": key,
+                    "start_sec": shot.get("start", 0.0),
+                    "end_sec": shot.get("end"),
+                })
 
         orchestrator = EditOrchestrator()
         result = orchestrator.render_content(
             custom_id=content_id,
             hook_text=plan.get("hook", ""),
             actor="render_worker",
-            clip_timings=clip_timings if clip_timings else None,
+            video_segments=video_segments if video_segments else None,
         )
 
         mgr = RenderJobManager()
