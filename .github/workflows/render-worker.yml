@@ -1,0 +1,50 @@
+name: Render Worker
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elina-render-worker
+  cancel-in-progress: false
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements-core.txt
+
+      - name: Download font
+        run: |
+          mkdir -p /tmp/fonts
+          curl -L -o /tmp/fonts/Vazirmatn-Bold.ttf \
+            https://github.com/rastikerdar/vazirmatn/releases/latest/download/Vazirmatn-Bold.ttf
+
+      - name: Run render worker
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_BUCKET_NAME: ${{ secrets.SUPABASE_BUCKET_NAME }}
+          STUDIO_BOT_TOKEN: ${{ secrets.STUDIO_BOT_TOKEN }}
+          ELINA_FONT_PRIMARY_PATH: /tmp/fonts/Vazirmatn-Bold.ttf
+          PUBLISH_LIVE_ENABLED: "false"
+        run: |
+          python scripts/render_worker.py
