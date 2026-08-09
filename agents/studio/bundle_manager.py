@@ -60,7 +60,7 @@ class VideoBundleManager:
         short_id = internal_id[:8]
         custom_id = f"ELN-BUNDLE-{date_str}-{short_id}"
 
-        # Ensure it produces only one ELN-BUNDLE- prefix
+        # Ensure it produces only one ELN-BUNDLE- prefix securely
         if custom_id.startswith("ELN-BUNDLE-ELN-BUNDLE-"):
             custom_id = custom_id.replace("ELN-BUNDLE-ELN-BUNDLE-", "ELN-BUNDLE-")
 
