@@ -34,7 +34,7 @@ class RenderJobManager:
         """
         Return oldest QUEUED job or None. Mark it IN_PROGRESS atomically.
         """
-        res = self.db.client.table("render_jobs").select("*").eq("status", "QUEUED").order("created_at", ascending=True).limit(1).execute()
+        res = self.db.client.table("render_jobs").select("*").eq("status", "QUEUED").order("created_at", desc=False).limit(1).execute()
         if not res.data:
             return None
         job = res.data[0]
