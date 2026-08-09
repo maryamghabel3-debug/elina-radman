@@ -464,70 +464,44 @@ async def cmd_plan_ok(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not plan or not target_id:
         await update.message.reply_text(
-            "هیچ برنامه‌ای برای تأیید وجود ندارد.\n"
-            "ابتدا /plan ELN-BUNDLE-... را بزن."
+            "هیچ برنامه‌ای وجود ندارد. ابتدا /plan بزنید."
         )
         return
 
-    msg = await update.message.reply_text(
-        "⏳ رندر شروع شد. این فرایند چند دقیقه طول می‌کشد...\n"
-        "وقتی تمام شد نتیجه را برایت می‌فرستم."
-    )
+    try:
+        from agents.rendering.job_manager import RenderJobManager
 
-    def execute():
-        from agents.editing.orchestrator import EditOrchestrator
-        from agents.editing.persian_edit_interpreter import PersianEditPlan
+        plan_dict = {
+            "target_id": target_id,
+            "mute_original": plan.mute_original_audio,
+            "shots": [{"index": s.shot_index, "start": s.start_sec, "end": s.end_sec} for s in plan.shots],
+            "sfx": [{"query": s.query_fa, "start": s.start_sec, "gain": s.gain_db} for s in plan.sound_effects],
+            "hook": plan.hook_text,
+            "music_enabled": plan.music.enabled if plan.music else False,
+        }
 
-        orchestrator = EditOrchestrator()
-
-        clip_timings = []
-        for shot in plan.shots:
-            clip_timings.append({
-                "start_sec": shot.start_sec,
-                "end_sec": shot.end_sec,
-            })
-
-        sfx_items = []
-        for sfx in plan.sound_effects:
-            sfx_items.append({
-                "query": sfx.query_fa,
-                "start_sec": sfx.start_sec,
-                "gain_db": sfx.gain_db,
-            })
-
-        return orchestrator.render_content(
-            custom_id=target_id,
-            hook_text=plan.hook_text or "",
-            actor=actor_name(update),
-            clip_timings=clip_timings if clip_timings else None,
-            video_segments=None,
-            voice_key=None,
-            music_key=None,
+        mgr = RenderJobManager()
+        job = mgr.queue_job(
+            content_id=target_id,
+            plan_data=plan_dict,
+            owner_chat_id=str(OWNER_CHAT_ID),
         )
 
-    try:
-        loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(None, execute)
+        context.chat_data.pop("plan_preview", None)
+        context.chat_data.pop("plan_target_id", None)
+        context.chat_data.pop("plan_mode", None)
 
-        if result.get("ok"):
-            context.chat_data.pop("plan_preview", None)
-            context.chat_data.pop("plan_target_id", None)
-            context.chat_data.pop("plan_mode", None)
-            await msg.edit_text(
-                f"✅ رندر با موفقیت انجام شد!\n"
-                f"شناسه: {result.get('custom_id')}\n"
-                f"وضعیت: {result.get('status')}\n"
-                f"فایل نهایی: {result.get('output_key', 'در Supabase ذخیره شد')}"
-            )
-        else:
-            await msg.edit_text(
-                f"❌ رندر ناموفق بود:\n{result.get('error')}\n\n"
-                "برنامه هنوز ذخیره است. با /plan_ok دوباره تلاش کن."
-            )
+        await update.message.reply_text(
+            f"✅ رندر وارد صف شد.\n"
+            f"شناسه کار: {job.get('id', 'ثبت شد')}\n"
+            f"وضعیت: در انتظار اجرا\n\n"
+            "سیستم هر ۵ دقیقه صف را بررسی می‌کند.\n"
+            "وقتی رندر تمام شد، نتیجه برایت ارسال می‌شود."
+        )
     except Exception as exc:
-        logger.exception("plan_ok execution failed")
-        await msg.edit_text(
-            f"❌ خطای سیستمی:\n{type(exc).__name__}: {str(exc)[:300]}"
+        logger.exception("Failed to queue render job")
+        await update.message.reply_text(
+            f"❌ خطا در ثبت رندر:\n{type(exc).__name__}: {str(exc)[:200]}"
         )
 
 

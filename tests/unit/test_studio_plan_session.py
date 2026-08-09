@@ -146,10 +146,10 @@ async def test_cmd_plan_ok_without_preview():
 
     mock_update.message.reply_text.assert_called_once()
     reply = mock_update.message.reply_text.call_args[0][0]
-    assert "هیچ برنامه‌ای برای تأیید وجود ندارد" in reply
+    assert "هیچ برنامه‌ای وجود ندارد" in reply
 
 
-# 7. /plan_ok with preview calls orchestrator in executor and updates message
+# 7. /plan_ok with preview queues job and returns success queue message
 @pytest.mark.asyncio
 async def test_cmd_plan_ok_with_preview():
     import scripts.elina_studio_bot as bot_module
@@ -166,41 +166,31 @@ async def test_cmd_plan_ok_with_preview():
     chat_data = {"plan_mode": True, "plan_preview": plan, "plan_target_id": "ELN-BUNDLE-123"}
     mock_update, mock_context = make_mock_update(is_owner=True, chat_data=chat_data)
 
-    mock_msg = MagicMock()
-    mock_msg.edit_text = AsyncMock()
-    mock_update.message.reply_text = AsyncMock(return_value=mock_msg)
+    mock_job = {"id": "job-123", "status": "QUEUED"}
 
-    orchestrator_calls = []
-    class FakeOrchestrator:
-        def render_content(self, **kwargs):
-            orchestrator_calls.append(kwargs)
-            return {"ok": True, "custom_id": "ELN-BUNDLE-123", "output_key": "edited/out.mp4", "status": "READY_FOR_REVIEW"}
+    with patch("agents.rendering.job_manager.RenderJobManager") as MockManager:
+        instance = MockManager.return_value
+        instance.queue_job.return_value = mock_job
 
-    with patch("agents.editing.orchestrator.EditOrchestrator", lambda: FakeOrchestrator()):
         with patch.object(bot_module, "OWNER_CHAT_ID", "12345"):
             await bot_module.cmd_plan_ok(mock_update, mock_context)
 
-    # Check orchestrator was called with correct parameters
-    assert len(orchestrator_calls) == 1
-    call = orchestrator_calls[0]
-    assert call["custom_id"] == "ELN-BUNDLE-123"
-    assert call["hook_text"] == "هوک تست"
-    assert call["clip_timings"] == [{"start_sec": 0.0, "end_sec": 3.0}]
+        # Check queue_job was called with correct parameters
+        instance.queue_job.assert_called_once()
 
-    # Check chat_data was cleared
-    assert "plan_preview" not in chat_data
-    assert "plan_target_id" not in chat_data
-    assert "plan_mode" not in chat_data
+        # Check chat_data was cleared
+        assert "plan_preview" not in chat_data
+        assert "plan_target_id" not in chat_data
+        assert "plan_mode" not in chat_data
 
-    # Check message was updated to success
-    mock_update.message.reply_text.assert_called_once()
-    mock_msg.edit_text.assert_called_once()
-    success_reply = mock_msg.edit_text.call_args[0][0]
-    assert "✅ رندر با موفقیت انجام شد!" in success_reply
-    assert "edited/out.mp4" in success_reply
+        # Check message was updated to success queue message
+        mock_update.message.reply_text.assert_called_once()
+        reply_text = mock_update.message.reply_text.call_args[0][0]
+        assert "✅ رندر وارد صف شد." in reply_text
+        assert "job-123" in reply_text
 
 
-# 8. failed render shows error and keeps plan
+# 8. failed render queuing shows error and keeps plan
 @pytest.mark.asyncio
 async def test_cmd_plan_ok_failed_render():
     import scripts.elina_studio_bot as bot_module
@@ -214,27 +204,22 @@ async def test_cmd_plan_ok_failed_render():
     chat_data = {"plan_mode": True, "plan_preview": plan, "plan_target_id": "ELN-BUNDLE-123"}
     mock_update, mock_context = make_mock_update(is_owner=True, chat_data=chat_data)
 
-    mock_msg = MagicMock()
-    mock_msg.edit_text = AsyncMock()
-    mock_update.message.reply_text = AsyncMock(return_value=mock_msg)
+    with patch("agents.rendering.job_manager.RenderJobManager") as MockManager:
+        instance = MockManager.return_value
+        instance.queue_job.side_effect = Exception("Supabase connection error")
 
-    class FakeOrchestrator:
-        def render_content(self, **kwargs):
-            return {"ok": False, "error": "Missing media assets"}
-
-    with patch("agents.editing.orchestrator.EditOrchestrator", lambda: FakeOrchestrator()):
         with patch.object(bot_module, "OWNER_CHAT_ID", "12345"):
             await bot_module.cmd_plan_ok(mock_update, mock_context)
 
-    # Check plan was NOT cleared on failure
-    assert chat_data.get("plan_preview") is plan
-    assert chat_data.get("plan_target_id") == "ELN-BUNDLE-123"
+        # Check plan was NOT cleared on failure
+        assert chat_data.get("plan_preview") is plan
+        assert chat_data.get("plan_target_id") == "ELN-BUNDLE-123"
 
-    # Check message was updated to failure
-    mock_msg.edit_text.assert_called_once()
-    fail_reply = mock_msg.edit_text.call_args[0][0]
-    assert "❌ رندر ناموفق بود" in fail_reply
-    assert "Missing media assets" in fail_reply
+        # Check reply shows failure
+        mock_update.message.reply_text.assert_called_once()
+        reply_text = mock_update.message.reply_text.call_args[0][0]
+        assert "❌ خطا در ثبت رندر" in reply_text
+        assert "Supabase connection error" in reply_text
 
 
 # 9. non-owner cannot use /plan
@@ -261,7 +246,6 @@ async def test_media_upload_works_outside_plan_mode():
     mock_video = MagicMock()
     mock_video.get_file = AsyncMock(return_value=mock_file)
 
-    # Upload video outside plan mode
     chat_data = {"plan_mode": False}
     mock_update, mock_context = make_mock_update(is_owner=True, video=mock_video, chat_data=chat_data)
 
@@ -274,11 +258,9 @@ async def test_media_upload_works_outside_plan_mode():
         with patch.object(bot_module, "OWNER_CHAT_ID", "12345"):
             await bot_module.handle_studio_media(mock_update, mock_context)
 
-        # Download and process are called
         mock_video.get_file.assert_called_once()
         mock_file.download_to_drive.assert_called_once()
 
-        # Confirm reply is sent with custom_id
         mock_update.message.reply_text.assert_called_once()
         reply_text = mock_update.message.reply_text.call_args[0][0]
         assert "ELN-RAW-20260804-video123" in reply_text
@@ -299,6 +281,5 @@ def test_bundle_id_fix_produces_correct_format():
     assert result["ok"] is True
     custom_id = result["custom_id"]
 
-    # Assert f"ELN-BUNDLE-ELN-BUNDLE-..." is NOT produced, but only exactly f"ELN-BUNDLE-..."
     assert custom_id.startswith("ELN-BUNDLE-")
     assert not custom_id.startswith("ELN-BUNDLE-ELN-BUNDLE-")
