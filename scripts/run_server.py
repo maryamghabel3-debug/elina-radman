@@ -13,6 +13,10 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [MAIN] %(message)s",
 )
+
+from agents.security.log_redaction import install_secret_redaction
+install_secret_redaction()
+
 logger = logging.getLogger("ElinaServer")
 
 REQUIRED_ENV = [

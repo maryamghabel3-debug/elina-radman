@@ -17,6 +17,10 @@ load_dotenv(PROJECT_ROOT / ".env")
 from agents.intake.telegram_intake import IntakeProcessor
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+
+from agents.security.log_redaction import install_secret_redaction
+install_secret_redaction()
+
 logger = logging.getLogger(__name__)
 
 RAW_CHAT_ID = os.environ.get("RAW_CHAT_ID")

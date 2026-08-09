@@ -28,6 +28,10 @@ logging.basicConfig(
     format="[STUDIO] %(asctime)s - %(levelname)s - %(message)s",
     handlers=[logging.StreamHandler(sys.stdout)]
 )
+
+from agents.security.log_redaction import install_secret_redaction
+install_secret_redaction()
+
 logger = logging.getLogger(__name__)
 
 OWNER_CHAT_ID = str(os.environ.get("OWNER_CHAT_ID", "")).strip()
