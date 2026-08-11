@@ -1,0 +1,80 @@
+name: Supabase Bundle and Render Job Repair
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Operation mode"
+        required: true
+        type: choice
+        options:
+          - diagnose
+          - repair
+      run_render_after_repair:
+        description: "Whether to run the render worker after repair"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: elina-supabase-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements-core.txt
+
+      - name: Download font
+        run: |
+          mkdir -p /tmp/fonts
+          curl -L -o /tmp/fonts/Vazirmatn-Bold.ttf \
+            https://github.com/rastikerdar/vazirmatn/releases/latest/download/Vazirmatn-Bold.ttf
+
+      - name: Run repair script
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_BUCKET_NAME: ${{ secrets.SUPABASE_BUCKET_NAME }}
+          ELINA_FONT_PRIMARY_PATH: /tmp/fonts/Vazirmatn-Bold.ttf
+          PUBLISH_LIVE_ENABLED: "false"
+        run: |
+          python scripts/supabase_bundle_job_repair.py --mode ${{ github.event.inputs.mode }} | tee /tmp/repair_output.txt
+
+      - name: Write summary
+        run: |
+          echo "### Supabase Repair Summary" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat /tmp/repair_output.txt | grep -A 10 "SANITIZED DIAGNOSTIC" || true
+          cat /tmp/repair_output.txt | grep -A 10 "REPAIR RESULT" || true
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Run render worker after repair
+        if: ${{ github.event.inputs.mode == 'repair' && github.event.inputs.run_render_after_repair == 'true' }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_BUCKET_NAME: ${{ secrets.SUPABASE_BUCKET_NAME }}
+          STUDIO_BOT_TOKEN: ${{ secrets.STUDIO_BOT_TOKEN }}
+          ELINA_FONT_PRIMARY_PATH: /tmp/fonts/Vazirmatn-Bold.ttf
+          PUBLISH_LIVE_ENABLED: "false"
+        run: |
+          python scripts/render_worker.py

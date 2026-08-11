@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 
 from agents.db.supabase_client import ElinaDB
+from agents.studio.bundle_ids import create_bundle_custom_id, normalize_bundle_custom_id
 
 logger = logging.getLogger(__name__)
 
@@ -39,17 +40,21 @@ class VideoBundleManager:
 
         # 3. Validate every source custom ID
         aggregated_keys = []
+        normalized_source_ids = []
         for cid in source_custom_ids:
-            item = self.db.get_content_by_custom_id(cid)
+            norm_cid = normalize_bundle_custom_id(cid)
+            normalized_source_ids.append(norm_cid)
+
+            item = self.db.get_content_by_custom_id(norm_cid)
             if not item:
-                return {"ok": False, "error": f"Content item '{cid}' does not exist."}
+                return {"ok": False, "error": f"Content item '{norm_cid}' does not exist."}
 
             keys = item.get("media_keys") or []
             if not keys:
-                return {"ok": False, "error": f"Content item '{cid}' has no media keys."}
+                return {"ok": False, "error": f"Content item '{norm_cid}' has no media keys."}
 
             if item.get("content_type") != "reel":
-                return {"ok": False, "error": f"Content item '{cid}' is not a video/reel."}
+                return {"ok": False, "error": f"Content item '{norm_cid}' is not a video/reel."}
 
             # Aggregate keys in the exact order of source custom IDs
             aggregated_keys.extend(keys)
@@ -58,17 +63,13 @@ class VideoBundleManager:
         internal_id = str(uuid.uuid4())
         date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
         short_id = internal_id[:8]
-        custom_id = f"ELN-BUNDLE-{date_str}-{short_id}"
-
-        # Ensure it produces only one ELN-BUNDLE- prefix securely
-        if custom_id.startswith("ELN-BUNDLE-ELN-BUNDLE-"):
-            custom_id = custom_id.replace("ELN-BUNDLE-ELN-BUNDLE-", "ELN-BUNDLE-")
+        custom_id = create_bundle_custom_id(date_str, short_id)
 
         # 5. Build editor notes
         editor_notes_dict = {
             "bundle_name": bundle_name,
-            "source_custom_ids": source_custom_ids,
-            "clip_count": len(source_custom_ids),
+            "source_custom_ids": normalized_source_ids,
+            "clip_count": len(normalized_source_ids),
             "created_by": actor
         }
         editor_notes_str = json.dumps(editor_notes_dict, ensure_ascii=False)
@@ -94,13 +95,13 @@ class VideoBundleManager:
             from_status=None,
             to_status="NEEDS_EDIT",
             actor=actor,
-            detail=f"Created video bundle with {len(source_custom_ids)} clips."
+            detail=f"Created video bundle with {len(normalized_source_ids)} clips."
         )
 
         return {
             "ok": True,
             "custom_id": custom_id,
             "bundle_name": bundle_name,
-            "clip_count": len(source_custom_ids),
+            "clip_count": len(normalized_source_ids),
             "status": "NEEDS_EDIT"
         }

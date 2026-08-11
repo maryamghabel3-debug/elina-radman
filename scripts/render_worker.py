@@ -12,6 +12,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 from agents.rendering.job_manager import RenderJobManager
 from agents.db.supabase_client import ElinaDB
+from agents.studio.bundle_ids import normalize_bundle_custom_id
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("RenderWorker")
@@ -40,14 +41,44 @@ def process_job(job):
     logger.info(f"Processing render job {job_id} for {content_id}")
 
     try:
-        from agents.editing.orchestrator import EditOrchestrator
-
-        # 1. Fetch content item to get its media_keys
         db = ElinaDB()
         item = db.get_content_by_custom_id(content_id)
+        canonical_id = normalize_bundle_custom_id(content_id)
+
+        if not item and canonical_id != content_id:
+            # Try the canonical target ID
+            item = db.get_content_by_custom_id(canonical_id)
+            if item:
+                content_id = canonical_id
+                plan["target_id"] = canonical_id
+                # Update job in DB
+                db.client.table("render_jobs").update({
+                    "content_id": canonical_id,
+                    "plan_data": plan
+                }).eq("id", job_id).execute()
+
+        if not item:
+            mgr = RenderJobManager()
+            # Set attempts to max_attempts so it fails immediately
+            # Or mark_failed will handle FAILED transition. The requirement says:
+            # "mark the Job FAILED with: TARGET_CONTENT_NOT_FOUND"
+            # To set status directly to FAILED, we can do it via db client or call mark_failed
+            # until attempts exceed max_attempts, or just update status to FAILED directly!
+            # Let's do it directly through db.client to set status to FAILED cleanly and robustly!
+            import datetime
+            completed_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            db.client.table("render_jobs").update({
+                "status": "FAILED",
+                "error_message": "TARGET_CONTENT_NOT_FOUND",
+                "completed_at": completed_at
+            }).eq("id", job_id).execute()
+
+            send_telegram_message(chat_id, f"❌ رندر ناموفق بود:\nTARGET_CONTENT_NOT_FOUND")
+            return
+
         media_keys = item.get("media_keys") if item else []
 
-        # 2. Map shots to video_segments
+        # Map shots to video_segments
         video_segments = []
         for shot in plan.get("shots", []):
             idx = shot.get("index", 1) - 1  # 0-based index
@@ -59,6 +90,7 @@ def process_job(job):
                     "end_sec": shot.get("end"),
                 })
 
+        from agents.editing.orchestrator import EditOrchestrator
         orchestrator = EditOrchestrator()
         result = orchestrator.render_content(
             custom_id=content_id,
