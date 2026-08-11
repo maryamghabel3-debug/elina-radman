@@ -47,7 +47,7 @@ jobs:
         run: |
           mkdir -p /tmp/fonts
           curl -L -o /tmp/fonts/Vazirmatn-Bold.ttf \
-            https://github.com/rastikerdar/vazirmatn/releases/latest/download/Vazirmatn-Bold.ttf
+            https://raw.githubusercontent.com/rastikerdar/vazirmatn/master/fonts/ttf/Vazirmatn-Bold.ttf
 
       - name: Run queue hygiene script
         if: ${{ github.event.inputs.mode == 'repair' }}

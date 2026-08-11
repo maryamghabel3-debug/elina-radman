@@ -14,6 +14,6 @@ mkdir -p /tmp/fonts
 
 echo "Downloading Vazirmatn font..."
 curl -L -o /tmp/fonts/Vazirmatn-Bold.ttf \
-  https://github.com/rastikerdar/vazirmatn/releases/latest/download/Vazirmatn-Bold.ttf
+  https://raw.githubusercontent.com/rastikerdar/vazirmatn/master/fonts/ttf/Vazirmatn-Bold.ttf
 
 echo "Render environment setup complete."
