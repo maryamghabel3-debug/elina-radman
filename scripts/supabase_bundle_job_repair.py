@@ -3,6 +3,7 @@ import sys
 import argparse
 import logging
 import datetime
+import tempfile
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -16,6 +17,7 @@ logger = logging.getLogger("SupabaseRepair")
 from agents.db.supabase_client import ElinaDB
 from agents.studio.bundle_ids import normalize_bundle_custom_id
 from agents.rendering.job_manager import RenderJobManager
+from agents.editing.orchestrator import validate_video_asset
 
 # Verify credentials exist
 if not os.environ.get("SUPABASE_URL") or not os.environ.get("SUPABASE_SECRET_KEY"):
@@ -27,7 +29,7 @@ def run_diagnose(db: ElinaDB) -> Dict[str, Any]:
     logger.info("Running Supabase diagnosis...")
     try:
         # Fetch content_items
-        res_items = db.client.table("content_items").select("id, custom_id, status, created_at").execute()
+        res_items = db.client.table("content_items").select("id, custom_id, status, created_at, media_keys, content_type").execute()
         items = res_items.data or []
 
         # Fetch render_jobs
@@ -121,7 +123,7 @@ def run_repair(db: ElinaDB) -> Dict[str, Any]:
 
     # 1. Fetch tables
     try:
-        res_items = db.client.table("content_items").select("id, custom_id, status, created_at").execute()
+        res_items = db.client.table("content_items").select("id, custom_id, status, created_at, media_keys, content_type").execute()
         items = res_items.data or []
 
         res_jobs = db.client.table("render_jobs").select("id, content_id, status, plan_data, attempts, created_at, error_message, started_at").execute()
@@ -173,32 +175,66 @@ def run_repair(db: ElinaDB) -> Dict[str, Any]:
         if is_malformed:
             canonical_cid = normalize_bundle_custom_id(cid) if cid else ""
             if canonical_cid in all_item_custom_ids:
-                # Canonical content item exists, update and requeue
-                plan["target_id"] = canonical_cid
-                attempts = job.get("attempts") or 0
-                max_attempts = job.get("max_attempts") or 3
+                # Retrieve the content item to get its media_keys and validate assets!
+                matching_item = next((it for it in items if it.get("custom_id") == canonical_cid), None)
+                media_keys = (matching_item.get("media_keys") if matching_item else []) or []
 
-                # Reset attempts only when previous error was TARGET_CONTENT_NOT_FOUND or Item not found
-                err = job.get("error_message") or ""
-                if attempts >= max_attempts and ("TARGET_CONTENT_NOT_FOUND" in err or "Item not found" in err):
-                    attempts = 0
+                # Validate source assets
+                from agents.storage.supabase_storage import ElinaStorage
+                storage = ElinaStorage()
+                assets_valid = True
 
-                updates = {
-                    "content_id": canonical_cid,
-                    "plan_data": plan,
-                    "error_message": None,
-                    "started_at": None,
-                    "completed_at": None,
-                    "status": "QUEUED",
-                    "attempts": attempts
-                }
-                logger.info(f"Requeuing malformed job {job['id']} with canonical target '{canonical_cid}'")
-                try:
-                    db.client.table("render_jobs").update(updates).eq("id", job["id"]).execute()
-                    jobs_requeued += 1
-                except Exception as e:
-                    logger.error(f"Failed to update malformed job {job['id']}: {e}")
-                    sys.exit(1)
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    for mkey in media_keys:
+                        local_path = os.path.join(tmpdir, "temp_val.mp4")
+                        try:
+                            storage.download_file(mkey, local_path)
+                            if not validate_video_asset(local_path):
+                                assets_valid = False
+                                break
+                        except Exception:
+                            assets_valid = False
+                            break
+
+                if assets_valid:
+                    # Proceed to update and requeue
+                    plan["target_id"] = canonical_cid
+                    attempts = job.get("attempts") or 0
+                    max_attempts = job.get("max_attempts") or 3
+
+                    # Reset attempts only when previous error was TARGET_CONTENT_NOT_FOUND or Item not found
+                    err = job.get("error_message") or ""
+                    if attempts >= max_attempts and ("TARGET_CONTENT_NOT_FOUND" in err or "Item not found" in err):
+                        attempts = 0
+
+                    updates = {
+                        "content_id": canonical_cid,
+                        "plan_data": plan,
+                        "error_message": None,
+                        "started_at": None,
+                        "completed_at": None,
+                        "status": "QUEUED",
+                        "attempts": attempts
+                    }
+                    logger.info(f"Requeuing malformed job {job['id']} with canonical target '{canonical_cid}'")
+                    try:
+                        db.client.table("render_jobs").update(updates).eq("id", job["id"]).execute()
+                        jobs_requeued += 1
+                    except Exception as e:
+                        logger.error(f"Failed to update malformed job {job['id']}: {e}")
+                        sys.exit(1)
+                else:
+                    # Mark as FAILED with terminal reason INVALID_SOURCE_ASSET_PLACEHOLDER
+                    updates = {
+                        "status": "FAILED",
+                        "error_message": "INVALID_SOURCE_ASSET_PLACEHOLDER"
+                    }
+                    logger.warning(f"Repair: Mark job {job['id']} as FAILED because some/all source assets are invalid/placeholders.")
+                    try:
+                        db.client.table("render_jobs").update(updates).eq("id", job["id"]).execute()
+                    except Exception as e:
+                        logger.error(f"Failed to set job {job['id']} as FAILED: {e}")
+                        sys.exit(1)
             else:
                 # Canonical content item does not exist, set FAILED
                 updates = {
