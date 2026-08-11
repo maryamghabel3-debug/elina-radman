@@ -47,7 +47,15 @@ jobs:
         run: |
           mkdir -p /tmp/fonts
           curl -L -o /tmp/fonts/Vazirmatn-Bold.ttf \
-            https://github.com/rastikerdar/vazirmatn/releases/latest/download/Vazirmatn-Bold.ttf
+            https://raw.githubusercontent.com/rastikerdar/vazirmatn/master/fonts/ttf/Vazirmatn-Bold.ttf
+
+      - name: Run queue hygiene script
+        if: ${{ github.event.inputs.mode == 'repair' }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          python scripts/supabase_queue_hygiene.py
 
       - name: Run queue hygiene script
         if: ${{ github.event.inputs.mode == 'repair' }}
