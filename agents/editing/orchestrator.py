@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 def validate_video_asset(path: str, ffprobe_binary: str = "ffprobe") -> bool:
+    logger.info(f"Running asset sanity check on {path}...")
     if not path or not os.path.exists(path):
         logger.warning(f"Sanity check failed: File does not exist: {path}")
         return False

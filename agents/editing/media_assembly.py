@@ -254,6 +254,7 @@ class MediaAssemblyEngine:
             os.makedirs(out_dir, exist_ok=True)
 
         logger.info("Running ffmpeg assembly for %s", recipe.content_id)
+        logger.info("Executing FFmpeg command: %s", " ".join(cmd))
         result = subprocess.run(
             cmd,
             capture_output=True,
@@ -262,9 +263,9 @@ class MediaAssemblyEngine:
         )
 
         if result.returncode != 0:
-            logger.error("FFmpeg failed: %s", result.stderr[:500])
+            logger.error("FFmpeg failed: %s", result.stderr[-2000:])
             raise RuntimeError(
-                f"FFmpeg assembly failed for {recipe.content_id}: {result.stderr[:200]}"
+                f"FFmpeg assembly failed for {recipe.content_id}: {result.stderr[-2000:]}"
             )
 
         return output_path
