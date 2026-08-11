@@ -22,6 +22,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 from agents.studio.approval import ApprovalManager
 from agents.editing.persian_edit_interpreter import PersianEditInterpreter, format_plan_preview_fa
+from agents.studio.bundle_ids import normalize_bundle_custom_id
 
 logging.basicConfig(
     level=logging.INFO,
@@ -420,7 +421,7 @@ async def cmd_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("استفاده: /plan ELN-BUNDLE-...")
         return
 
-    target_id = context.args[0]
+    target_id = normalize_bundle_custom_id(context.args[0])
     if context.chat_data is None:
         context.chat_data = {}
     context.chat_data["plan_mode"] = True
@@ -467,6 +468,8 @@ async def cmd_plan_ok(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "هیچ برنامه‌ای وجود ندارد. ابتدا /plan بزنید."
         )
         return
+
+    target_id = normalize_bundle_custom_id(target_id)
 
     try:
         from agents.rendering.job_manager import RenderJobManager
@@ -535,7 +538,7 @@ async def handle_studio_media(update: Update, context: ContextTypes.DEFAULT_TYPE
                 plan = interpreter.parse(text)
 
                 target_id = context.chat_data.get("plan_target_id")
-                plan.target_custom_id = target_id
+                plan.target_custom_id = normalize_bundle_custom_id(target_id)
                 plan.target_mode = "custom_id"
 
                 context.chat_data["plan_preview"] = plan

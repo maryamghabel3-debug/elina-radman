@@ -4,6 +4,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any
 
+from agents.studio.bundle_ids import normalize_bundle_custom_id
+
 logger = logging.getLogger(__name__)
 
 
@@ -220,7 +222,7 @@ class PersianEditInterpreter:
                 target_mode = "custom_id"
                 match = re.search(r"ELN-BUNDLE-[A-Za-z0-9_-]+", line_norm)
                 if match:
-                    target_custom_id = match.group()
+                    target_custom_id = normalize_bundle_custom_id(match.group())
                 matched = True
 
             # 2. Original Audio
