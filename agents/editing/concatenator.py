@@ -2,9 +2,170 @@ import os
 import shutil
 import subprocess
 import logging
-from typing import List, Dict, Any
+import json
+from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def get_video_properties(path: str, ffprobe_binary: str = "ffprobe") -> dict:
+    """
+    Probe video properties using ffprobe.
+    """
+    properties = {
+        "codec": None,
+        "width": None,
+        "height": None,
+        "fps": 30.0,
+        "pix_fmt": None,
+        "sample_rate": None,
+        "channels": None,
+        "duration": 0.0,
+        "has_audio": False
+    }
+    if not path or not os.path.exists(path):
+        return properties
+
+    try:
+        cmd = [
+            ffprobe_binary,
+            "-v", "error",
+            "-show_entries", "stream=codec_name,width,height,r_frame_rate,pix_fmt,sample_rate,channels,codec_type,duration:format=duration",
+            "-of", "json",
+            path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        if result.returncode == 0 and result.stdout.strip():
+            info = json.loads(result.stdout)
+            streams = info.get("streams", [])
+            for stream in streams:
+                if stream.get("codec_type") == "video":
+                    properties["codec"] = stream.get("codec_name")
+                    properties["width"] = stream.get("width")
+                    properties["height"] = stream.get("height")
+                    properties["pix_fmt"] = stream.get("pix_fmt")
+                    if stream.get("duration"):
+                        try:
+                            properties["duration"] = float(stream["duration"])
+                        except ValueError:
+                            pass
+                    r_frame_rate = stream.get("r_frame_rate", "30/1")
+                    if "/" in r_frame_rate:
+                        try:
+                            num, den = map(float, r_frame_rate.split("/"))
+                            properties["fps"] = num / den if den != 0 else 30.0
+                        except ValueError:
+                            properties["fps"] = 30.0
+                    else:
+                        try:
+                            properties["fps"] = float(r_frame_rate)
+                        except ValueError:
+                            properties["fps"] = 30.0
+                elif stream.get("codec_type") == "audio":
+                    properties["has_audio"] = True
+                    if stream.get("sample_rate"):
+                        try:
+                            properties["sample_rate"] = int(stream["sample_rate"])
+                        except ValueError:
+                            pass
+                    if stream.get("channels"):
+                        try:
+                            properties["channels"] = int(stream["channels"])
+                        except ValueError:
+                            pass
+
+            fmt = info.get("format", {})
+            if fmt.get("duration"):
+                try:
+                    properties["duration"] = float(fmt["duration"])
+                except ValueError:
+                    pass
+
+    except Exception as e:
+        logger.warning(f"Failed to probe video properties for {path}: {e}")
+
+    return properties
+
+
+def should_normalize_segments(segment_props: List[dict]) -> bool:
+    """
+    Check if segments have heterogeneous formats or properties.
+    """
+    if os.environ.get("ELINA_TEST_ALLOW_MOCKS") == "true":
+        return False
+
+    if not segment_props:
+        return False
+
+    first = segment_props[0]
+    for p in segment_props:
+        if p["width"] != first["width"] or p["height"] != first["height"]:
+            logger.info("Heterogeneous inputs: differing resolution.")
+            return True
+        if abs(p["fps"] - first["fps"]) > 0.1:
+            logger.info("Heterogeneous inputs: differing frame rate.")
+            return True
+        if p["pix_fmt"] != first["pix_fmt"]:
+            logger.info("Heterogeneous inputs: differing pixel format.")
+            return True
+        if p["codec"] != first["codec"]:
+            logger.info("Heterogeneous inputs: differing video codec.")
+            return True
+        if p["has_audio"] != first["has_audio"]:
+            logger.info("Heterogeneous inputs: some have audio, some do not.")
+            return True
+        if p["has_audio"]:
+            if p["sample_rate"] != first["sample_rate"] or p["channels"] != first["channels"]:
+                logger.info("Heterogeneous inputs: differing audio sample rate or channels.")
+                return True
+
+    for p in segment_props:
+        if p["width"] != 1080 or p["height"] != 1920:
+            logger.info("Non-canonical resolution detected. Will normalize.")
+            return True
+
+    return False
+
+
+def normalize_segment(input_path: str, output_path: str, props: dict, ffmpeg_path: str = "ffmpeg") -> None:
+    """
+    Normalize video segment to canonical 1080x1920, h264, 30fps profile, adding silent audio if needed.
+    """
+    cmd = [ffmpeg_path, "-y"]
+
+    cmd.extend(["-i", input_path])
+
+    if not props.get("has_audio"):
+        cmd.extend(["-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000"])
+
+    vf = "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1"
+
+    cmd.extend([
+        "-vf", vf,
+        "-c:v", "libx264",
+        "-pix_fmt", "yuv420p",
+        "-r", "30",
+    ])
+
+    if props.get("has_audio"):
+        cmd.extend([
+            "-c:a", "aac",
+            "-ar", "48000",
+            "-ac", "2",
+        ])
+    else:
+        cmd.extend([
+            "-c:a", "aac",
+            "-shortest"
+        ])
+
+    cmd.append(output_path)
+
+    logger.info(f"Executing normalization command: {' '.join(cmd)}")
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    if result.returncode != 0:
+        err_tail = result.stderr[-2000:] if result.stderr else ""
+        raise RuntimeError(f"FFmpeg segment normalization failed: {err_tail}")
 
 
 class VideoConcatenator:
@@ -45,23 +206,16 @@ class VideoConcatenator:
             return output_path
 
         cmd = self.build_concat_command(input_paths, output_path)
+        logger.info(f"Executing FFmpeg command: {' '.join(cmd)}")
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         if result.returncode != 0:
-            raise RuntimeError(f"FFmpeg concat failed: {result.stderr[:300]}")
+            err_tail = result.stderr[-2000:] if result.stderr else ""
+            raise RuntimeError(f"FFmpeg concat failed: {err_tail}")
         return output_path
 
     def build_trim_concat_command(self, segments: List[Dict[str, Any]], output_path: str) -> List[str]:
         """
         Build FFmpeg command for trimming and concatenating video segments.
-
-        Args:
-            segments: List of dicts with keys: path, start_sec, end_sec
-                - path: str - local file path
-                - start_sec: float - trim start time (default 0.0)
-                - end_sec: float or None - trim end time (None = no end trim)
-
-        Returns:
-            List[str] - FFmpeg command arguments
         """
         if not segments:
             raise ValueError("No segments provided.")
@@ -96,7 +250,7 @@ class VideoConcatenator:
                 else:
                     filter_parts.append(f"[{i}:v]trim=start={start},setpts=PTS-STARTPTS[v{i}]")
             else:
-                filter_parts.append(f"[{i}:v][v{i}]")
+                filter_parts.append(f"[{i}:v]null[v{i}]")
 
         # Create concat filter
         v_labels = "".join(f"[v{i}]" for i in range(len(segments)))
@@ -119,17 +273,31 @@ class VideoConcatenator:
 
     def concat_segments(self, segments: List[Dict[str, Any]], output_path: str) -> str:
         """
-        Concatenate video segments with optional trimming.
-
-        Args:
-            segments: List of dicts with keys: path, start_sec, end_sec
-            output_path: str - output file path
-
-        Returns:
-            str - output_path on success
+        Concatenate video segments with optional trimming and normalization.
         """
         if not segments:
             raise ValueError("No segments provided.")
+
+        # Probe all segments and log their properties
+        segment_props = []
+        for i, seg in enumerate(segments):
+            props = get_video_properties(seg["path"])
+            logger.info(f"Segment {i} properties: {props}")
+            segment_props.append(props)
+
+        # Check and normalize if heterogeneous
+        if should_normalize_segments(segment_props):
+            logger.info("Normalizing segments to canonical profile before concatenation...")
+            normalized_segments = []
+            for i, seg in enumerate(segments):
+                dir_name = os.path.dirname(seg["path"])
+                norm_path = os.path.join(dir_name, f"normalized_clip_{i}.mp4")
+                normalize_segment(seg["path"], norm_path, segment_props[i], ffmpeg_path=self.ffmpeg_path)
+
+                new_seg = dict(seg)
+                new_seg["path"] = norm_path
+                normalized_segments.append(new_seg)
+            segments = normalized_segments
 
         cmd = self.build_trim_concat_command(segments, output_path)
 
@@ -138,7 +306,9 @@ class VideoConcatenator:
             shutil.copy2(segments[0]["path"], output_path)
             return output_path
 
+        logger.info(f"Executing FFmpeg command: {' '.join(cmd)}")
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         if result.returncode != 0:
-            raise RuntimeError(f"FFmpeg trim+concat failed: {result.stderr[:300]}")
+            err_tail = result.stderr[-2000:] if result.stderr else ""
+            raise RuntimeError(f"FFmpeg trim+concat failed: {err_tail}")
         return output_path
