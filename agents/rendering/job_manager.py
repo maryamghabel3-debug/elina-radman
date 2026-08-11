@@ -19,7 +19,19 @@ class RenderJobManager:
     def queue_job(self, content_id: str, plan_data: dict, owner_chat_id: str) -> dict:
         """
         Insert a new render job with status QUEUED. Return job dict.
+        Older competing active jobs for the same content_id are marked as FAILED/SUPERSEDED.
         """
+        # Mark older active jobs for the same content_id as FAILED/SUPERSEDED
+        try:
+            self.db.client.table("render_jobs").update({
+                "status": "FAILED",
+                "error_message": "SUPERSEDED_BY_NEWER_RENDER_JOB"
+            }).eq("content_id", content_id).in_("status", ["QUEUED", "IN_PROGRESS"]).execute()
+            logger.info(f"Superseded older active render jobs for content_id '{content_id}'")
+        except Exception as e:
+            logger.error(f"Failed to supersede older jobs for '{content_id}': {e}")
+
+        # Insert new queued job
         res = self.db.client.table("render_jobs").insert({
             "content_id": content_id,
             "plan_data": plan_data,
@@ -66,6 +78,7 @@ class RenderJobManager:
     def mark_failed(self, job_id: str, error_message: str) -> dict:
         """
         Increment attempts. If attempts >= max_attempts set FAILED, else QUEUED again.
+        Jobs with terminal error reasons are marked as FAILED immediately with no retries.
         """
         res_get = self.db.client.table("render_jobs").select("*").eq("id", job_id).execute()
         if not res_get.data:
@@ -80,7 +93,14 @@ class RenderJobManager:
             "error_message": error_message,
         }
 
-        if attempts >= max_attempts:
+        # Terminal error check (never retry)
+        is_terminal = (
+            "INVALID_SOURCE_ASSET_PLACEHOLDER" in error_message
+            or "TARGET_CONTENT_NOT_FOUND" in error_message
+            or "SUPERSEDED" in error_message
+        )
+
+        if is_terminal or attempts >= max_attempts:
             updates["status"] = "FAILED"
             completed_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
             updates["completed_at"] = completed_at

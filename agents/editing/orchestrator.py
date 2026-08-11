@@ -1,6 +1,7 @@
 import os
 import tempfile
 import logging
+import subprocess
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 
@@ -12,6 +13,51 @@ from agents.editing.media_assembly import MediaAssemblyEngine, run_qc_checks
 from agents.editing.concatenator import VideoConcatenator
 
 logger = logging.getLogger(__name__)
+
+
+def validate_video_asset(path: str, ffprobe_binary: str = "ffprobe") -> bool:
+    if not path or not os.path.exists(path):
+        logger.warning(f"Sanity check failed: File does not exist: {path}")
+        return False
+    if os.path.getsize(path) == 0:
+        logger.warning(f"Sanity check failed: File is zero bytes: {path}")
+        return False
+
+    # Check for test mock bypass
+    if os.environ.get("ELINA_TEST_ALLOW_MOCKS") == "true":
+        return True
+
+    try:
+        # Check if the file contains mock placeholder bytes (repeating '0's)
+        with open(path, "rb") as f:
+            head = f.read(100)
+            if head and all(b == 48 for b in head):
+                logger.warning(f"Sanity check failed: Detected mock placeholder file at {path}")
+                return False
+    except Exception:
+        pass
+
+    try:
+        result = subprocess.run(
+            [
+                ffprobe_binary,
+                "-v", "error",
+                "-select_streams", "v:0",
+                "-show_entries", "stream=codec_name",
+                "-of", "csv=p=0",
+                path
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            logger.warning(f"Sanity check failed: No valid video stream or ffprobe error on {path}")
+            return False
+        return True
+    except Exception as e:
+        logger.warning(f"Sanity check failed: Exception running ffprobe on {path}: {e}")
+        return False
 
 
 class EditOrchestrator:
@@ -125,6 +171,11 @@ class EditOrchestrator:
                 for idx, seg in enumerate(segments):
                     vpath = tmp / f"clip_{idx}.mp4"
                     self.storage.download_file(seg.key, str(vpath))
+
+                    # Asset sanity gate
+                    if not validate_video_asset(str(vpath)):
+                        raise ValueError("INVALID_SOURCE_ASSET_PLACEHOLDER")
+
                     local_segments.append({
                         "path": str(vpath),
                         "start_sec": seg.start_sec,

@@ -303,8 +303,20 @@ async def cmd_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 2:
         await update.message.reply_text("استفاده: /edit ELN-... توضیح")
         return
-    result = ApprovalManager().mark_needs_edit(context.args[0], " ".join(context.args[1:]), actor_name(update))
-    await update.message.reply_text("✏️ نیازمند ادیت" if result.get("ok") else f"❌ {result.get('error')}")
+    custom_id = context.args[0]
+    task = " ".join(context.args[1:])
+    result = ApprovalManager().mark_needs_edit(custom_id, task, actor_name(update))
+
+    if result.get("ok"):
+        response_text = (
+            f"✏️ وضعیت محتوای {custom_id} به «نیازمند ادیت» تغییر یافت.\n"
+            f"توضیحات ادیت ثبت شد: {task}\n\n"
+            f"راهنما: برای نوشتن برنامه ادیت و رندر واقعی، دستور زیر را ارسال کنید:\n"
+            f"/plan {custom_id}"
+        )
+        await update.message.reply_text(response_text)
+    else:
+        await update.message.reply_text(f"❌ {result.get('error')}")
 
 
 @record_update_decorator
@@ -484,6 +496,23 @@ async def cmd_plan_ok(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
 
         mgr = RenderJobManager()
+
+        # Idempotency / duplicate protection check
+        try:
+            res_existing = mgr.db.client.table("render_jobs").select("*").eq("content_id", target_id).in_("status", ["QUEUED", "IN_PROGRESS"]).execute()
+            if res_existing.data:
+                existing_job = res_existing.data[0]
+                if existing_job.get("plan_data") == plan_dict:
+                    await update.message.reply_text(
+                        f"✅ رندر این برنامه قبلاً ثبت شده و در صف قرار گرفته است.\n"
+                        f"شناسه کار: {existing_job.get('id')}\n"
+                        f"وضعیت: در انتظار اجرا"
+                    )
+                    return
+        except Exception as e:
+            logger.error(f"Duplicate protection query failed: {e}")
+
+        # Queue the new job (which will automatically supersede any older active jobs)
         job = mgr.queue_job(
             content_id=target_id,
             plan_data=plan_dict,

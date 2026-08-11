@@ -32,7 +32,7 @@ def send_telegram_message(chat_id, text):
         logger.warning(f"Telegram notification failed: {exc}")
 
 
-def process_job(job):
+def process_job(job) -> bool:
     job_id = job["id"]
     content_id = job["plan_data"].get("target_id", job["content_id"])
     plan = job["plan_data"]
@@ -59,12 +59,6 @@ def process_job(job):
 
         if not item:
             mgr = RenderJobManager()
-            # Set attempts to max_attempts so it fails immediately
-            # Or mark_failed will handle FAILED transition. The requirement says:
-            # "mark the Job FAILED with: TARGET_CONTENT_NOT_FOUND"
-            # To set status directly to FAILED, we can do it via db client or call mark_failed
-            # until attempts exceed max_attempts, or just update status to FAILED directly!
-            # Let's do it directly through db.client to set status to FAILED cleanly and robustly!
             import datetime
             completed_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
             db.client.table("render_jobs").update({
@@ -74,7 +68,7 @@ def process_job(job):
             }).eq("id", job_id).execute()
 
             send_telegram_message(chat_id, f"❌ رندر ناموفق بود:\nTARGET_CONTENT_NOT_FOUND")
-            return
+            return False
 
         media_keys = item.get("media_keys") if item else []
 
@@ -108,12 +102,14 @@ def process_job(job):
                 f"فایل: {result.get('output_key', 'در Supabase ذخیره شد')}"
             )
             logger.info(f"Job {job_id} completed successfully")
+            return True
         else:
             mgr.mark_failed(job_id, result.get("error", "unknown"))
             send_telegram_message(chat_id,
                 f"❌ رندر ناموفق بود:\n{result.get('error', 'خطای نامشخص')}"
             )
             logger.error(f"Job {job_id} failed: {result.get('error')}")
+            return False
 
     except Exception as exc:
         logger.exception(f"Job {job_id} crashed")
@@ -121,6 +117,7 @@ def process_job(job):
         send_telegram_message(chat_id,
             f"❌ خطای سیستمی در رندر:\n{type(exc).__name__}: {str(exc)[:200]}"
         )
+        return False
 
 
 def main():
@@ -130,7 +127,10 @@ def main():
         logger.info("No queued render jobs found.")
         return
 
-    process_job(job)
+    success = process_job(job)
+    if not success:
+        logger.error("Render worker job execution failed.")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

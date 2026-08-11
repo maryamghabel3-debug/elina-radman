@@ -8,6 +8,7 @@ os.environ.setdefault("STUDIO_BOT_TOKEN", "test_token_for_testing")
 os.environ.setdefault("GITHUB_TOKEN", "test_github_token_for_ci")
 os.environ.setdefault("SUPABASE_URL", "https://test.supabase.co")
 os.environ.setdefault("SUPABASE_SECRET_KEY", "test_supabase_key_for_ci")
+os.environ["ELINA_TEST_ALLOW_MOCKS"] = "true"
 
 
 @pytest.fixture
