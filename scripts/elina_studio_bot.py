@@ -238,7 +238,7 @@ async def cmd_start_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "۱۰) برنامه‌ریزی ادیت با متن فارسی\n"
         "/plan ELN-BUNDLE-...\n"
         "حالت برنامه‌ریزی را فعال می‌کند\n\n"
-        "بعد از آن، برنامه را به فارسی بنویس:\n"
+        "بعد از آن, برنامه را به فارسی بنویس:\n"
         "- شات اول از صفر تا ۲.۸\n"
         "- شات دوم از ۱.۲ تا ۳.۸\n"
         "- صدای اصلی قطع شود\n"
@@ -326,7 +326,7 @@ async def cmd_editdone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("استفاده: /editdone ELN-...")
         return
     result = ApprovalManager().mark_edit_done(context.args[0], actor_name(update))
-    await update.message.reply_text("✅ ادیت تمام شد" if result.get("ok") else f"❌ {result.get('error')}")
+    await update.message.reply_text(f"✅ ادیت تمام شد: {result['custom_id']}" if result["ok"] else f"❌ {result['error']}")
 
 
 @record_update_decorator
