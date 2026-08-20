@@ -158,7 +158,7 @@ async def test_duplicate_plan_ok_does_not_create_multiple_jobs():
             "shots": [],
             "sfx": [],
             "hook": "تست",
-            "music_enabled": False
+            "music": {"enabled": False, "query": None, "gain_db": -14, "explicit": False}
         }
     }]
     mock_query.execute.return_value = mock_result

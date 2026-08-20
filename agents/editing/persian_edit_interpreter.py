@@ -33,6 +33,10 @@ class PersianMusicInstruction:
     query_fa: Optional[str] = None
     gain_db: int = -14
     loop: bool = True
+    explicit: bool = False
+    """True when the user actually mentioned music (positive or negative).
+    Lets the pipeline distinguish 'بدون موسیقی' (explicit no-music) from a
+    plan that never mentions music at all."""
 
 
 @dataclass
@@ -244,7 +248,7 @@ class PersianEditInterpreter:
             # 4. Music
             if "موسیقی" in line_norm or "موزیک" in line_norm or "آهنگ" in line_norm:
                 if any(word in line_norm for word in ["نمیخواهم", "نمی‌خواهم", "نمی خواهم", "بدون", "حذف", "نه", "قطع"]):
-                    music = PersianMusicInstruction(enabled=False)
+                    music = PersianMusicInstruction(enabled=False, explicit=True)
                 else:
                     query_fa = "موسیقی آرام"
                     for kw in ["موسیقی", "موزیک", "آهنگ"]:
@@ -256,7 +260,7 @@ class PersianEditInterpreter:
                             query_fa = query_fa[:-len(stop_word)-1].strip()
                         elif query_fa.endswith(stop_word):
                             query_fa = query_fa[:-len(stop_word)].strip()
-                    music = PersianMusicInstruction(enabled=True, query_fa=query_fa)
+                    music = PersianMusicInstruction(enabled=True, query_fa=query_fa, explicit=True)
                 matched = True
 
             # 5. Shot trims (only if not already matched by music/audio/hook)
