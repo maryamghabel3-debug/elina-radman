@@ -137,3 +137,32 @@ def test_mark_failed_sets_failed_at_max_attempts():
 
     assert job["attempts"] == 3
     assert job["status"] == "FAILED"
+
+
+def test_mark_failed_sfx_errors_are_terminal():
+    """SFX provider/fetch errors must not be requeued (no pointless retries)."""
+    mock_db = MagicMock()
+    mock_query = MagicMock()
+    mock_db.client.table.return_value = mock_query
+    mock_query.update.return_value = mock_query
+    mock_query.eq.return_value = mock_query
+    mock_query.select.return_value = mock_query
+
+    mock_result = MagicMock()
+    mock_result.data = [{"id": "job-1", "attempts": 0, "max_attempts": 3}]
+    mock_query.execute.return_value = mock_result
+
+    manager = RenderJobManager(db=mock_db)
+
+    for error in ["SFX_PROVIDER_NOT_CONFIGURED: Missing FREESOUND_API_KEY", "SFX_FETCH_FAILED: no match for 'x'", "SFX_INVALID_PLAN_ENTRY: bad"]:
+        mock_query.reset_mock()
+        mock_query.update.return_value = mock_query
+        mock_query.eq.return_value = mock_query
+        mock_query.select.return_value = mock_query
+        mock_query.execute.return_value = mock_result
+
+        manager.mark_failed("job-1", error)
+
+        update_call = mock_query.update.call_args[0][0]
+        assert update_call["status"] == "FAILED"
+        assert update_call["attempts"] == 1
