@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import patch
 from agents.editing.orchestrator import EditOrchestrator
 
 pytestmark = pytest.mark.unit
@@ -287,3 +288,110 @@ def test_render_content_mute_original_default(monkeypatch):
     assert concat_calls == [{"keep_audio": False}]
     assert len(assembler.calls) == 1
     assert assembler.calls[0]["use_base_audio"] is False
+
+
+def test_render_content_resolves_plan_sfx_queries(monkeypatch):
+    """plan_sfx queries must be fetched via SFXFetcher and passed to the assembler."""
+    import agents.editing.orchestrator as orch_mod
+
+    class MockConcatenator:
+        def concat_segments(self, segments, output_path, **kwargs):
+            with open(output_path, "wb") as f:
+                f.write(b"0" * 20000)
+            return output_path
+
+    monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
+
+    from agents.audio.base_provider import SoundResult
+    fetched_sound = type("Fetched", (), {
+        "local_path": "/tmp/fetched_sfx.mp3",
+        "metadata": SoundResult(
+            provider="freesound", external_id="42", name="key click",
+            license="Creative Commons 0", attribution=None,
+            duration_sec=1.2, download_url="", preview_url="http://x/preview.mp3",
+        ),
+    })
+
+    with patch("agents.audio.sfx_fetcher.SFXFetcher") as MockFetcher:
+        instance = MockFetcher.return_value
+        instance.fetch_best_match.return_value = fetched_sound
+
+        db = FakeDB()
+        assembler = FakeAssembler()
+        o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=assembler)
+        result = o.render_content(
+            "ELN-RAW-TEST",
+            actor="tester",
+            plan_sfx=[{"query": "صدای کلید", "start": 1.5, "gain": -6, "fade_in": 0.1, "fade_out": 0.3}],
+        )
+
+    assert result["ok"] is True
+    instance.fetch_best_match.assert_called_once()
+    query_arg = instance.fetch_best_match.call_args[0][0]
+    assert query_arg == "صدای کلید"
+
+    assert len(assembler.calls) == 1
+    passed_sfx = assembler.calls[0]["sfx_items"]
+    assert passed_sfx is not None
+    assert len(passed_sfx) == 1
+    sfx0 = passed_sfx[0]
+    assert sfx0["path"] == "/tmp/fetched_sfx.mp3"
+    assert sfx0["start_sec"] == 1.5
+    assert sfx0["gain_db"] == -6
+    assert sfx0["fade_in_sec"] == 0.1
+    assert sfx0["fade_out_sec"] == 0.3
+
+
+def test_render_content_plan_sfx_provider_not_configured(monkeypatch):
+    """Missing SFX provider must fail with typed SFX_PROVIDER_NOT_CONFIGURED."""
+    import agents.editing.orchestrator as orch_mod
+
+    class MockConcatenator:
+        def concat_segments(self, segments, output_path, **kwargs):
+            with open(output_path, "wb") as f:
+                f.write(b"0" * 20000)
+            return output_path
+
+    monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
+
+    with patch("agents.audio.sfx_fetcher.SFXFetcher", side_effect=ValueError("Missing FREESOUND_API_KEY")):
+        db = FakeDB()
+        o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=FakeAssembler())
+        result = o.render_content(
+            "ELN-RAW-TEST",
+            actor="tester",
+            plan_sfx=[{"query": "صدای کلید", "start": 1.5, "gain": -6}],
+        )
+
+    assert result["ok"] is False
+    assert "SFX_PROVIDER_NOT_CONFIGURED" in result["error"]
+    statuses = [s[0] for s in db.status_updates]
+    assert "EDIT_FAILED" in statuses
+
+
+def test_render_content_plan_sfx_fetch_failed(monkeypatch):
+    """No match for an SFX query must fail with typed SFX_FETCH_FAILED."""
+    import agents.editing.orchestrator as orch_mod
+
+    class MockConcatenator:
+        def concat_segments(self, segments, output_path, **kwargs):
+            with open(output_path, "wb") as f:
+                f.write(b"0" * 20000)
+            return output_path
+
+    monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
+
+    with patch("agents.audio.sfx_fetcher.SFXFetcher") as MockFetcher:
+        instance = MockFetcher.return_value
+        instance.fetch_best_match.return_value = None
+
+        db = FakeDB()
+        o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=FakeAssembler())
+        result = o.render_content(
+            "ELN-RAW-TEST",
+            actor="tester",
+            plan_sfx=[{"query": "صدای غیرموجود", "start": 0.0, "gain": 0}],
+        )
+
+    assert result["ok"] is False
+    assert "SFX_FETCH_FAILED" in result["error"]

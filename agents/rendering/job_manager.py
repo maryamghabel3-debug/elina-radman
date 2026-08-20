@@ -98,6 +98,9 @@ class RenderJobManager:
             "INVALID_SOURCE_ASSET_PLACEHOLDER" in error_message
             or "TARGET_CONTENT_NOT_FOUND" in error_message
             or "SUPERSEDED" in error_message
+            or "SFX_PROVIDER_NOT_CONFIGURED" in error_message
+            or "SFX_FETCH_FAILED" in error_message
+            or "SFX_INVALID_PLAN_ENTRY" in error_message
         )
 
         if is_terminal or attempts >= max_attempts:

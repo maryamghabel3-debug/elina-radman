@@ -126,6 +126,7 @@ class EditOrchestrator:
         voice_key: Optional[str] = None,
         music_key: Optional[str] = None,
         mute_original: bool = True,
+        plan_sfx: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         item = self.db.get_content_by_custom_id(custom_id)
         if not item:
@@ -247,6 +248,40 @@ class EditOrchestrator:
                             "fade_in_sec": fade_in_sec,
                             "fade_out_sec": fade_out_sec,
                             "attribution": attribution,
+                        })
+
+                # Resolve SFX requested by the Persian edit plan (query -> sound
+                # file). Never silently skip: if the SFX provider is not
+                # configured or no sound matches, fail with a typed error.
+                if plan_sfx:
+                    try:
+                        from agents.audio.sfx_fetcher import SFXFetcher
+                        fetcher = SFXFetcher()
+                    except ValueError as exc:
+                        raise RuntimeError(f"SFX_PROVIDER_NOT_CONFIGURED: {exc}")
+
+                    for sfx_idx, sfx in enumerate(plan_sfx):
+                        if not isinstance(sfx, dict):
+                            raise RuntimeError(f"SFX_INVALID_PLAN_ENTRY: {sfx!r}")
+                        query = (sfx.get("query") or "").strip()
+                        if not query:
+                            raise RuntimeError("SFX_INVALID_PLAN_ENTRY: empty query")
+
+                        local_path = str(tmp / f"plan_sfx_{sfx_idx}.mp3")
+                        try:
+                            fetched = fetcher.fetch_best_match(query, local_path)
+                        except Exception as exc:
+                            raise RuntimeError(f"SFX_FETCH_FAILED: {exc}") from exc
+                        if fetched is None:
+                            raise RuntimeError(f"SFX_FETCH_FAILED: no match for '{query}'")
+
+                        sfx_items.append({
+                            "path": fetched.local_path,
+                            "start_sec": float(sfx.get("start_sec", sfx.get("start", 0.0))),
+                            "gain_db": int(sfx.get("gain_db", sfx.get("gain", 0))),
+                            "fade_in_sec": float(sfx.get("fade_in_sec", sfx.get("fade_in", 0.0))),
+                            "fade_out_sec": float(sfx.get("fade_out_sec", sfx.get("fade_out", 0.0))),
+                            "attribution": getattr(fetched.metadata, "attribution", None),
                         })
 
                 # Render hook PNG if requested

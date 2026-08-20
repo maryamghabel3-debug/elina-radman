@@ -316,3 +316,36 @@ def test_bundle_id_fix_produces_correct_format():
 
     assert custom_id.startswith("ELN-BUNDLE-")
     assert not custom_id.startswith("ELN-BUNDLE-ELN-BUNDLE-")
+
+
+# 13. /plan_ok serializes SFX entries with fades so the worker can resolve them
+@pytest.mark.asyncio
+async def test_cmd_plan_ok_serializes_sfx_with_fades():
+    import scripts.elina_studio_bot as bot_module
+    from agents.editing.persian_edit_interpreter import PersianEditPlan, PersianShotInstruction, PersianSFXInstruction
+
+    plan = PersianEditPlan(
+        target_mode="custom_id",
+        target_custom_id="ELN-BUNDLE-123",
+        shots=[PersianShotInstruction(shot_index=1, start_sec=0.0, end_sec=3.0)],
+        sound_effects=[PersianSFXInstruction(query_fa="صدای کلید", start_sec=1.5, gain_db=-6, fade_in_sec=0.2, fade_out_sec=0.4)],
+        confidence=1.0
+    )
+    chat_data = {"plan_mode": True, "plan_preview": plan, "plan_target_id": "ELN-BUNDLE-123"}
+    mock_update, mock_context = make_mock_update(is_owner=True, chat_data=chat_data)
+
+    with patch("agents.rendering.job_manager.RenderJobManager") as MockManager:
+        instance = MockManager.return_value
+        instance.queue_job.return_value = {"id": "job-sfx", "status": "QUEUED"}
+
+        with patch.object(bot_module, "OWNER_CHAT_ID", "12345"):
+            await bot_module.cmd_plan_ok(mock_update, mock_context)
+
+        plan_data = instance.queue_job.call_args.kwargs["plan_data"]
+        assert plan_data["sfx"] == [{
+            "query": "صدای کلید",
+            "start": 1.5,
+            "gain": -6,
+            "fade_in": 0.2,
+            "fade_out": 0.4,
+        }]
