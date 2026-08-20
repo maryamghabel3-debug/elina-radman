@@ -489,7 +489,12 @@ async def cmd_plan_ok(update: Update, context: ContextTypes.DEFAULT_TYPE):
         plan_dict = {
             "target_id": target_id,
             "mute_original": plan.mute_original_audio,
-            "shots": [{"index": s.shot_index, "start": s.start_sec, "end": s.end_sec} for s in plan.shots],
+            "shots": [{
+                "index": s.shot_index,
+                "start": s.start_sec,
+                "end": s.end_sec,
+                "remove": s.remove,
+            } for s in plan.shots],
             "sfx": [{"query": s.query_fa, "start": s.start_sec, "gain": s.gain_db} for s in plan.sound_effects],
             "hook": plan.hook_text,
             "music_enabled": plan.music.enabled if plan.music else False,
