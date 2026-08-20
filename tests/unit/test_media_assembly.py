@@ -255,3 +255,76 @@ def test_overlay_ducking_loudnorm_and_sfx_can_coexist():
     assert "loudnorm" in filter_arg
     assert "overlay" in filter_arg
     assert "adelay" in filter_arg
+
+
+def test_build_command_keeps_base_audio_when_requested():
+    """use_base_audio=True must mix the base video audio into the final audio."""
+    engine = MediaAssemblyEngine()
+    recipe = make_recipe()
+    recipe.audio = AudioConfig(voice_key=None, music_key=None)
+    cmd = engine.build_assembly_command(
+        recipe=recipe,
+        video_path="/tmp/v.mp4",
+        voice_path=None,
+        music_path=None,
+        hook_png_path=None,
+        output_path="/tmp/o.mp4",
+        use_base_audio=True,
+    )
+    assert "-filter_complex" in cmd
+    filter_arg = cmd[cmd.index("-filter_complex") + 1]
+    assert "[0:a]aresample=48000,aformat=channel_layouts=stereo[base_audio]" in filter_arg
+    assert "[base_audio]loudnorm" in filter_arg
+    assert "-map" in cmd and "[final_audio]" in cmd
+
+
+def test_build_command_default_no_base_audio():
+    """Default use_base_audio=False must not reference input 0 audio."""
+    engine = MediaAssemblyEngine()
+    recipe = make_recipe()
+    recipe.audio = AudioConfig(voice_key=None, music_key=None)
+    cmd = engine.build_assembly_command(
+        recipe=recipe,
+        video_path="/tmp/v.mp4",
+        voice_path=None,
+        music_path=None,
+        hook_png_path=None,
+        output_path="/tmp/o.mp4",
+    )
+    assert "-filter_complex" not in cmd
+    assert "base_audio" not in cmd
+
+
+def test_build_command_maps_input_video_without_brackets_when_no_overlay():
+    """With a filter graph but no hook overlay, the video must be mapped as
+    plain input reference '0:v' (bracketed '[0:v]' is not a valid -map label)."""
+    engine = MediaAssemblyEngine()
+    recipe = make_recipe()
+    recipe.audio = AudioConfig(voice_key="voice.wav", music_key=None)
+    cmd = engine.build_assembly_command(
+        recipe=recipe,
+        video_path="/tmp/v.mp4",
+        voice_path="/tmp/voice.wav",
+        music_path=None,
+        hook_png_path=None,
+        output_path="/tmp/o.mp4",
+    )
+    assert "-filter_complex" in cmd
+    assert "-map" in cmd
+    assert "0:v" in cmd
+    assert "[0:v]" not in cmd
+    assert "[final_audio]" in cmd
+
+
+def test_build_command_maps_overlay_label_when_hook_present():
+    """With a hook overlay, the video is mapped from the graph label [final_video]."""
+    engine = MediaAssemblyEngine()
+    cmd = engine.build_assembly_command(
+        recipe=make_recipe(),
+        video_path="/tmp/v.mp4",
+        voice_path="/tmp/voice.wav",
+        music_path="/tmp/music.mp3",
+        hook_png_path="/tmp/hook.png",
+        output_path="/tmp/o.mp4",
+    )
+    assert "[final_video]" in cmd

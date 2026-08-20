@@ -142,3 +142,73 @@ def test_five_segments_produces_concat_n5():
     filter_idx = cmd.index("-filter_complex")
     filter_str = cmd[filter_idx + 1]
     assert "concat=n=5:v=1:a=0[outv]" in filter_str
+
+
+# === Keep Original Audio Tests ===
+
+def test_build_trim_concat_command_keep_audio():
+    """keep_audio=True must concat audio too (v=1:a=1, [outa]) with atrim filters."""
+    concat = VideoConcatenator()
+    segments = [
+        {"path": "/input/a.mp4", "start_sec": 1.5, "end_sec": 10.0},
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0},
+    ]
+    cmd = concat.build_trim_concat_command(segments, "/output/merged.mp4", keep_audio=True)
+    assert cmd[0] == "ffmpeg"
+    filter_idx = cmd.index("-filter_complex")
+    filter_str = cmd[filter_idx + 1]
+    assert "atrim=start=1.5:end=10.0,asetpts=PTS-STARTPTS" in filter_str
+    assert "atrim=start=0.0:end=5.0,asetpts=PTS-STARTPTS" in filter_str
+    # concat expects interleaved per-segment stream order: [v0][a0][v1][a1]
+    assert "concat=n=2:v=1:a=1[outv][outa]" in filter_str
+    assert "[v0][a0][v1][a1]concat=n=2:v=1:a=1" in filter_str
+    # Audio stream mapped and re-encoded to a uniform profile
+    assert ["-map", "[outv]", "-map", "[outa]"] in [cmd[i:i+4] for i in range(len(cmd) - 3)]
+    assert "-c:a" in cmd and "aac" in cmd
+
+
+def test_build_trim_concat_command_default_drops_audio():
+    """Default keep_audio=False must keep v=1:a=0 behavior (no [outa])."""
+    concat = VideoConcatenator()
+    segments = [
+        {"path": "/input/a.mp4", "start_sec": 0.0, "end_sec": 5.0},
+    ]
+    cmd = concat.build_trim_concat_command(segments, "/output/merged.mp4")
+    filter_idx = cmd.index("-filter_complex")
+    filter_str = cmd[filter_idx + 1]
+    assert "concat=n=1:v=1:a=0[outv]" in filter_str
+    assert "[outa]" not in cmd
+
+
+def test_concat_segments_keep_audio_falls_back_without_audio_streams(monkeypatch):
+    """keep_audio=True must fall back to video-only when no segment has audio."""
+    import agents.editing.concatenator as concat_mod
+    from unittest.mock import MagicMock, patch
+
+    def fake_props(path):
+        return {
+            "codec": "h264", "width": 1080, "height": 1920, "fps": 30.0,
+            "pix_fmt": "yuv420p", "sample_rate": None, "channels": None,
+            "has_audio": False,
+        }
+
+    monkeypatch.setattr(concat_mod, "get_video_properties", fake_props)
+
+    mock_run = MagicMock()
+    mock_run.returncode = 0
+    mock_run.stderr = ""
+
+    with patch("subprocess.run", return_value=mock_run) as mock_subprocess:
+        concat = VideoConcatenator()
+        concat.concat_segments(
+            [
+                {"path": "/input/a.mp4", "start_sec": 0.0, "end_sec": 2.0},
+                {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 2.0},
+            ],
+            "/output/merged.mp4",
+            keep_audio=True,
+        )
+        cmd = mock_subprocess.call_args[0][0]
+        filter_str = cmd[cmd.index("-filter_complex") + 1]
+        assert "v=1:a=0[outv]" in filter_str
+        assert "outa" not in filter_str

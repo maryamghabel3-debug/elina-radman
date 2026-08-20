@@ -213,9 +213,13 @@ class VideoConcatenator:
             raise RuntimeError(f"FFmpeg concat failed: {err_tail}")
         return output_path
 
-    def build_trim_concat_command(self, segments: List[Dict[str, Any]], output_path: str) -> List[str]:
+    def build_trim_concat_command(self, segments: List[Dict[str, Any]], output_path: str, keep_audio: bool = False) -> List[str]:
         """
         Build FFmpeg command for trimming and concatenating video segments.
+
+        When keep_audio is True, the original audio streams are trimmed and
+        concatenated together with the video (v=1:a=1). Otherwise the output
+        is video-only (v=1:a=0), which is the default behavior.
         """
         if not segments:
             raise ValueError("No segments provided.")
@@ -241,10 +245,10 @@ class VideoConcatenator:
         for i, seg in enumerate(segments):
             path = seg["path"]
             start = seg.get("start_sec", 0.0)
+            end = seg.get("end_sec")
 
-            # Trim filter
-            if start > 0 or seg.get("end_sec") is not None:
-                end = seg.get("end_sec")
+            # Video trim filter
+            if start > 0 or end is not None:
                 if end is not None:
                     filter_parts.append(f"[{i}:v]trim=start={start}:end={end},setpts=PTS-STARTPTS[v{i}]")
                 else:
@@ -252,9 +256,28 @@ class VideoConcatenator:
             else:
                 filter_parts.append(f"[{i}:v]null[v{i}]")
 
-        # Create concat filter
-        v_labels = "".join(f"[v{i}]" for i in range(len(segments)))
-        filter_complex = ";".join(filter_parts) + f";{v_labels}concat=n={len(segments)}:v=1:a=0[outv]"
+            # Audio trim filter (only when keeping original audio)
+            if keep_audio:
+                if start > 0 or end is not None:
+                    if end is not None:
+                        filter_parts.append(f"[{i}:a]atrim=start={start}:end={end},asetpts=PTS-STARTPTS[a{i}]")
+                    else:
+                        filter_parts.append(f"[{i}:a]atrim=start={start},asetpts=PTS-STARTPTS[a{i}]")
+                else:
+                    filter_parts.append(f"[{i}:a]anull[a{i}]")
+
+        # Create concat filter. With keep_audio, concat expects the segment
+        # streams interleaved per segment: [v0][a0][v1][a1]... (verified against
+        # ffmpeg 7; grouped [v0][v1][a0][a1] fails with a media-type mismatch).
+        if keep_audio:
+            interleaved_labels = "".join(f"[v{i}][a{i}]" for i in range(len(segments)))
+            filter_complex = (
+                ";".join(filter_parts)
+                + f";{interleaved_labels}concat=n={len(segments)}:v=1:a=1[outv][outa]"
+            )
+        else:
+            v_labels = "".join(f"[v{i}]" for i in range(len(segments)))
+            filter_complex = ";".join(filter_parts) + f";{v_labels}concat=n={len(segments)}:v=1:a=0[outv]"
 
         # Build command
         cmd = [self.ffmpeg_path, "-y"]
@@ -264,6 +287,10 @@ class VideoConcatenator:
         cmd.extend([
             "-filter_complex", filter_complex,
             "-map", "[outv]",
+        ])
+        if keep_audio:
+            cmd.extend(["-map", "[outa]", "-c:a", "aac", "-ar", "48000", "-ac", "2"])
+        cmd.extend([
             "-c:v", "libx264",
             "-preset", "fast",
             "-crf", "23",
@@ -271,15 +298,20 @@ class VideoConcatenator:
         ])
         return cmd
 
-    def concat_segments(self, segments: List[Dict[str, Any]], output_path: str) -> str:
+    def concat_segments(self, segments: List[Dict[str, Any]], output_path: str, keep_audio: bool = False) -> str:
         """
         Concatenate video segments with optional trimming and normalization.
+
+        keep_audio keeps the original audio streams in the concatenated output
+        (used when the user's plan says to keep the original shot audio). Falls
+        back to video-only when no segment actually carries an audio stream.
         """
         if not segments:
             raise ValueError("No segments provided.")
 
         # Probe all segments and log their properties
         segment_props = []
+        normalized = False
         for i, seg in enumerate(segments):
             props = get_video_properties(seg["path"])
             logger.info(f"Segment {i} properties: {props}")
@@ -288,6 +320,7 @@ class VideoConcatenator:
         # Check and normalize if heterogeneous
         if should_normalize_segments(segment_props):
             logger.info("Normalizing segments to canonical profile before concatenation...")
+            normalized = True
             normalized_segments = []
             for i, seg in enumerate(segments):
                 dir_name = os.path.dirname(seg["path"])
@@ -299,7 +332,14 @@ class VideoConcatenator:
                 normalized_segments.append(new_seg)
             segments = normalized_segments
 
-        cmd = self.build_trim_concat_command(segments, output_path)
+        # keep_audio requires an audio stream on every segment. Normalization
+        # always injects one (silent track when missing); otherwise verify here.
+        if keep_audio and not normalized:
+            if not all(p.get("has_audio", False) for p in segment_props):
+                logger.info("keep_audio requested but not every segment has audio; falling back to video-only concat")
+                keep_audio = False
+
+        cmd = self.build_trim_concat_command(segments, output_path, keep_audio=keep_audio)
 
         # No trim needed, single segment - just copy
         if not cmd:

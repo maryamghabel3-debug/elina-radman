@@ -63,10 +63,15 @@ class MediaAssemblyEngine:
         hook_png_path: Optional[str],
         output_path: str,
         sfx_items: Optional[List[dict]] = None,
+        use_base_audio: bool = False,
     ) -> List[str]:
         """
         Constructs the ffmpeg command as a list of arguments.
         Does NOT execute; returns the command for testing or later execution.
+
+        use_base_audio mixes the original audio stream of the base video
+        (input 0) into the final audio when the user asked to keep the
+        original shot audio.
         """
         if not recipe.content_id:
             raise ValueError("Recipe must have content_id.")
@@ -159,10 +164,20 @@ class MediaAssemblyEngine:
                 filter_str = ",".join(filters)
                 filter_parts.append(f"[{idx}:a]{filter_str}[sfx_{i}_clean]")
 
+        # Original base-video audio (kept when the user asked to keep it)
+        if use_base_audio:
+            filter_parts.append("[0:a]aresample=48000,aformat=channel_layouts=stereo[base_audio]")
+            base_audio_label = "base_audio"
+        else:
+            base_audio_label = None
+
         # Mix all SFX streams with existing audio_out stream
         mix_inputs = []
         if audio_out:
             mix_inputs.append(audio_out)
+
+        if base_audio_label:
+            mix_inputs.append(base_audio_label)
 
         if sfx_items:
             for i in range(len(sfx_items)):
@@ -200,7 +215,10 @@ class MediaAssemblyEngine:
 
         if filter_parts:
             cmd += ["-filter_complex", ";".join(filter_parts)]
-            cmd += ["-map", f"[{final_video_label}]"]
+            # Input stream references (e.g. "0:v") must NOT be bracketed in -map;
+            # only filter-graph output labels (e.g. "[final_video]") are bracketed.
+            map_video_label = f"[{final_video_label}]" if final_video_label != "0:v" else final_video_label
+            cmd += ["-map", map_video_label]
             if final_audio_label:
                 cmd += ["-map", f"[{final_audio_label}]"]
 
@@ -234,6 +252,7 @@ class MediaAssemblyEngine:
         output_path: str,
         timeout_seconds: int = 300,
         sfx_items: Optional[List[dict]] = None,
+        use_base_audio: bool = False,
     ) -> str:
         """
         Executes the ffmpeg assembly command.
@@ -247,6 +266,7 @@ class MediaAssemblyEngine:
             hook_png_path=hook_png_path,
             output_path=output_path,
             sfx_items=sfx_items,
+            use_base_audio=use_base_audio,
         )
 
         out_dir = os.path.dirname(output_path)
