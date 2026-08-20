@@ -20,6 +20,6 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements-core.txt
-          pip install pytest
+          pip install pytest pytest-asyncio
       - name: Run fast tests
         run: python -m pytest -m "not slow" -q
