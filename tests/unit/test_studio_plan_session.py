@@ -190,7 +190,40 @@ async def test_cmd_plan_ok_with_preview():
         assert "job-123" in reply_text
 
 
-# 8. failed render queuing shows error and keeps plan
+# 8. /plan_ok serializes shot removals so the worker can honor them
+@pytest.mark.asyncio
+async def test_cmd_plan_ok_serializes_shot_removal():
+    import scripts.elina_studio_bot as bot_module
+    from agents.editing.persian_edit_interpreter import PersianEditPlan, PersianShotInstruction
+
+    plan = PersianEditPlan(
+        target_mode="custom_id",
+        target_custom_id="ELN-BUNDLE-123",
+        shots=[
+            PersianShotInstruction(shot_index=1, start_sec=0.0, end_sec=3.0),
+            PersianShotInstruction(shot_index=2, remove=True),
+        ],
+        confidence=1.0
+    )
+    chat_data = {"plan_mode": True, "plan_preview": plan, "plan_target_id": "ELN-BUNDLE-123"}
+    mock_update, mock_context = make_mock_update(is_owner=True, chat_data=chat_data)
+
+    with patch("agents.rendering.job_manager.RenderJobManager") as MockManager:
+        instance = MockManager.return_value
+        instance.queue_job.return_value = {"id": "job-rem", "status": "QUEUED"}
+
+        with patch.object(bot_module, "OWNER_CHAT_ID", "12345"):
+            await bot_module.cmd_plan_ok(mock_update, mock_context)
+
+        instance.queue_job.assert_called_once()
+        plan_data = instance.queue_job.call_args.kwargs["plan_data"]
+        assert plan_data["shots"] == [
+            {"index": 1, "start": 0.0, "end": 3.0, "remove": False},
+            {"index": 2, "start": 0.0, "end": None, "remove": True},
+        ]
+
+
+# 9. failed render queuing shows error and keeps plan
 @pytest.mark.asyncio
 async def test_cmd_plan_ok_failed_render():
     import scripts.elina_studio_bot as bot_module
@@ -222,7 +255,7 @@ async def test_cmd_plan_ok_failed_render():
         assert "Supabase connection error" in reply_text
 
 
-# 9. non-owner cannot use /plan
+# 10. non-owner cannot use /plan
 @pytest.mark.asyncio
 async def test_non_owner_cannot_use_plan():
     import scripts.elina_studio_bot as bot_module
@@ -235,7 +268,7 @@ async def test_non_owner_cannot_use_plan():
     mock_update.message.reply_text.assert_called_once_with("⛔ دسترسی فقط برای مالک است.")
 
 
-# 10. media upload still works while not in plan mode
+# 11. media upload still works while not in plan mode
 @pytest.mark.asyncio
 async def test_media_upload_works_outside_plan_mode():
     import scripts.elina_studio_bot as bot_module
@@ -266,7 +299,7 @@ async def test_media_upload_works_outside_plan_mode():
         assert "ELN-RAW-20260804-video123" in reply_text
 
 
-# 11. Bundle ID fix produces correct format
+# 12. Bundle ID fix produces correct format
 def test_bundle_id_fix_produces_correct_format():
     from agents.studio.bundle_manager import VideoBundleManager
 

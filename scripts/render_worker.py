@@ -72,9 +72,14 @@ def process_job(job) -> bool:
 
         media_keys = item.get("media_keys") if item else []
 
-        # Map shots to video_segments
+        # Map shots to video_segments, skipping shots the user asked to remove.
+        # Shot indices refer to the original clip positions, so filtering on the
+        # remove flag does not shift the indices of the remaining shots.
         video_segments = []
         for shot in plan.get("shots", []):
+            if shot.get("remove"):
+                logger.info(f"Shot {shot.get('index')} is marked for removal; skipping in render")
+                continue
             idx = shot.get("index", 1) - 1  # 0-based index
             if idx < len(media_keys):
                 key = media_keys[idx]
@@ -83,6 +88,21 @@ def process_job(job) -> bool:
                     "start_sec": shot.get("start", 0.0),
                     "end_sec": shot.get("end"),
                 })
+
+        # A plan that removes every shot leaves nothing to render: fail loudly
+        # with a typed error instead of silently rendering the full bundle.
+        if plan.get("shots") and not video_segments:
+            mgr = RenderJobManager()
+            import datetime
+            completed_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            db.client.table("render_jobs").update({
+                "status": "FAILED",
+                "error_message": "PLAN_ALL_SHOTS_REMOVED",
+                "completed_at": completed_at
+            }).eq("id", job_id).execute()
+
+            send_telegram_message(chat_id, "❌ رندر ناموفق بود:\nPLAN_ALL_SHOTS_REMOVED")
+            return False
 
         from agents.editing.orchestrator import EditOrchestrator
         orchestrator = EditOrchestrator()
