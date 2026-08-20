@@ -395,3 +395,112 @@ def test_render_content_plan_sfx_fetch_failed(monkeypatch):
 
     assert result["ok"] is False
     assert "SFX_FETCH_FAILED" in result["error"]
+
+
+def test_render_content_plan_music_requested_with_asset(monkeypatch):
+    """Music requested + item music_key present -> renders with music, no error."""
+    import agents.editing.orchestrator as orch_mod
+
+    class MockConcatenator:
+        def concat_segments(self, segments, output_path, **kwargs):
+            with open(output_path, "wb") as f:
+                f.write(b"0" * 20000)
+            return output_path
+
+    monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
+
+    db = FakeDB(item={
+        "id": "uuid-music",
+        "custom_id": "ELN-MUSIC-TEST",
+        "content_type": "reel",
+        "media_keys": ["raw/video.mp4"],
+        "music_key": "music/ambient.mp3",
+        "status": "NEEDS_EDIT",
+    })
+    storage = FakeStorage()
+    assembler = FakeAssembler()
+    o = EditOrchestrator(db=db, storage=storage, typography=FakeTypography(), assembler=assembler)
+    result = o.render_content(
+        "ELN-MUSIC-TEST",
+        actor="tester",
+        plan_music={"enabled": True, "query": "موسیقی آرام", "gain_db": -14, "explicit": True},
+    )
+
+    assert result["ok"] is True
+    # Music downloaded and passed to the assembler
+    assert any("music/ambient.mp3" in d[0] for d in storage.downloads)
+    assert assembler.calls[0]["music_path"] is not None
+    assert assembler.calls[0]["music_path"].endswith("music.mp3")
+
+
+def test_render_content_plan_music_requested_without_asset():
+    """Music requested but no asset available -> typed MUSIC_PROVIDER_NOT_CONFIGURED."""
+    db = FakeDB()  # no music_key on the item
+    o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=FakeAssembler())
+    result = o.render_content(
+        "ELN-RAW-TEST",
+        actor="tester",
+        plan_music={"enabled": True, "query": "موسیقی آرام", "gain_db": -14, "explicit": True},
+    )
+
+    assert result["ok"] is False
+    assert "MUSIC_PROVIDER_NOT_CONFIGURED" in result["error"]
+    statuses = [s[0] for s in db.status_updates]
+    assert "EDIT_FAILED" in statuses
+
+
+def test_render_content_plan_explicit_no_music_drops_item_music(monkeypatch):
+    """Explicit no-music ('بدون موسیقی') must override an item-level music_key."""
+    import agents.editing.orchestrator as orch_mod
+
+    class MockConcatenator:
+        def concat_segments(self, segments, output_path, **kwargs):
+            with open(output_path, "wb") as f:
+                f.write(b"0" * 20000)
+            return output_path
+
+    monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
+
+    db = FakeDB(item={
+        "id": "uuid-nomusic",
+        "custom_id": "ELN-NOMUSIC-TEST",
+        "content_type": "reel",
+        "media_keys": ["raw/video.mp4"],
+        "music_key": "music/ambient.mp3",
+        "status": "NEEDS_EDIT",
+    })
+    storage = FakeStorage()
+    assembler = FakeAssembler()
+    o = EditOrchestrator(db=db, storage=storage, typography=FakeTypography(), assembler=assembler)
+    result = o.render_content(
+        "ELN-NOMUSIC-TEST",
+        actor="tester",
+        plan_music={"enabled": False, "query": None, "gain_db": -14, "explicit": True},
+    )
+
+    assert result["ok"] is True
+    # Item music must NOT be downloaded or passed to the assembler
+    assert not any("music/ambient.mp3" in d[0] for d in storage.downloads)
+    assert assembler.calls[0]["music_path"] is None
+
+
+def test_render_content_plan_music_not_explicit_ignored(monkeypatch):
+    """A plan that never mentions music must not affect the render."""
+    import agents.editing.orchestrator as orch_mod
+
+    class MockConcatenator:
+        def concat_segments(self, segments, output_path, **kwargs):
+            with open(output_path, "wb") as f:
+                f.write(b"0" * 20000)
+            return output_path
+
+    monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
+
+    db = FakeDB()
+    o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=FakeAssembler())
+    result = o.render_content(
+        "ELN-RAW-TEST",
+        actor="tester",
+        plan_music={"enabled": False, "query": None, "gain_db": -14, "explicit": False},
+    )
+    assert result["ok"] is True

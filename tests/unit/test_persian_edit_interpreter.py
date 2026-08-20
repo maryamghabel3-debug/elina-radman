@@ -238,3 +238,23 @@ def test_validation_confidence_range():
     assert len(plan_low.validate()) > 0
     assert len(plan_high.validate()) > 0
     assert len(plan_ok.validate()) == 0
+
+
+# 19. Music instructions carry explicit flag
+def test_parse_music_explicit_flags():
+    interpreter = PersianEditInterpreter()
+
+    # Positive request -> explicit True, enabled True
+    plan = interpreter.parse("شات اول کامل باشد\nیک موسیقی آرام و تاریک اضافه کن")
+    assert plan.music.enabled is True
+    assert plan.music.explicit is True
+
+    # Explicit no-music -> explicit True, enabled False
+    plan = interpreter.parse("شات اول کامل باشد\nموسیقی نمیخواهم")
+    assert plan.music.enabled is False
+    assert plan.music.explicit is True
+
+    # No music mention at all -> explicit False
+    plan = interpreter.parse("شات اول کامل باشد")
+    assert plan.music.enabled is False
+    assert plan.music.explicit is False

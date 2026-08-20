@@ -330,3 +330,82 @@ def test_process_job_passes_none_plan_sfx_when_absent():
 
                     call = mock_orchestrator_calls[0]
                     assert call["plan_sfx"] is None
+
+
+def test_process_job_passes_plan_music_to_render_content():
+    """plan_data.music must reach render_content."""
+    mock_job = {
+        "id": "job-8",
+        "content_id": "ELN-BUNDLE-123",
+        "plan_data": {
+            "target_id": "ELN-BUNDLE-123",
+            "shots": [{"index": 1, "start": 0.0, "end": 3.0}],
+            "music": {"enabled": True, "query": "موسیقی آرام", "gain_db": -14, "explicit": True},
+        },
+        "owner_chat_id": "12345"
+    }
+
+    mock_db = MagicMock()
+    mock_db.get_content_by_custom_id.return_value = {
+        "id": "item-123",
+        "custom_id": "ELN-BUNDLE-123",
+        "media_keys": ["path/1.mp4"]
+    }
+
+    mock_orchestrator_calls = []
+    class MockOrchestrator:
+        def render_content(self, **kwargs):
+            mock_orchestrator_calls.append(kwargs)
+            return {"ok": True, "output_key": "edited/final.mp4"}
+
+    with patch("scripts.render_worker.ElinaDB", lambda: mock_db):
+        with patch("agents.editing.orchestrator.EditOrchestrator", lambda: MockOrchestrator()):
+            with patch("scripts.render_worker.RenderJobManager") as MockJobManager:
+                instance = MockJobManager.return_value
+                instance.mark_completed.return_value = {}
+                instance.mark_failed.return_value = {}
+
+                with patch("urllib.request.urlopen"):
+                    result = process_job(mock_job)
+
+                    assert result is True
+                    call = mock_orchestrator_calls[0]
+                    assert call["plan_music"] == {
+                        "enabled": True, "query": "موسیقی آرام", "gain_db": -14, "explicit": True
+                    }
+
+
+def test_process_job_passes_none_plan_music_when_absent():
+    """Jobs without music must pass plan_music=None."""
+    mock_job = {
+        "id": "job-9",
+        "content_id": "ELN-BUNDLE-123",
+        "plan_data": {"target_id": "ELN-BUNDLE-123", "shots": [{"index": 1, "start": 0.0, "end": 3.0}]},
+        "owner_chat_id": "12345"
+    }
+
+    mock_db = MagicMock()
+    mock_db.get_content_by_custom_id.return_value = {
+        "id": "item-123",
+        "custom_id": "ELN-BUNDLE-123",
+        "media_keys": ["path/1.mp4"]
+    }
+
+    mock_orchestrator_calls = []
+    class MockOrchestrator:
+        def render_content(self, **kwargs):
+            mock_orchestrator_calls.append(kwargs)
+            return {"ok": True, "output_key": "edited/final.mp4"}
+
+    with patch("scripts.render_worker.ElinaDB", lambda: mock_db):
+        with patch("agents.editing.orchestrator.EditOrchestrator", lambda: MockOrchestrator()):
+            with patch("scripts.render_worker.RenderJobManager") as MockJobManager:
+                instance = MockJobManager.return_value
+                instance.mark_completed.return_value = {}
+                instance.mark_failed.return_value = {}
+
+                with patch("urllib.request.urlopen"):
+                    process_job(mock_job)
+
+                    call = mock_orchestrator_calls[0]
+                    assert call["plan_music"] is None

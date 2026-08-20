@@ -127,6 +127,7 @@ class EditOrchestrator:
         music_key: Optional[str] = None,
         mute_original: bool = True,
         plan_sfx: Optional[List[Dict[str, Any]]] = None,
+        plan_music: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         item = self.db.get_content_by_custom_id(custom_id)
         if not item:
@@ -153,6 +154,21 @@ class EditOrchestrator:
 
             if music_key:
                 recipe.input_media.music_key = music_key
+
+            # Honor the music instruction from the Persian edit plan. Never
+            # silently ignore it: if the user explicitly asks for music but no
+            # music asset is available (no music provider is implemented in the
+            # stack), fail with a typed error instead of rendering without it.
+            if plan_music and isinstance(plan_music, dict) and plan_music.get("explicit"):
+                if plan_music.get("enabled"):
+                    if not recipe.input_media.music_key:
+                        raise RuntimeError(
+                            "MUSIC_PROVIDER_NOT_CONFIGURED: plan requests music but no "
+                            "music_key asset is available and no music provider is implemented"
+                        )
+                else:
+                    # User explicitly said no music: drop any item-level music asset
+                    recipe.input_media.music_key = None
 
             with tempfile.TemporaryDirectory() as tmpdir:
                 tmp = Path(tmpdir)

@@ -101,6 +101,7 @@ class RenderJobManager:
             or "SFX_PROVIDER_NOT_CONFIGURED" in error_message
             or "SFX_FETCH_FAILED" in error_message
             or "SFX_INVALID_PLAN_ENTRY" in error_message
+            or "MUSIC_PROVIDER_NOT_CONFIGURED" in error_message
         )
 
         if is_terminal or attempts >= max_attempts:

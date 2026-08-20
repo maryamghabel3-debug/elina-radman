@@ -166,3 +166,23 @@ def test_mark_failed_sfx_errors_are_terminal():
         update_call = mock_query.update.call_args[0][0]
         assert update_call["status"] == "FAILED"
         assert update_call["attempts"] == 1
+
+
+def test_mark_failed_music_error_is_terminal():
+    """MUSIC_PROVIDER_NOT_CONFIGURED must not be requeued."""
+    mock_db = MagicMock()
+    mock_query = MagicMock()
+    mock_db.client.table.return_value = mock_query
+    mock_query.update.return_value = mock_query
+    mock_query.eq.return_value = mock_query
+    mock_query.select.return_value = mock_query
+
+    mock_result = MagicMock()
+    mock_result.data = [{"id": "job-1", "attempts": 0, "max_attempts": 3}]
+    mock_query.execute.return_value = mock_result
+
+    manager = RenderJobManager(db=mock_db)
+    manager.mark_failed("job-1", "MUSIC_PROVIDER_NOT_CONFIGURED: plan requests music but no asset")
+
+    update_call = mock_query.update.call_args[0][0]
+    assert update_call["status"] == "FAILED"

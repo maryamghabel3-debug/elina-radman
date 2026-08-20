@@ -503,7 +503,12 @@ async def cmd_plan_ok(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "fade_out": s.fade_out_sec,
             } for s in plan.sound_effects],
             "hook": plan.hook_text,
-            "music_enabled": plan.music.enabled if plan.music else False,
+            "music": {
+                "enabled": plan.music.enabled if plan.music else False,
+                "query": plan.music.query_fa if plan.music else None,
+                "gain_db": plan.music.gain_db if plan.music else -14,
+                "explicit": plan.music.explicit if plan.music else False,
+            },
         }
 
         mgr = RenderJobManager()

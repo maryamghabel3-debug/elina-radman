@@ -113,6 +113,7 @@ def process_job(job) -> bool:
             video_segments=video_segments if video_segments else None,
             mute_original=plan.get("mute_original", True),
             plan_sfx=plan.get("sfx") or None,
+            plan_music=plan.get("music"),
         )
 
         mgr = RenderJobManager()
