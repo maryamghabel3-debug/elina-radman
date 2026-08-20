@@ -58,7 +58,7 @@ class FakeAssembler:
         self.calls = []
 
     def run_assembly(self, recipe, video_path, voice_path, music_path, hook_png_path, output_path, sfx_items=None, **kwargs):
-        self.calls.append({
+        call = {
             "recipe": recipe,
             "video_path": video_path,
             "voice_path": voice_path,
@@ -66,7 +66,9 @@ class FakeAssembler:
             "hook_png_path": hook_png_path,
             "output_path": output_path,
             "sfx_items": sfx_items,
-        })
+        }
+        call.update(kwargs)
+        self.calls.append(call)
         # Write 20KB to pass QC "nearly empty" check (0.01 MB = 10KB)
         with open(output_path, "wb") as f:
             f.write(b"0" * 20000)
@@ -100,7 +102,7 @@ def test_render_content_with_multiple_video_keys(monkeypatch):
 
     # Mock VideoConcatenator to avoid needing ffmpeg
     class MockConcatenator:
-        def concat_segments(self, segments, output_path):
+        def concat_segments(self, segments, output_path, **kwargs):
             # Create output file
             with open(output_path, "wb") as f:
                 f.write(b"0" * 20000)
@@ -134,7 +136,7 @@ def test_render_content_with_video_segments(monkeypatch):
     captured_segments = []
 
     class MockConcatenator:
-        def concat_segments(self, segments, output_path):
+        def concat_segments(self, segments, output_path, **kwargs):
             captured_segments.extend(segments)
             with open(output_path, "wb") as f:
                 f.write(b"0" * 20000)
@@ -230,3 +232,58 @@ def test_orchestrator_passes_sfx_items_to_assembler():
 
     # Assert download was called for the SFX
     assert any("sfx/boom.mp3" in d[0] for d in storage.downloads)
+
+
+def test_render_content_keep_original_audio(monkeypatch):
+    """mute_original=False must keep base audio: concat keep_audio=True and
+    assembly use_base_audio=True."""
+    import agents.editing.orchestrator as orch_mod
+
+    concat_calls = []
+
+    class MockConcatenator:
+        def concat_segments(self, segments, output_path, **kwargs):
+            concat_calls.append(kwargs)
+            with open(output_path, "wb") as f:
+                f.write(b"0" * 20000)
+            return output_path
+
+    monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
+    # Simulate the concat stage producing a base video that carries audio
+    monkeypatch.setattr(orch_mod, "get_video_properties", lambda path: {"has_audio": True})
+
+    db = FakeDB()
+    assembler = FakeAssembler()
+    o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=assembler)
+    result = o.render_content("ELN-RAW-TEST", actor="tester", mute_original=False)
+
+    assert result["ok"] is True
+    assert concat_calls == [{"keep_audio": True}]
+    assert len(assembler.calls) == 1
+    assert assembler.calls[0]["use_base_audio"] is True
+
+
+def test_render_content_mute_original_default(monkeypatch):
+    """Default mute_original=True must keep current behavior: base audio dropped."""
+    import agents.editing.orchestrator as orch_mod
+
+    concat_calls = []
+
+    class MockConcatenator:
+        def concat_segments(self, segments, output_path, **kwargs):
+            concat_calls.append(kwargs)
+            with open(output_path, "wb") as f:
+                f.write(b"0" * 20000)
+            return output_path
+
+    monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
+
+    db = FakeDB()
+    assembler = FakeAssembler()
+    o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=assembler)
+    result = o.render_content("ELN-RAW-TEST", actor="tester")
+
+    assert result["ok"] is True
+    assert concat_calls == [{"keep_audio": False}]
+    assert len(assembler.calls) == 1
+    assert assembler.calls[0]["use_base_audio"] is False

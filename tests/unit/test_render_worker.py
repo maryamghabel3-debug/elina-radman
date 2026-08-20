@@ -165,3 +165,85 @@ def test_process_job_all_shots_removed_fails_with_typed_error():
                     sent_text = _json.loads(mock_urlopen.call_args[0][0].data.decode("utf-8"))["text"]
                     assert "PLAN_ALL_SHOTS_REMOVED" in sent_text
                     assert "رندر ناموفق بود" in sent_text
+
+
+def test_process_job_passes_mute_original_from_plan():
+    """plan_data.mute_original must reach render_content (keep original audio)."""
+    mock_job = {
+        "id": "job-4",
+        "content_id": "ELN-BUNDLE-123",
+        "plan_data": {
+            "target_id": "ELN-BUNDLE-123",
+            "mute_original": False,
+            "shots": [{"index": 1, "start": 0.0, "end": 3.0}],
+            "hook": "متن هوک"
+        },
+        "owner_chat_id": "12345"
+    }
+
+    mock_db = MagicMock()
+    mock_db.get_content_by_custom_id.return_value = {
+        "id": "item-123",
+        "custom_id": "ELN-BUNDLE-123",
+        "media_keys": ["path/1.mp4", "path/2.mp4"]
+    }
+
+    mock_orchestrator_calls = []
+    class MockOrchestrator:
+        def render_content(self, **kwargs):
+            mock_orchestrator_calls.append(kwargs)
+            return {"ok": True, "output_key": "edited/final.mp4"}
+
+    with patch("scripts.render_worker.ElinaDB", lambda: mock_db):
+        with patch("agents.editing.orchestrator.EditOrchestrator", lambda: MockOrchestrator()):
+            with patch("scripts.render_worker.RenderJobManager") as MockJobManager:
+                instance = MockJobManager.return_value
+                instance.mark_completed.return_value = {}
+                instance.mark_failed.return_value = {}
+
+                with patch("urllib.request.urlopen"):
+                    result = process_job(mock_job)
+
+                    assert result is True
+                    call = mock_orchestrator_calls[0]
+                    assert call["mute_original"] is False
+
+
+def test_process_job_defaults_mute_original_true():
+    """Legacy plan_data without mute_original must default to muted (True)."""
+    mock_job = {
+        "id": "job-5",
+        "content_id": "ELN-BUNDLE-123",
+        "plan_data": {
+            "target_id": "ELN-BUNDLE-123",
+            "shots": [{"index": 1, "start": 0.0, "end": 3.0}],
+        },
+        "owner_chat_id": "12345"
+    }
+
+    mock_db = MagicMock()
+    mock_db.get_content_by_custom_id.return_value = {
+        "id": "item-123",
+        "custom_id": "ELN-BUNDLE-123",
+        "media_keys": ["path/1.mp4"]
+    }
+
+    mock_orchestrator_calls = []
+    class MockOrchestrator:
+        def render_content(self, **kwargs):
+            mock_orchestrator_calls.append(kwargs)
+            return {"ok": True, "output_key": "edited/final.mp4"}
+
+    with patch("scripts.render_worker.ElinaDB", lambda: mock_db):
+        with patch("agents.editing.orchestrator.EditOrchestrator", lambda: MockOrchestrator()):
+            with patch("scripts.render_worker.RenderJobManager") as MockJobManager:
+                instance = MockJobManager.return_value
+                instance.mark_completed.return_value = {}
+                instance.mark_failed.return_value = {}
+
+                with patch("urllib.request.urlopen"):
+                    result = process_job(mock_job)
+
+                    assert result is True
+                    call = mock_orchestrator_calls[0]
+                    assert call["mute_original"] is True

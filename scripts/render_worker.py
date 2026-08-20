@@ -111,6 +111,7 @@ def process_job(job) -> bool:
             hook_text=plan.get("hook", ""),
             actor="render_worker",
             video_segments=video_segments if video_segments else None,
+            mute_original=plan.get("mute_original", True),
         )
 
         mgr = RenderJobManager()

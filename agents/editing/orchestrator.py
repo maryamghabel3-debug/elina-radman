@@ -10,7 +10,7 @@ from agents.storage.supabase_storage import ElinaStorage
 from agents.editing.recipe_schema import EditRecipe
 from agents.editing.typography_engine import TypographyEngine
 from agents.editing.media_assembly import MediaAssemblyEngine, run_qc_checks
-from agents.editing.concatenator import VideoConcatenator
+from agents.editing.concatenator import VideoConcatenator, get_video_properties
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +125,7 @@ class EditOrchestrator:
         video_segments: Optional[List[Dict[str, Any]]] = None,
         voice_key: Optional[str] = None,
         music_key: Optional[str] = None,
+        mute_original: bool = True,
     ) -> Dict[str, Any]:
         item = self.db.get_content_by_custom_id(custom_id)
         if not item:
@@ -183,8 +184,17 @@ class EditOrchestrator:
                         "end_sec": seg.end_sec,
                     })
 
-                # Concatenate segments (with optional trimming)
-                VideoConcatenator().concat_segments(local_segments, str(base_video))
+                # Concatenate segments (with optional trimming). Keep the
+                # original audio only when the user's plan asked for it.
+                keep_audio = not mute_original
+                VideoConcatenator().concat_segments(local_segments, str(base_video), keep_audio=keep_audio)
+
+                # The concat stage may fall back to video-only when no segment
+                # carries audio; only mix base audio when it actually exists.
+                use_base_audio = False
+                if keep_audio:
+                    base_props = get_video_properties(str(base_video))
+                    use_base_audio = bool(base_props.get("has_audio", False))
 
                 # Download voice track if present
                 voice_path = None
@@ -261,6 +271,7 @@ class EditOrchestrator:
                     hook_png_path=hook_png_path,
                     output_path=str(output_video),
                     sfx_items=sfx_items if sfx_items else None,
+                    use_base_audio=use_base_audio,
                 )
 
                 qc_errors = run_qc_checks(str(output_video), recipe)
