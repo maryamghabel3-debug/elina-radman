@@ -156,6 +156,11 @@ class EditOrchestrator:
             if music_key:
                 recipe.input_media.music_key = music_key
 
+            # Propagate plan_music gain_db to recipe
+            if plan_music and isinstance(plan_music, dict):
+                if "gain_db" in plan_music and plan_music["gain_db"] is not None:
+                    recipe.audio.music_gain_db = plan_music["gain_db"]
+
             # Honor the music instruction from the Persian edit plan. Never
             # silently ignore it: if the user explicitly asks for music but no
             # music asset is available (no music provider is implemented in the

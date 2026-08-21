@@ -328,3 +328,110 @@ def test_build_command_maps_overlay_label_when_hook_present():
         output_path="/tmp/o.mp4",
     )
     assert "[final_video]" in cmd
+
+
+def test_build_command_applies_music_gain_db():
+    """Test A — music_gain_db appears in FFmpeg graph:
+    The generated command/filter graph contains a volume filter for music,
+    and it applies the specified gain_db."""
+    engine = MediaAssemblyEngine()
+    recipe = make_recipe()
+    recipe.audio.music_gain_db = -14
+
+    cmd = engine.build_assembly_command(
+        recipe=recipe,
+        video_path="/tmp/v.mp4",
+        voice_path=None,
+        music_path="/tmp/music.mp3",
+        hook_png_path=None,
+        output_path="/tmp/o.mp4",
+    )
+    assert "-filter_complex" in cmd
+    filter_arg = cmd[cmd.index("-filter_complex") + 1]
+    # Expect the volume filter applied to music stream (input index 1 here because voice is None)
+    assert "[1:a]volume=-14dB[music_gained]" in filter_arg
+
+
+def test_build_command_missing_music_gain_preserves_default():
+    """Test B — missing music_gain_db preserves default:
+    Assert old/default graph behavior (-12dB default) is preserved when music_gain_db is missing/None."""
+    engine = MediaAssemblyEngine()
+    recipe = make_recipe()
+    recipe.audio.music_gain_db = None
+
+    cmd = engine.build_assembly_command(
+        recipe=recipe,
+        video_path="/tmp/v.mp4",
+        voice_path=None,
+        music_path="/tmp/music.mp3",
+        hook_png_path=None,
+        output_path="/tmp/o.mp4",
+    )
+    assert "-filter_complex" in cmd
+    filter_arg = cmd[cmd.index("-filter_complex") + 1]
+    # Default is -12dB
+    assert "[1:a]volume=-12dB[music_gained]" in filter_arg
+
+
+def test_build_command_all_audio_mix_and_music_gain_applied_once():
+    """Test C — music + voice + SFX + base audio:
+    Build a scenario with all audio inputs. Assert the filter graph includes
+    all expected inputs in amix and music gain is applied exactly once."""
+    engine = MediaAssemblyEngine()
+    recipe = make_recipe()
+    recipe.audio.music_gain_db = -5
+
+    sfx_items = [
+        {
+            "path": "sfx.mp3",
+            "start_sec": 1.0,
+            "gain_db": -3,
+        }
+    ]
+
+    cmd = engine.build_assembly_command(
+        recipe=recipe,
+        video_path="/tmp/v.mp4",
+        voice_path="/tmp/voice.wav",
+        music_path="/tmp/music.mp3",
+        hook_png_path="/tmp/hook.png",
+        output_path="/tmp/o.mp4",
+        sfx_items=sfx_items,
+        use_base_audio=True,
+    )
+    assert "-filter_complex" in cmd
+    filter_arg = cmd[cmd.index("-filter_complex") + 1]
+
+    # Music gain applied once
+    assert filter_arg.count("volume=-5dB") == 1
+    # Music gained stream goes into amix / ducking sidechain
+    assert "[music_gained]" in filter_arg
+    # sfx and base audio are mixed
+    assert "sfx_0_clean" in filter_arg
+    assert "base_audio" in filter_arg
+
+
+def test_build_command_mute_original_keeps_music_gain_drops_base_audio():
+    """Test D — mute_original=True + music:
+    Assert base audio is not included, and music gain still applies."""
+    engine = MediaAssemblyEngine()
+    recipe = make_recipe()
+    recipe.audio.music_gain_db = -10
+
+    cmd = engine.build_assembly_command(
+        recipe=recipe,
+        video_path="/tmp/v.mp4",
+        voice_path=None,
+        music_path="/tmp/music.mp3",
+        hook_png_path=None,
+        output_path="/tmp/o.mp4",
+        use_base_audio=False,  # mute original is True
+    )
+    assert "-filter_complex" in cmd
+    filter_arg = cmd[cmd.index("-filter_complex") + 1]
+
+    # No base_audio mixed
+    assert "base_audio" not in filter_arg
+    # Music gain still applied
+    assert "[1:a]volume=-10dB[music_gained]" in filter_arg
+

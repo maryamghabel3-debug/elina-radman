@@ -701,3 +701,41 @@ def test_render_content_history_accumulates_versioned_keys(monkeypatch):
     extra2 = updates[1][1]
     assert extra2["edited_media_key"] == key2
     assert extra2["edited_media_history"] == [key1, key2]
+
+
+def test_render_content_music_gain_db_propagation(monkeypatch):
+    """Test E — render_worker/orchestrator propagation:
+    Given plan_music.gain_db, assert it reaches media_assembly in the expected
+    music object/config."""
+    import agents.editing.orchestrator as orch_mod
+
+    class MockConcatenator:
+        def concat_segments(self, segments, output_path, **kwargs):
+            with open(output_path, "wb") as f:
+                f.write(b"0" * 20000)
+            return output_path
+
+    monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
+
+    item = {
+        "id": "uuid-gain",
+        "custom_id": "ELN-RAW-TEST",
+        "content_type": "reel",
+        "media_keys": ["raw/video.mp4"],
+        "music_key": "music/ambient.mp3",
+        "status": "NEEDS_EDIT",
+    }
+    db = FakeDB(item=item)
+    assembler = FakeAssembler()
+    o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=assembler)
+    result = o.render_content(
+        "ELN-RAW-TEST",
+        actor="tester",
+        plan_music={"enabled": True, "query": "موسیقی آرام", "gain_db": -18, "explicit": True},
+    )
+
+    assert result["ok"] is True
+    assert len(assembler.calls) == 1
+    # Check that recipe's music_gain_db is set to -18!
+    recipe = assembler.calls[0]["recipe"]
+    assert recipe.audio.music_gain_db == -18

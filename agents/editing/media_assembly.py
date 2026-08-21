@@ -106,10 +106,23 @@ class MediaAssemblyEngine:
             afftdn = build_ffmpeg_afftdn_filter(-30)
             filter_parts.append(f"[{voice_index}:a]{afftdn}[voice_clean]")
 
+        # Process music volume / gain if present
+        music_stream_label = None
+        if music_path:
+            music_index = 2 if voice_path else 1
+            gain_db = recipe.audio.music_gain_db
+            if gain_db is None:
+                gain_db = -12
+            try:
+                gain_db = int(gain_db)
+            except (ValueError, TypeError) as exc:
+                raise ValueError(f"Invalid music_gain_db value: {gain_db}. Must be an integer.")
+
+            filter_parts.append(f"[{music_index}:a]volume={gain_db}dB[music_gained]")
+            music_stream_label = "music_gained"
+
         # Ducking if both voice and music
-        music_index = None
         if voice_path and music_path:
-            music_index = 2
             duck_params = DuckingParams(
                 target_reduction_db=recipe.audio.ducking.target_reduction_db,
                 attack=recipe.audio.ducking.attack,
@@ -118,7 +131,7 @@ class MediaAssemblyEngine:
             duck_filter = build_ffmpeg_sidechain_filter(
                 duck_params,
                 voice_stream="voice_clean",
-                music_stream=f"{music_index}:a",
+                music_stream=music_stream_label,
             )
             filter_parts.append(duck_filter)
             # Mix ducked music with voice
@@ -129,8 +142,7 @@ class MediaAssemblyEngine:
         elif voice_path:
             audio_out = "voice_clean"
         elif music_path:
-            music_index = 1
-            audio_out = f"{music_index}:a"
+            audio_out = music_stream_label
         else:
             audio_out = None
 
