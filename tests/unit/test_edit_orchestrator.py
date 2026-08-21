@@ -534,7 +534,7 @@ def test_render_preserve_source_media_keys(monkeypatch):
 
     assert result["ok"] is True
     output_key = result["output_key"]
-    assert output_key == "edited/ELN-PRESERVE-TEST/final.mp4"
+    assert output_key.startswith("edited/ELN-PRESERVE-TEST/render-")
 
     # Find the READY_FOR_REVIEW update
     ready_update = [u for u in db.status_updates if u[0] == "READY_FOR_REVIEW"]
@@ -553,7 +553,7 @@ def test_render_preserve_source_media_keys(monkeypatch):
     # Test E: edited_media_history contains both old and new output keys
     assert extra["edited_media_history"] == [
         "edited/ELN-PRESERVE-TEST/old_final.mp4",
-        "edited/ELN-PRESERVE-TEST/final.mp4"
+        output_key
     ]
 
 
@@ -576,3 +576,128 @@ def test_render_jobs_output_key_intact():
 
     assert job["status"] == "COMPLETED"
     assert job["output_key"] == "edited/out.mp4"
+
+
+def test_render_content_versioned_key_with_job_id(monkeypatch):
+    """Test A — Versioned key with job_id:
+    render_content called with job_id="abc123" -> output key is edited/{custom_id}/{job_id}.mp4"""
+    import agents.editing.orchestrator as orch_mod
+
+    class MockConcatenator:
+        def concat_segments(self, segments, output_path, **kwargs):
+            with open(output_path, "wb") as f:
+                f.write(b"0" * 20000)
+            return output_path
+
+    monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
+
+    db = FakeDB()
+    o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=FakeAssembler())
+    result = o.render_content("ELN-RAW-TEST", actor="tester", job_id="abc123")
+
+    assert result["ok"] is True
+    assert result["output_key"] == "edited/ELN-RAW-TEST/abc123.mp4"
+
+
+def test_render_content_fallback_without_job_id(monkeypatch):
+    """Test B — Fallback without job_id:
+    render_content called without job_id -> output key matches pattern edited/{custom_id}/render-<timestamp>.mp4"""
+    import agents.editing.orchestrator as orch_mod
+
+    class MockConcatenator:
+        def concat_segments(self, segments, output_path, **kwargs):
+            with open(output_path, "wb") as f:
+                f.write(b"0" * 20000)
+            return output_path
+
+    monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
+
+    db = FakeDB()
+    o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=FakeAssembler())
+    result = o.render_content("ELN-RAW-TEST", actor="tester")
+
+    assert result["ok"] is True
+    output_key = result["output_key"]
+    assert output_key.startswith("edited/ELN-RAW-TEST/render-")
+    assert output_key.endswith(".mp4")
+
+
+def test_render_content_consecutive_produces_different_keys(monkeypatch):
+    """Test C — Two renders produce different keys:
+    Two consecutive render_content calls for the same custom_id -> two DIFFERENT output keys"""
+    import agents.editing.orchestrator as orch_mod
+
+    class MockConcatenator:
+        def concat_segments(self, segments, output_path, **kwargs):
+            with open(output_path, "wb") as f:
+                f.write(b"0" * 20000)
+            return output_path
+
+    monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
+
+    db = FakeDB()
+    o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=FakeAssembler())
+    
+    result1 = o.render_content("ELN-RAW-TEST", actor="tester")
+    import time
+    # sleep briefly to ensure timestamp is different if using millisecond timestamps
+    time.sleep(0.01)
+    result2 = o.render_content("ELN-RAW-TEST", actor="tester")
+
+    assert result1["ok"] is True
+    assert result2["ok"] is True
+    assert result1["output_key"] != result2["output_key"]
+
+
+def test_render_content_history_accumulates_versioned_keys(monkeypatch):
+    """Test D — History accumulates:
+    After multiple renders, edited_media_key points to the newest versioned key,
+    and edited_media_history accumulates all generated output keys without overwriting them."""
+    import agents.editing.orchestrator as orch_mod
+
+    class MockConcatenator:
+        def concat_segments(self, segments, output_path, **kwargs):
+            with open(output_path, "wb") as f:
+                f.write(b"0" * 20000)
+            return output_path
+
+    monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
+
+    item = {
+        "id": "uuid-history",
+        "custom_id": "ELN-HISTORY-TEST",
+        "content_type": "reel",
+        "media_keys": ["raw/video.mp4"],
+        "edited_media_history": [],
+        "status": "NEEDS_EDIT",
+    }
+    db = FakeDB(item=item)
+    o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=FakeAssembler())
+    
+    # Render 1
+    res1 = o.render_content("ELN-HISTORY-TEST", actor="tester", job_id="job1")
+    assert res1["ok"] is True
+    key1 = res1["output_key"]
+    assert key1 == "edited/ELN-HISTORY-TEST/job1.mp4"
+
+    # Simulate database state update before Render 2
+    db.item["edited_media_history"] = [key1]
+    db.item["edited_media_key"] = key1
+
+    # Render 2
+    res2 = o.render_content("ELN-HISTORY-TEST", actor="tester", job_id="job2")
+    assert res2["ok"] is True
+    key2 = res2["output_key"]
+    assert key2 == "edited/ELN-HISTORY-TEST/job2.mp4"
+
+    # Find READY_FOR_REVIEW updates
+    updates = [u for u in db.status_updates if u[0] == "READY_FOR_REVIEW"]
+    assert len(updates) == 2
+    
+    extra1 = updates[0][1]
+    assert extra1["edited_media_key"] == key1
+    assert extra1["edited_media_history"] == [key1]
+
+    extra2 = updates[1][1]
+    assert extra2["edited_media_key"] == key2
+    assert extra2["edited_media_history"] == [key1, key2]
