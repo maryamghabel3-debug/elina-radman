@@ -491,3 +491,51 @@ def test_process_job_passes_job_id_to_render_content():
                     call = mock_orchestrator_calls[0]
                     # Assert job_id is passed to render_content
                     assert call["job_id"] == "my-mock-job-id"
+
+
+def test_process_job_shot_index_out_of_range():
+    """Test: shot index out of range -> FAILED with SHOT_INDEX_OUT_OF_RANGE."""
+    mock_job = {
+        "id": "job-range-err",
+        "content_id": "ELN-BUNDLE-123",
+        "plan_data": {
+            "target_id": "ELN-BUNDLE-123",
+            "shots": [
+                {"index": 1, "start": 0.0, "end": 2.5, "remove": False},
+                {"index": 3, "start": 0.0, "end": 2.5, "remove": False}, # out of range (max index 2)
+            ],
+        },
+        "owner_chat_id": "12345"
+    }
+
+    mock_db = MagicMock()
+    mock_db.get_content_by_custom_id.return_value = {
+        "id": "item-123",
+        "custom_id": "ELN-BUNDLE-123",
+        "media_keys": ["path/1.mp4", "path/2.mp4"] # only 2 shots
+    }
+
+    mock_orchestrator_calls = []
+    class MockOrchestrator:
+        def render_content(self, **kwargs):
+            mock_orchestrator_calls.append(kwargs)
+            return {"ok": True, "output_key": "edited/final.mp4"}
+
+    with patch("scripts.render_worker.ElinaDB", lambda: mock_db):
+        with patch("agents.editing.orchestrator.EditOrchestrator", lambda: MockOrchestrator()):
+            with patch("scripts.render_worker.RenderJobManager") as MockJobManager:
+                instance = MockJobManager.return_value
+
+                with patch("urllib.request.urlopen") as mock_urlopen:
+                    result = process_job(mock_job)
+
+                    assert result is False
+                    # Orchestrator must NOT be called
+                    assert mock_orchestrator_calls == []
+
+                    # Assert database status updated to FAILED with typed error message
+                    mock_db.client.table.return_value.update.assert_called()
+                    call_arg = mock_db.client.table.return_value.update.call_args[0][0]
+                    assert call_arg["status"] == "FAILED"
+                    assert "SHOT_INDEX_OUT_OF_RANGE" in call_arg["error_message"]
+                    assert "shot 3 requested but bundle has 2 shots" in call_arg["error_message"]
