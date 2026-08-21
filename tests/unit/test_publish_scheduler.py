@@ -446,12 +446,14 @@ def test_empty_queue_no_meta_secrets_needed(monkeypatch):
     assert summary["published"] == 0
 
 
-def test_publish_scheduler_uses_edited_media_key(monkeypatch):
-    """Test A: content item has edited_media_key + media_keys -> chooses edited_media_key."""
+def test_publish_scheduler_edited_reel_preferred(monkeypatch):
+    """Test A — Edited Reel preferred:
+    Reel with edited_media_key and media_keys chooses edited_media_key."""
     monkeypatch.setenv("PUBLISH_LIVE_ENABLED", "true")
     item = make_item(
-        media_keys=["intake/raw.mp4"],
-        edited_media_key="edited/final_render.mp4"
+        content_type="reel",
+        media_keys=["raw/source.mp4"],
+        edited_media_key="edited/reel/final.mp4"
     )
     db = FakeDB([item])
     pub = FakePublisher(PublishResult(success=True, media_id="123"))
@@ -460,16 +462,17 @@ def test_publish_scheduler_uses_edited_media_key(monkeypatch):
     assert summary["published"] == 1
     assert len(pub.calls) == 1
     kind, url = pub.calls[0]
-    assert url == "https://signed.example/edited/final_render.mp4"
+    assert url == "https://signed.example/edited/reel/final.mp4"
 
 
-def test_publish_scheduler_fallback_to_raw(monkeypatch):
-    """Test B: content item has no edited_media_key -> falls back to media_keys[0]."""
+def test_publish_scheduler_unedited_reel_fallback(monkeypatch):
+    """Test B — Unedited Reel fallback:
+    Reel with missing/None edited_media_key falls back to media_keys[0]."""
     monkeypatch.setenv("PUBLISH_LIVE_ENABLED", "true")
     item = make_item(
-        media_keys=["intake/raw.mp4"]
+        content_type="reel",
+        media_keys=["raw/source.mp4"]
     )
-    # Ensure edited_media_key is NOT present
     item.pop("edited_media_key", None)
     db = FakeDB([item])
     pub = FakePublisher(PublishResult(success=True, media_id="123"))
@@ -478,15 +481,17 @@ def test_publish_scheduler_fallback_to_raw(monkeypatch):
     assert summary["published"] == 1
     assert len(pub.calls) == 1
     kind, url = pub.calls[0]
-    assert url == "https://signed.example/intake/raw.mp4"
+    assert url == "https://signed.example/raw/source.mp4"
 
 
-def test_publish_scheduler_fallback_when_edited_media_key_empty(monkeypatch):
-    """Test C: content item has edited_media_key set to empty/null -> falls back to media_keys[0]."""
+def test_publish_scheduler_blank_edited_key_fallback(monkeypatch):
+    """Test C — Blank edited key fallback:
+    Reel with blank edited_media_key falls back to media_keys[0]."""
     monkeypatch.setenv("PUBLISH_LIVE_ENABLED", "true")
     item = make_item(
-        media_keys=["intake/raw.mp4"],
-        edited_media_key=""  # empty string
+        content_type="reel",
+        media_keys=["raw/source.mp4"],
+        edited_media_key="   "
     )
     db = FakeDB([item])
     pub = FakePublisher(PublishResult(success=True, media_id="123"))
@@ -495,4 +500,69 @@ def test_publish_scheduler_fallback_when_edited_media_key_empty(monkeypatch):
     assert summary["published"] == 1
     assert len(pub.calls) == 1
     kind, url = pub.calls[0]
-    assert url == "https://signed.example/intake/raw.mp4"
+    assert url == "https://signed.example/raw/source.mp4"
+
+
+def test_publish_scheduler_edited_only_reel(monkeypatch):
+    """Test D — Edited-only Reel:
+    Reel with only edited_media_key is publishable and does not produce NO_MEDIA."""
+    monkeypatch.setenv("PUBLISH_LIVE_ENABLED", "true")
+    item = make_item(
+        content_type="reel",
+        media_keys=[],
+        edited_media_key="edited/reel/final.mp4"
+    )
+    db = FakeDB([item])
+    pub = FakePublisher(PublishResult(success=True, media_id="123"))
+    s = PublishScheduler(db=db, storage=FakeStorage(), publisher=pub)
+    summary = s.run_once()
+    assert summary["published"] == 1
+    assert len(pub.calls) == 1
+    kind, url = pub.calls[0]
+    assert url == "https://signed.example/edited/reel/final.mp4"
+
+
+def test_publish_scheduler_no_usable_reel_media(monkeypatch):
+    """Test E — No usable Reel media:
+    Reel with blank/missing edited_media_key and empty media_keys fails with NO_MEDIA."""
+    monkeypatch.setenv("PUBLISH_LIVE_ENABLED", "true")
+    item = make_item(
+        content_type="reel",
+        media_keys=[],
+        edited_media_key=None
+    )
+    db = FakeDB([item])
+    pub = FakePublisher(PublishResult(success=True, media_id="123"))
+    s = PublishScheduler(db=db, storage=FakeStorage(), publisher=pub)
+    summary = s.run_once()
+    assert summary["failed"] == 1
+    assert len(pub.calls) == 0
+    statuses = [u[1] for u in db.status_updates]
+    assert "FAILED" in statuses
+    # Assert last_error is set with NO_MEDIA
+    assert "NO_MEDIA" in db.status_updates[-1][2]["last_error"]
+
+
+def test_publish_scheduler_carousel_regression(monkeypatch):
+    """Test F — Carousel regression:
+    Carousel with edited_media_key and multiple media_keys publishes all media_keys,
+    ignoring edited_media_key."""
+    monkeypatch.setenv("PUBLISH_LIVE_ENABLED", "true")
+    item = make_item(
+        content_type="carousel",
+        media_keys=["a.jpg", "b.jpg", "c.jpg"],
+        edited_media_key="edited/reel/final.mp4"
+    )
+    db = FakeDB([item])
+    pub = FakePublisher(PublishResult(success=True, media_id="9"))
+    s = PublishScheduler(db=db, storage=FakeStorage(), publisher=pub)
+    summary = s.run_once()
+    assert summary["published"] == 1
+    assert len(pub.calls) == 1
+    kind, urls = pub.calls[0]
+    assert kind == "carousel"
+    assert urls == [
+        "https://signed.example/a.jpg",
+        "https://signed.example/b.jpg",
+        "https://signed.example/c.jpg"
+    ]

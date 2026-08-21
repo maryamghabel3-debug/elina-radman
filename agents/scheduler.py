@@ -76,6 +76,23 @@ class PublishScheduler:
 
         return summary
 
+    def _select_reel_media_key(self, item: dict) -> str | None:
+        custom_id = item.get("custom_id", item.get("id"))
+        edited_key = item.get("edited_media_key")
+        if edited_key is not None:
+            edited_key_str = str(edited_key).strip()
+            if edited_key_str:
+                logger.info("Using edited_media_key for publishing content item %s: %s", custom_id, edited_key_str)
+                return edited_key_str
+            else:
+                logger.warning("edited_media_key exists but is empty/whitespace for item %s. Falling back to media_keys[0].", custom_id)
+        
+        media_keys = item.get("media_keys") or []
+        if media_keys:
+            return media_keys[0]
+        
+        return None
+
     def _process_item(self, item: dict) -> str:
         item_id = item["id"]
         custom_id = item.get("custom_id", item_id)
@@ -83,17 +100,13 @@ class PublishScheduler:
         caption = self._build_caption(item)
         expected_status = item.get("status", "SCHEDULED")
 
-        # Prioritize edited_media_key over raw media_keys
-        edited_key = item.get("edited_media_key")
-        media_keys = []
-        if edited_key is not None:
-            edited_key_str = str(edited_key).strip()
-            if edited_key_str:
-                media_keys = [edited_key_str]
-                logger.info("Using edited_media_key for publishing content item %s: %s", custom_id, edited_key_str)
-            else:
-                logger.warning("edited_media_key exists but is empty/whitespace for item %s. Falling back to media_keys.", custom_id)
-                media_keys = item.get("media_keys") or []
+        # Resolve media keys based on content type
+        if content_type == "reel":
+            selected_key = self._select_reel_media_key(item)
+            if not selected_key:
+                self._fail(item, "NO_MEDIA", "Item has no media_keys or edited_media_key")
+                return "failed"
+            media_keys = [selected_key]
         else:
             media_keys = item.get("media_keys") or []
 
