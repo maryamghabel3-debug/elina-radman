@@ -194,11 +194,12 @@ async def test_cmd_plan_ok_with_preview():
 @pytest.mark.asyncio
 async def test_cmd_plan_ok_failed_render():
     import scripts.elina_studio_bot as bot_module
-    from agents.editing.persian_edit_interpreter import PersianEditPlan
+    from agents.editing.persian_edit_interpreter import PersianEditPlan, PersianShotInstruction
 
     plan = PersianEditPlan(
         target_mode="custom_id",
         target_custom_id="ELN-BUNDLE-123",
+        shots=[PersianShotInstruction(shot_index=1, start_sec=0.0, end_sec=3.0)],
         confidence=1.0
     )
     chat_data = {"plan_mode": True, "plan_preview": plan, "plan_target_id": "ELN-BUNDLE-123"}
@@ -381,3 +382,52 @@ async def test_cmd_plan_ok_serializes_music_instruction():
             "gain_db": -14,
             "explicit": True,
         }
+
+
+# 15. Plain text with invalid plan doesn't save preview and returns Persian error
+@pytest.mark.asyncio
+async def test_plain_text_invalid_plan_does_not_save_preview():
+    import scripts.elina_studio_bot as bot_module
+
+    chat_data = {"plan_mode": True, "plan_target_id": "ELN-BUNDLE-123"}
+    # end_sec <= start_sec is invalid
+    text = "شات اول از 5 تا 3\nصدای اصلی قطع شود"
+    mock_update, mock_context = make_mock_update(is_owner=True, message_text=text, chat_data=chat_data)
+
+    with patch.object(bot_module, "OWNER_CHAT_ID", "12345"):
+        await bot_module.handle_studio_media(mock_update, mock_context)
+
+    # Preview must NOT be saved
+    assert "plan_preview" not in chat_data
+    mock_update.message.reply_text.assert_called_once()
+    reply = mock_update.message.reply_text.call_args[0][0]
+    assert "برنامه ادیت وارد شده دارای خطا است" in reply
+
+
+# 16. /plan_ok with invalid preview does not queue and returns Persian error
+@pytest.mark.asyncio
+async def test_cmd_plan_ok_with_invalid_preview():
+    import scripts.elina_studio_bot as bot_module
+    from agents.editing.persian_edit_interpreter import PersianEditPlan, PersianShotInstruction
+
+    # Create invalid plan (no shots)
+    plan = PersianEditPlan(
+        target_mode="custom_id",
+        target_custom_id="ELN-BUNDLE-123",
+        shots=[],  # invalid
+        confidence=1.0
+    )
+    chat_data = {"plan_mode": True, "plan_preview": plan, "plan_target_id": "ELN-BUNDLE-123"}
+    mock_update, mock_context = make_mock_update(is_owner=True, chat_data=chat_data)
+
+    with patch("agents.rendering.job_manager.RenderJobManager") as MockManager:
+        instance = MockManager.return_value
+
+        with patch.object(bot_module, "OWNER_CHAT_ID", "12345"):
+            await bot_module.cmd_plan_ok(mock_update, mock_context)
+
+        # Must NOT queue the job
+        instance.queue_job.assert_not_called()
+        mock_update.message.reply_text.assert_called_once()
+        reply = mock_update.message.reply_text.call_args[0][0]
+        assert "برنامه ادیت ذخیره شده دیگر معتبر نیست" in reply

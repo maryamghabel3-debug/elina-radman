@@ -481,6 +481,15 @@ async def cmd_plan_ok(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    errors = plan.validate()
+    if errors:
+        err_lines = [f"- {err}" for err in errors]
+        await update.message.reply_text(
+            "❌ خطا: برنامه ادیت ذخیره شده دیگر معتبر نیست:\n\n"
+            + "\n".join(err_lines)
+        )
+        return
+
     target_id = normalize_bundle_custom_id(target_id)
 
     try:
@@ -585,6 +594,17 @@ async def handle_studio_media(update: Update, context: ContextTypes.DEFAULT_TYPE
                 target_id = context.chat_data.get("plan_target_id")
                 plan.target_custom_id = normalize_bundle_custom_id(target_id)
                 plan.target_mode = "custom_id"
+
+                errors = plan.validate()
+                if errors:
+                    err_lines = [f"- {err}" for err in errors]
+                    err_msg = (
+                        "⚠️ برنامه ادیت وارد شده دارای خطا است و قابل ثبت نیست:\n\n"
+                        + "\n".join(err_lines)
+                        + "\n\nلطفاً برنامه اصلاح شده را مجدداً وارد کنید."
+                    )
+                    await message.reply_text(err_msg)
+                    return
 
                 context.chat_data["plan_preview"] = plan
 

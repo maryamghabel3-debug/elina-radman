@@ -71,6 +71,23 @@ def process_job(job) -> bool:
             return False
 
         media_keys = item.get("media_keys") if item else []
+        n_shots = len(media_keys)
+
+        # Validate every shot index is within range 1..len(media_keys)
+        for shot in plan.get("shots", []):
+            idx_1based = shot.get("index", 1)
+            if idx_1based < 1 or idx_1based > n_shots:
+                mgr = RenderJobManager()
+                import datetime
+                completed_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                db.client.table("render_jobs").update({
+                    "status": "FAILED",
+                    "error_message": f"SHOT_INDEX_OUT_OF_RANGE: shot {idx_1based} requested but bundle has {n_shots} shots",
+                    "completed_at": completed_at
+                }).eq("id", job_id).execute()
+
+                send_telegram_message(chat_id, f"❌ رندر ناموفق بود:\nSHOT_INDEX_OUT_OF_RANGE: shot {idx_1based} requested but bundle has {n_shots} shots")
+                return False
 
         # Map shots to video_segments, skipping shots the user asked to remove.
         # Shot indices refer to the original clip positions, so filtering on the

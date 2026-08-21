@@ -108,10 +108,11 @@ async def test_duplicate_plan_ok_does_not_create_multiple_jobs():
     import scripts.elina_studio_bot as bot_module
 
     # Setup chat_data containing the same plan_preview as the existing active job
-    from agents.editing.persian_edit_interpreter import PersianEditPlan
+    from agents.editing.persian_edit_interpreter import PersianEditPlan, PersianShotInstruction
     plan = PersianEditPlan(
         target_mode="custom_id",
         target_custom_id="ELN-BUNDLE-123",
+        shots=[PersianShotInstruction(shot_index=1, start_sec=0.0, end_sec=3.0)],
         hook_text="تست",
         confidence=1.0
     )
@@ -155,7 +156,7 @@ async def test_duplicate_plan_ok_does_not_create_multiple_jobs():
         "plan_data": {
             "target_id": "ELN-BUNDLE-123",
             "mute_original": True,
-            "shots": [],
+            "shots": [{"index": 1, "start": 0.0, "end": 3.0, "remove": False}],
             "sfx": [],
             "hook": "تست",
             "music": {"enabled": False, "query": None, "gain_db": -14, "explicit": False}
