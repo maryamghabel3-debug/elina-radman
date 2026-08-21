@@ -444,3 +444,55 @@ def test_empty_queue_no_meta_secrets_needed(monkeypatch):
     summary = s.run_once()
     assert summary["checked"] == 0
     assert summary["published"] == 0
+
+
+def test_publish_scheduler_uses_edited_media_key(monkeypatch):
+    """Test A: content item has edited_media_key + media_keys -> chooses edited_media_key."""
+    monkeypatch.setenv("PUBLISH_LIVE_ENABLED", "true")
+    item = make_item(
+        media_keys=["intake/raw.mp4"],
+        edited_media_key="edited/final_render.mp4"
+    )
+    db = FakeDB([item])
+    pub = FakePublisher(PublishResult(success=True, media_id="123"))
+    s = PublishScheduler(db=db, storage=FakeStorage(), publisher=pub)
+    summary = s.run_once()
+    assert summary["published"] == 1
+    assert len(pub.calls) == 1
+    kind, url = pub.calls[0]
+    assert url == "https://signed.example/edited/final_render.mp4"
+
+
+def test_publish_scheduler_fallback_to_raw(monkeypatch):
+    """Test B: content item has no edited_media_key -> falls back to media_keys[0]."""
+    monkeypatch.setenv("PUBLISH_LIVE_ENABLED", "true")
+    item = make_item(
+        media_keys=["intake/raw.mp4"]
+    )
+    # Ensure edited_media_key is NOT present
+    item.pop("edited_media_key", None)
+    db = FakeDB([item])
+    pub = FakePublisher(PublishResult(success=True, media_id="123"))
+    s = PublishScheduler(db=db, storage=FakeStorage(), publisher=pub)
+    summary = s.run_once()
+    assert summary["published"] == 1
+    assert len(pub.calls) == 1
+    kind, url = pub.calls[0]
+    assert url == "https://signed.example/intake/raw.mp4"
+
+
+def test_publish_scheduler_fallback_when_edited_media_key_empty(monkeypatch):
+    """Test C: content item has edited_media_key set to empty/null -> falls back to media_keys[0]."""
+    monkeypatch.setenv("PUBLISH_LIVE_ENABLED", "true")
+    item = make_item(
+        media_keys=["intake/raw.mp4"],
+        edited_media_key=""  # empty string
+    )
+    db = FakeDB([item])
+    pub = FakePublisher(PublishResult(success=True, media_id="123"))
+    s = PublishScheduler(db=db, storage=FakeStorage(), publisher=pub)
+    summary = s.run_once()
+    assert summary["published"] == 1
+    assert len(pub.calls) == 1
+    kind, url = pub.calls[0]
+    assert url == "https://signed.example/intake/raw.mp4"

@@ -81,8 +81,21 @@ class PublishScheduler:
         custom_id = item.get("custom_id", item_id)
         content_type = item.get("content_type", "reel")
         caption = self._build_caption(item)
-        media_keys = item.get("media_keys") or []
         expected_status = item.get("status", "SCHEDULED")
+
+        # Prioritize edited_media_key over raw media_keys
+        edited_key = item.get("edited_media_key")
+        media_keys = []
+        if edited_key is not None:
+            edited_key_str = str(edited_key).strip()
+            if edited_key_str:
+                media_keys = [edited_key_str]
+                logger.info("Using edited_media_key for publishing content item %s: %s", custom_id, edited_key_str)
+            else:
+                logger.warning("edited_media_key exists but is empty/whitespace for item %s. Falling back to media_keys.", custom_id)
+                media_keys = item.get("media_keys") or []
+        else:
+            media_keys = item.get("media_keys") or []
 
         # Story handling: manual publish required, not FAILED
         if content_type == "story":
