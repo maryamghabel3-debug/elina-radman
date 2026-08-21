@@ -409,3 +409,85 @@ def test_process_job_passes_none_plan_music_when_absent():
 
                     call = mock_orchestrator_calls[0]
                     assert call["plan_music"] is None
+
+
+def test_process_job_records_exact_versioned_key():
+    """Test E — Job records exact key:
+    render_worker path: render_jobs.output_key equals the uploaded versioned key."""
+    mock_job = {
+        "id": "job-versioned-123",
+        "content_id": "ELN-BUNDLE-123",
+        "plan_data": {
+            "target_id": "ELN-BUNDLE-123",
+            "shots": [{"index": 1, "start": 0.0, "end": 3.0}],
+        },
+        "owner_chat_id": "12345"
+    }
+
+    mock_db = MagicMock()
+    mock_db.get_content_by_custom_id.return_value = {
+        "id": "item-123",
+        "custom_id": "ELN-BUNDLE-123",
+        "media_keys": ["path/1.mp4"]
+    }
+
+    class MockOrchestrator:
+        def render_content(self, **kwargs):
+            # Simulate returning a versioned output key
+            return {"ok": True, "output_key": "edited/ELN-BUNDLE-123/job-versioned-123.mp4"}
+
+    with patch("scripts.render_worker.ElinaDB", lambda: mock_db):
+        with patch("agents.editing.orchestrator.EditOrchestrator", lambda: MockOrchestrator()):
+            with patch("scripts.render_worker.RenderJobManager") as MockJobManager:
+                instance = MockJobManager.return_value
+                instance.mark_completed.return_value = {}
+
+                with patch("urllib.request.urlopen"):
+                    result = process_job(mock_job)
+
+                    assert result is True
+                    # Assert job manager marked completed with the exact versioned key!
+                    instance.mark_completed.assert_called_once_with(
+                        "job-versioned-123",
+                        "edited/ELN-BUNDLE-123/job-versioned-123.mp4"
+                    )
+
+
+def test_process_job_passes_job_id_to_render_content():
+    """Test F — Worker passes job_id:
+    render_worker calls render_content with the job's id."""
+    mock_job = {
+        "id": "my-mock-job-id",
+        "content_id": "ELN-BUNDLE-123",
+        "plan_data": {
+            "target_id": "ELN-BUNDLE-123",
+            "shots": [{"index": 1, "start": 0.0, "end": 3.0}],
+        },
+        "owner_chat_id": "12345"
+    }
+
+    mock_db = MagicMock()
+    mock_db.get_content_by_custom_id.return_value = {
+        "id": "item-123",
+        "custom_id": "ELN-BUNDLE-123",
+        "media_keys": ["path/1.mp4"]
+    }
+
+    mock_orchestrator_calls = []
+    class MockOrchestrator:
+        def render_content(self, **kwargs):
+            mock_orchestrator_calls.append(kwargs)
+            return {"ok": True, "output_key": "edited/final.mp4"}
+
+    with patch("scripts.render_worker.ElinaDB", lambda: mock_db):
+        with patch("agents.editing.orchestrator.EditOrchestrator", lambda: MockOrchestrator()):
+            with patch("scripts.render_worker.RenderJobManager") as MockJobManager:
+                instance = MockJobManager.return_value
+
+                with patch("urllib.request.urlopen"):
+                    process_job(mock_job)
+
+                    assert len(mock_orchestrator_calls) == 1
+                    call = mock_orchestrator_calls[0]
+                    # Assert job_id is passed to render_content
+                    assert call["job_id"] == "my-mock-job-id"

@@ -114,6 +114,7 @@ def process_job(job) -> bool:
             mute_original=plan.get("mute_original", True),
             plan_sfx=plan.get("sfx") or None,
             plan_music=plan.get("music"),
+            job_id=job_id,
         )
 
         mgr = RenderJobManager()

@@ -128,6 +128,7 @@ class EditOrchestrator:
         mute_original: bool = True,
         plan_sfx: Optional[List[Dict[str, Any]]] = None,
         plan_music: Optional[Dict[str, Any]] = None,
+        job_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         item = self.db.get_content_by_custom_id(custom_id)
         if not item:
@@ -331,7 +332,12 @@ class EditOrchestrator:
                     self.db.log_event(item["id"], "edit_failed", "EDIT_RENDERING", "EDIT_FAILED", actor, "; ".join(qc_errors))
                     return {"ok": False, "error": "; ".join(qc_errors)}
 
-                output_key = f"edited/{custom_id}/final.mp4"
+                import datetime
+                if job_id:
+                    output_key = f"edited/{custom_id}/{job_id}.mp4"
+                else:
+                    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S%f")[:-3]
+                    output_key = f"edited/{custom_id}/render-{timestamp}.mp4"
                 self.storage.upload_file(str(output_video), output_key, content_type="video/mp4")
 
             import datetime
