@@ -504,3 +504,75 @@ def test_render_content_plan_music_not_explicit_ignored(monkeypatch):
         plan_music={"enabled": False, "query": None, "gain_db": -14, "explicit": False},
     )
     assert result["ok"] is True
+
+
+def test_render_preserve_source_media_keys(monkeypatch):
+    """Test A, B, C, E: Successful render does not touch raw media_keys,
+    updates edited_media_key and appends to edited_media_history."""
+    import agents.editing.orchestrator as orch_mod
+
+    class MockConcatenator:
+        def concat_segments(self, segments, output_path, **kwargs):
+            with open(output_path, "wb") as f:
+                f.write(b"0" * 20000)
+            return output_path
+
+    monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
+
+    # Set up item with existing edited_media_history to test appending (Test E)
+    item = {
+        "id": "uuid-preserve",
+        "custom_id": "ELN-PRESERVE-TEST",
+        "content_type": "reel",
+        "media_keys": ["raw/shot1.mp4", "raw/shot2.mp4"],
+        "edited_media_history": ["edited/ELN-PRESERVE-TEST/old_final.mp4"],
+        "status": "NEEDS_EDIT",
+    }
+    db = FakeDB(item=item)
+    o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=FakeAssembler())
+    result = o.render_content("ELN-PRESERVE-TEST", actor="tester")
+
+    assert result["ok"] is True
+    output_key = result["output_key"]
+    assert output_key == "edited/ELN-PRESERVE-TEST/final.mp4"
+
+    # Find the READY_FOR_REVIEW update
+    ready_update = [u for u in db.status_updates if u[0] == "READY_FOR_REVIEW"]
+    assert len(ready_update) == 1
+    status, extra = ready_update[0]
+
+    # Test A: Successful render update payload does NOT contain media_keys
+    assert "media_keys" not in extra
+
+    # Test B: Successful render update payload DOES contain edited_media_key equal to the uploaded output key
+    assert extra["edited_media_key"] == output_key
+
+    # Test C: Original content record's media_keys remain unchanged in the fake db
+    assert db.item["media_keys"] == ["raw/shot1.mp4", "raw/shot2.mp4"]
+
+    # Test E: edited_media_history contains both old and new output keys
+    assert extra["edited_media_history"] == [
+        "edited/ELN-PRESERVE-TEST/old_final.mp4",
+        "edited/ELN-PRESERVE-TEST/final.mp4"
+    ]
+
+
+def test_render_jobs_output_key_intact():
+    """Test D: render_jobs output_key remains equal to the uploaded output key."""
+    from unittest.mock import MagicMock
+    mock_db = MagicMock()
+    mock_query = MagicMock()
+    mock_db.client.table.return_value = mock_query
+    mock_query.update.return_value = mock_query
+    mock_query.eq.return_value = mock_query
+
+    mock_result = MagicMock()
+    mock_result.data = [{"id": "job-1", "status": "COMPLETED", "output_key": "edited/out.mp4"}]
+    mock_query.execute.return_value = mock_result
+
+    from agents.rendering.job_manager import RenderJobManager
+    manager = RenderJobManager(db=mock_db)
+    job = manager.mark_completed("job-1", "edited/out.mp4")
+
+    assert job["status"] == "COMPLETED"
+    assert job["output_key"] == "edited/out.mp4"

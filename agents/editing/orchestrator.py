@@ -334,8 +334,18 @@ class EditOrchestrator:
                 output_key = f"edited/{custom_id}/final.mp4"
                 self.storage.upload_file(str(output_video), output_key, content_type="video/mp4")
 
+            import datetime
+            last_rendered_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            history = item.get("edited_media_history") or []
+            if not isinstance(history, list):
+                history = []
+            if output_key not in history:
+                history.append(output_key)
+
             self.db.update_status(item["id"], "READY_FOR_REVIEW", {
-                "media_keys": [output_key],
+                "edited_media_key": output_key,
+                "edited_media_history": history,
+                "last_rendered_at": last_rendered_at,
                 "edit_status": "done",
             })
             self.db.log_event(item["id"], "edit_done", "EDIT_RENDERING", "READY_FOR_REVIEW", actor, output_key)
