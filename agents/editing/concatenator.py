@@ -314,14 +314,14 @@ class VideoConcatenator:
                 start = seg.get("start_sec", 0.0)
                 end = seg.get("end_sec")
 
-                # Video trim filter
+                # Video trim filter (forces SAR to 1:1 before trim)
                 if start > 0 or end is not None:
                     if end is not None:
-                        filter_parts.append(f"[{i}:v]trim=start={start}:end={end},setpts=PTS-STARTPTS[v{i}]")
+                        filter_parts.append(f"[{i}:v]setsar=1,trim=start={start}:end={end},setpts=PTS-STARTPTS[v{i}]")
                     else:
-                        filter_parts.append(f"[{i}:v]trim=start={start},setpts=PTS-STARTPTS[v{i}]")
+                        filter_parts.append(f"[{i}:v]setsar=1,trim=start={start},setpts=PTS-STARTPTS[v{i}]")
                 else:
-                    filter_parts.append(f"[{i}:v]null[v{i}]")
+                    filter_parts.append(f"[{i}:v]setsar=1,null[v{i}]")
 
                 # Audio trim filter (only when keeping original audio)
                 if keep_audio:
@@ -389,13 +389,14 @@ class VideoConcatenator:
             start = seg.get("start_sec", 0.0)
             end = seg.get("end_sec")
 
+            # Video trim filter (forces SAR to 1:1 before trim)
             if start > 0 or end is not None:
                 if end is not None:
-                    filter_parts.append(f"[{i}:v]trim=start={start}:end={end},setpts=PTS-STARTPTS[v{i}_trim]")
+                    filter_parts.append(f"[{i}:v]setsar=1,trim=start={start}:end={end},setpts=PTS-STARTPTS[v{i}_trim]")
                 else:
-                    filter_parts.append(f"[{i}:v]trim=start={start},setpts=PTS-STARTPTS[v{i}_trim]")
+                    filter_parts.append(f"[{i}:v]setsar=1,trim=start={start},setpts=PTS-STARTPTS[v{i}_trim]")
             else:
-                filter_parts.append(f"[{i}:v]null[v{i}_trim]")
+                filter_parts.append(f"[{i}:v]setsar=1,null[v{i}_trim]")
 
             if keep_audio:
                 if start > 0 or end is not None:
