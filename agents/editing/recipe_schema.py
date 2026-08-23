@@ -9,6 +9,7 @@ class VideoSegmentConfig:
     transition_out: Optional[Dict[str, Any]] = None
     freeze_tail_sec: Optional[float] = None
     transform: Optional[Dict[str, Any]] = None
+    brightness_keyframes: Optional[List[Dict[str, Any]]] = None
 
 @dataclass
 class SFXConfig:
@@ -147,11 +148,13 @@ class EditRecipe:
                 if freeze_tail_sec is not None:
                     freeze_tail_sec = float(freeze_tail_sec)
                 transform = seg.get("transform")
+                brightness_keyframes = seg.get("brightness_keyframes")
                 video_segments.append(VideoSegmentConfig(
                     key=key, start_sec=start, end_sec=end,
                     transition_out=transition_out,
                     freeze_tail_sec=freeze_tail_sec,
-                    transform=transform
+                    transform=transform,
+                    brightness_keyframes=brightness_keyframes
                 ))
 
         # Support legacy video_keys list (convert to segments if no segments provided)
