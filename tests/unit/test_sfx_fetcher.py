@@ -1,6 +1,7 @@
 import pytest
+import requests
 from unittest.mock import patch, MagicMock
-from agents.audio.freesound_provider import FreesoundProvider
+from agents.audio.freesound_provider import FreesoundProvider, normalize_license
 from agents.audio.sfx_fetcher import SFXFetcher
 from agents.audio.base_provider import SoundResult, DownloadedSound
 
@@ -24,47 +25,227 @@ def test_freesound_empty_query_raises():
         provider.search("")
 
 
+# === License Normalization Tests ===
+
+def test_normalize_license_variants():
+    # Creative Commons 0 variations accepted
+    assert normalize_license("Creative Commons 0") == "cc0"
+    assert normalize_license("http://creativecommons.org/publicdomain/zero/1.0/") == "cc0"
+    assert normalize_license("CC0") == "cc0"
+    assert normalize_license("cc0 1.0 Universal") == "cc0"
+
+    # Attribution variations accepted
+    assert normalize_license("Attribution") == "attribution"
+    assert normalize_license("http://creativecommons.org/licenses/by/4.0/") == "attribution"
+    assert normalize_license("cc-by") == "attribution"
+
+    # NonCommercial variations explicitly rejected
+    assert normalize_license("Attribution NonCommercial") is None
+    assert normalize_license("Attribution Noncommercial") is None
+    assert normalize_license("by-nc") is None
+    assert normalize_license("http://creativecommons.org/licenses/by-nc/4.0/") is None
+
+    # Other licenses rejected
+    assert normalize_license("Sampling+") is None
+    assert normalize_license("Sampling Plus") is None
+    assert normalize_license("") is None
+    assert normalize_license(None) is None
+
+
+# === Freesound Provider Hardened Behavior Mocks ===
+
 @patch("agents.audio.freesound_provider.requests.get")
-def test_freesound_search_returns_filtered_results(mock_get):
+def test_freesound_search_401_becomes_auth_failed(mock_get):
+    """HTTP 401 -> SFX_AUTH_FAILED."""
+    mock_response = MagicMock()
+    mock_response.status_code = 401
+    mock_response.text = "Unauthorized Token"
+    mock_get.return_value = mock_response
+
+    provider = FreesoundProvider(api_key="invalid_key")
+    with pytest.raises(RuntimeError, match="SFX_AUTH_FAILED"):
+        provider.search("rain")
+
+
+@patch("agents.audio.freesound_provider.requests.get")
+def test_freesound_search_400_becomes_request_invalid(mock_get):
+    """HTTP 400 -> SFX_SEARCH_REQUEST_INVALID."""
+    mock_response = MagicMock()
+    mock_response.status_code = 400
+    mock_response.text = "Bad parameters"
+    mock_get.return_value = mock_response
+
+    provider = FreesoundProvider(api_key="valid_key")
+    with pytest.raises(RuntimeError, match="SFX_SEARCH_REQUEST_INVALID"):
+        provider.search("bad")
+
+
+@patch("agents.audio.freesound_provider.requests.get")
+def test_freesound_search_429_becomes_rate_limited(mock_get):
+    """HTTP 429 -> SFX_RATE_LIMITED."""
+    mock_response = MagicMock()
+    mock_response.status_code = 429
+    mock_response.text = "Throttled"
+    mock_get.return_value = mock_response
+
+    provider = FreesoundProvider(api_key="valid_key")
+    with pytest.raises(RuntimeError, match="SFX_RATE_LIMITED"):
+        provider.search("rain")
+
+
+@patch("agents.audio.freesound_provider.requests.get")
+def test_freesound_search_timeout_becomes_provider_timeout(mock_get):
+    """timeout -> SFX_PROVIDER_TIMEOUT."""
+    mock_get.side_effect = requests.Timeout("Network Timeout")
+
+    provider = FreesoundProvider(api_key="valid_key")
+    with pytest.raises(RuntimeError, match="SFX_PROVIDER_TIMEOUT"):
+        provider.search("rain")
+
+
+@patch("agents.audio.freesound_provider.requests.get")
+def test_freesound_search_500_becomes_provider_unavailable(mock_get):
+    """HTTP 500 -> SFX_PROVIDER_UNAVAILABLE."""
+    mock_response = MagicMock()
+    mock_response.status_code = 500
+    mock_response.text = "Internal Server Error"
+    mock_get.return_value = mock_response
+
+    provider = FreesoundProvider(api_key="valid_key")
+    with pytest.raises(RuntimeError, match="SFX_PROVIDER_UNAVAILABLE"):
+        provider.search("rain")
+
+
+@patch("agents.audio.freesound_provider.requests.get")
+def test_freesound_separate_cc0_and_by_merged_and_deduplicated(mock_get):
+    """separate CC0 + Attribution results merged and deduplicated."""
+    # First search (CC0) return ID 1
+    mock_response_cc0 = MagicMock()
+    mock_response_cc0.status_code = 200
+    mock_response_cc0.json.return_value = {
+        "results": [
+            {
+                "id": 1,
+                "name": "rain soft",
+                "license": "Creative Commons 0",
+                "username": "user1",
+                "duration": 5.0,
+                "download": "",
+                "previews": {"preview-hq-mp3": "http://example.com/1.mp3"},
+                "tags": []
+            }
+        ]
+    }
+
+    # Second search (Attribution) return ID 1 and ID 2
+    mock_response_by = MagicMock()
+    mock_response_by.status_code = 200
+    mock_response_by.json.return_value = {
+        "results": [
+            {
+                "id": 1,
+                "name": "rain soft",
+                "license": "Creative Commons 0",
+                "username": "user1",
+                "duration": 5.0,
+                "download": "",
+                "previews": {"preview-hq-mp3": "http://example.com/1.mp3"},
+                "tags": []
+            },
+            {
+                "id": 2,
+                "name": "heavy rain",
+                "license": "http://creativecommons.org/licenses/by/4.0/",
+                "username": "user2",
+                "duration": 12.0,
+                "download": "",
+                "previews": {"preview-hq-mp3": "http://example.com/2.mp3"},
+                "tags": []
+            }
+        ]
+    }
+
+    mock_get.side_effect = [mock_response_cc0, mock_response_by]
+
+    provider = FreesoundProvider(api_key="valid_key")
+    results = provider.search("rain")
+    
+    # Check merged & deduplicated size
+    assert len(results) == 2
+    assert results[0].external_id == "1"
+    assert results[1].external_id == "2"
+
+
+@patch("agents.audio.freesound_provider.requests.get")
+def test_freesound_raw_results_exist_but_all_unsafe_sfx_license_filter_empty(mock_get):
+    """HTTP 200 with raw results but all locally rejected/unsafe -> raw results exist but empty accepted."""
+    # Step 1 & 2 (filtered search) return empty
+    mock_response_empty = MagicMock()
+    mock_response_empty.status_code = 200
+    mock_response_empty.json.return_value = {"results": []}
+
+    # Fallback search (unfiltered larger page) returns only unsafe Attribution NonCommercial
+    mock_response_fallback = MagicMock()
+    mock_response_fallback.status_code = 200
+    mock_response_fallback.json.return_value = {
+        "results": [
+            {
+                "id": 99,
+                "name": "noncommercial sound",
+                "license": "Attribution NonCommercial",
+                "username": "user",
+                "duration": 4.0,
+                "download": "",
+                "previews": {"preview-hq-mp3": "http://example.com/99.mp3"},
+                "tags": []
+            }
+        ]
+    }
+
+    mock_get.side_effect = [mock_response_empty, mock_response_empty, mock_response_fallback]
+
+    provider = FreesoundProvider(api_key="valid_key")
+    results = provider.search("rain", max_duration_sec=30.0)
+    
+    # Should reject the unsafe license locally and return an empty list
+    assert len(results) == 0
+
+
+@patch("agents.audio.freesound_provider.requests.get")
+def test_preview_url_parsed_correctly(mock_get):
+    """previews are parsed correctly, prioritizing preview-hq-mp3 over preview-lq-mp3."""
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {
         "results": [
             {
                 "id": 1,
-                "name": "door creak",
+                "name": "creak",
                 "license": "Creative Commons 0",
-                "username": "user1",
-                "duration": 2.5,
-                "download": "http://example.com/1.wav",
-                "previews": {"preview-hq-mp3": "http://example.com/1.mp3"},
-                "tags": ["door"]
-            },
-            {
-                "id": 2,
-                "name": "restricted",
-                "license": "Sampling+",
-                "username": "user2",
-                "duration": 3.0,
-                "download": "http://example.com/2.wav",
-                "previews": {"preview-hq-mp3": "http://example.com/2.mp3"},
+                "username": "user",
+                "duration": 2.0,
+                "download": "",
+                "previews": {
+                    "preview-hq-mp3": "http://example.com/hq.mp3",
+                    "preview-lq-mp3": "http://example.com/lq.mp3"
+                },
                 "tags": []
             }
         ]
     }
     mock_get.return_value = mock_response
 
-    provider = FreesoundProvider(api_key="test_key")
-    results = provider.search("door")
+    provider = FreesoundProvider(api_key="valid_key")
+    results = provider._search_request("creak", max_duration_sec=15.0, filter_license=None, limit=5)
+    
     assert len(results) == 1
-    assert results[0].external_id == "1"
-    assert results[0].provider == "freesound"
+    assert results[0].preview_url == "http://example.com/hq.mp3"
 
 
 @patch("agents.audio.freesound_provider.requests.get")
 def test_freesound_download_saves_file(mock_get, tmp_path):
     mock_get.return_value = MagicMock(status_code=200, content=b"fakemp3data")
-    provider = FreesoundProvider(api_key="test_key")
+    provider = FreesoundProvider(api_key="valid_key")
     sound = SoundResult(
         provider="freesound",
         external_id="1",
@@ -107,130 +288,3 @@ def test_sfx_fetcher_returns_none_when_no_results():
     fetcher = SFXFetcher(provider=fake_provider)
     result = fetcher.fetch_best_match("nothing", "/tmp/none.mp3")
     assert result is None
-
-
-# === New Mocked Hardening Tests ===
-
-@patch("agents.audio.freesound_provider.requests.get")
-def test_freesound_search_http_200_rain(mock_get):
-    """valid API key + HTTP 200 + rain results."""
-    mock_response = MagicMock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {
-        "results": [
-            {
-                "id": 123,
-                "name": "distant rain ambience",
-                "license": "Creative Commons 0",
-                "username": "rainmaker",
-                "duration": 5.0,
-                "download": "",
-                "previews": {"preview-hq-mp3": "http://example.com/rain.mp3"},
-                "tags": ["rain"]
-            }
-        ]
-    }
-    mock_get.return_value = mock_response
-
-    provider = FreesoundProvider(api_key="valid_key")
-    results = provider.search("rain")
-    assert len(results) == 1
-    assert results[0].external_id == "123"
-    assert results[0].name == "distant rain ambience"
-
-
-@patch("agents.audio.freesound_provider.requests.get")
-def test_freesound_search_401_auth_failed(mock_get):
-    """401 becomes SFX_AUTH_FAILED."""
-    mock_response = MagicMock()
-    mock_response.status_code = 401
-    mock_response.text = "Authentication failed details"
-    mock_get.return_value = mock_response
-
-    provider = FreesoundProvider(api_key="invalid_key")
-    with pytest.raises(RuntimeError, match="SFX_AUTH_FAILED"):
-        provider.search("rain")
-
-
-@patch("agents.audio.freesound_provider.requests.get")
-def test_freesound_search_400_request_invalid(mock_get):
-    """400 becomes SFX_SEARCH_REQUEST_INVALID."""
-    mock_response = MagicMock()
-    mock_response.status_code = 400
-    mock_response.text = "Bad Request details"
-    mock_get.return_value = mock_response
-
-    provider = FreesoundProvider(api_key="valid_key")
-    with pytest.raises(RuntimeError, match="SFX_SEARCH_REQUEST_INVALID"):
-        provider.search("bad query")
-
-
-@patch("agents.audio.freesound_provider.requests.get")
-def test_freesound_search_429_rate_limited(mock_get):
-    """429 becomes SFX_RATE_LIMITED."""
-    mock_response = MagicMock()
-    mock_response.status_code = 429
-    mock_response.text = "Rate limited details"
-    mock_get.return_value = mock_response
-
-    provider = FreesoundProvider(api_key="valid_key")
-    with pytest.raises(RuntimeError, match="SFX_RATE_LIMITED"):
-        provider.search("rain")
-
-
-@patch("agents.audio.freesound_provider.requests.get")
-def test_freesound_search_timeout_raises_provider_timeout(mock_get):
-    """timeout becomes SFX_PROVIDER_TIMEOUT."""
-    import requests
-    mock_get.side_effect = requests.Timeout("Network timeout")
-
-    provider = FreesoundProvider(api_key="valid_key")
-    with pytest.raises(RuntimeError, match="SFX_PROVIDER_TIMEOUT"):
-        provider.search("rain")
-
-
-@patch("agents.audio.freesound_provider.requests.get")
-def test_freesound_search_500_raises_provider_unavailable(mock_get):
-    """500 becomes SFX_PROVIDER_UNAVAILABLE."""
-    mock_response = MagicMock()
-    mock_response.status_code = 500
-    mock_response.text = "Internal Server Error"
-    mock_get.return_value = mock_response
-
-    provider = FreesoundProvider(api_key="valid_key")
-    with pytest.raises(RuntimeError, match="SFX_PROVIDER_UNAVAILABLE"):
-        provider.search("rain")
-
-
-@patch("agents.audio.freesound_provider.requests.get")
-def test_freesound_search_zero_result_activates_aliases(mock_get):
-    """HTTP 200 zero result activates aliases and stops at the first successful query."""
-    mock_response_empty = MagicMock()
-    mock_response_empty.status_code = 200
-    mock_response_empty.json.return_value = {"results": []}
-
-    mock_response_success = MagicMock()
-    mock_response_success.status_code = 200
-    mock_response_success.json.return_value = {
-        "results": [
-            {
-                "id": 999,
-                "name": "soft rain ambience",
-                "license": "Creative Commons 0",
-                "username": "user",
-                "duration": 5.0,
-                "download": "",
-                "previews": {"preview-hq-mp3": "http://example.com/soft_rain.mp3"},
-                "tags": []
-            }
-        ]
-    }
-
-    mock_get.side_effect = [mock_response_empty, mock_response_success]
-
-    provider = FreesoundProvider(api_key="valid_key")
-    results = provider.search("rain ambience distant")
-    assert len(results) == 1
-    assert results[0].external_id == "999"
-    assert mock_get.call_count == 2
-
