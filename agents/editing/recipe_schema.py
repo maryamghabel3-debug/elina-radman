@@ -7,6 +7,7 @@ class VideoSegmentConfig:
     start_sec: float = 0.0
     end_sec: Optional[float] = None
     transition_out: Optional[Dict[str, Any]] = None
+    freeze_tail_sec: Optional[float] = None
 
 @dataclass
 class InputMediaConfig:
@@ -131,7 +132,14 @@ class EditRecipe:
                 end = seg.get("end", seg.get("end_sec"))
                 end = float(end) if end is not None else None
                 transition_out = seg.get("transition_out")
-                video_segments.append(VideoSegmentConfig(key=key, start_sec=start, end_sec=end, transition_out=transition_out))
+                freeze_tail_sec = seg.get("freeze_tail_sec")
+                if freeze_tail_sec is not None:
+                    freeze_tail_sec = float(freeze_tail_sec)
+                video_segments.append(VideoSegmentConfig(
+                    key=key, start_sec=start, end_sec=end,
+                    transition_out=transition_out,
+                    freeze_tail_sec=freeze_tail_sec
+                ))
 
         # Support legacy video_keys list (convert to segments if no segments provided)
         v_keys = im_data.get("video_keys", [])

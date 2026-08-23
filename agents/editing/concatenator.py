@@ -169,7 +169,7 @@ def normalize_segment(input_path: str, output_path: str, props: dict, ffmpeg_pat
 
 
 class VideoConcatenator:
-    """Concatenates multiple video clips (video stream only) into one file with transitions."""
+    """Concatenates multiple video clips (video stream only) into one file with transitions and freezes."""
 
     def __init__(self, ffmpeg_path: str = "ffmpeg"):
         self.ffmpeg_path = ffmpeg_path
@@ -215,7 +215,7 @@ class VideoConcatenator:
 
     def build_trim_concat_command(self, segments: List[Dict[str, Any]], output_path: str, keep_audio: bool = False) -> List[str]:
         """
-        Build FFmpeg command for trimming and concatenating video segments with transitions.
+        Build FFmpeg command for trimming, freezing, and concatenating video segments with transitions.
 
         When keep_audio is True, the original audio streams are trimmed and
         concatenated together with the video (v=1:a=1). Otherwise the output
@@ -224,7 +224,7 @@ class VideoConcatenator:
         if not segments:
             raise ValueError("No segments provided.")
 
-        # Validate segments and transitions first
+        # Validate segments, transitions, and freezes first
         for i, seg in enumerate(segments):
             if seg.get("start_sec", 0.0) < 0:
                 raise ValueError(f"Segment {i}: start_sec cannot be negative.")
@@ -240,27 +240,44 @@ class VideoConcatenator:
                 if t_type not in ("hard_cut", "dissolve", "fade_black"):
                     raise ValueError(f"TRANSITION_TYPE_INVALID: invalid transition type '{t_type}'")
 
-        # Single segment with no trim and no transition: return empty to trigger copy
+            freeze_sec = seg.get("freeze_tail_sec")
+            if freeze_sec is not None:
+                try:
+                    f_val = float(freeze_sec)
+                    if f_val < 0.0 or f_val > 1.0:
+                        raise ValueError("FREEZE_DURATION_INVALID: freeze_tail_sec must be between 0.0 and 1.0")
+                except ValueError as ve:
+                    if "FREEZE_DURATION_INVALID" in str(ve):
+                        raise
+                    raise ValueError("FREEZE_DURATION_INVALID: freeze_tail_sec must be a float")
+
+        # Single segment with no trim, no transition, and no freeze: return empty to trigger copy
         if len(segments) == 1:
             seg = segments[0]
             start = seg.get("start_sec", 0.0)
             end = seg.get("end_sec")
-            if start == 0.0 and end is None:
+            freeze_sec = seg.get("freeze_tail_sec")
+            has_freeze = freeze_sec is not None and float(freeze_sec) > 0.0
+            if start == 0.0 and end is None and not has_freeze:
                 return []
 
-        # Check if there are any non-trivial transitions
-        has_non_trivial_transitions = False
-        for i in range(len(segments) - 1):
-            trans = segments[i].get("transition_out")
-            if trans and isinstance(trans, dict):
-                t_type = trans.get("type", "hard_cut")
-                duration_sec = trans.get("duration_sec", 0.0)
-                if t_type in ("dissolve", "fade_black") and duration_sec > 0:
-                    has_non_trivial_transitions = True
-                    break
+        # Check if there are any non-trivial transitions or freezes
+        has_complex_operations = False
+        for i in range(len(segments)):
+            if i < len(segments) - 1:
+                trans = segments[i].get("transition_out")
+                if trans and isinstance(trans, dict):
+                    t_type = trans.get("type", "hard_cut")
+                    duration_sec = trans.get("duration_sec", 0.0)
+                    if t_type in ("dissolve", "fade_black") and duration_sec > 0:
+                        has_complex_operations = True
+            
+            freeze_sec = segments[i].get("freeze_tail_sec")
+            if freeze_sec is not None and float(freeze_sec) > 0.0:
+                has_complex_operations = True
 
-        if not has_non_trivial_transitions:
-            # === LEGACY PATH (Guarantees identical behavior for absent transition_out) ===
+        if not has_complex_operations:
+            # === LEGACY PATH (Guarantees identical behavior for absent transition_out and freezes) ===
             filter_parts = []
             for i, seg in enumerate(segments):
                 path = seg["path"]
@@ -314,7 +331,7 @@ class VideoConcatenator:
             ])
             return cmd
 
-        # === TRANSITION PATH ===
+        # === TRANSITION & FREEZE PATH ===
         # 1. Compute duration of each trimmed segment
         segment_durations = []
         for i, seg in enumerate(segments):
@@ -327,30 +344,58 @@ class VideoConcatenator:
                 source_dur = props.get("duration", 0.0)
                 dur = source_dur - start
             dur = max(0.0, dur)
+
+            # Account for freeze frame duration padding
+            freeze_sec = seg.get("freeze_tail_sec")
+            if freeze_sec is not None:
+                freeze_sec = float(freeze_sec)
+                if freeze_sec < 0.0 or freeze_sec > 1.0:
+                    raise ValueError("FREEZE_DURATION_INVALID: freeze_tail_sec must be between 0.0 and 1.0")
+                dur += freeze_sec
+
             segment_durations.append(dur)
 
         filter_parts = []
-        # Trim clips to [v0], [v1]... and [a0], [a1]...
+        # Trim clips to [v0_trim], [v1_trim]... and [a0_trim], [a1_trim]...
         for i, seg in enumerate(segments):
             start = seg.get("start_sec", 0.0)
             end = seg.get("end_sec")
 
             if start > 0 or end is not None:
                 if end is not None:
-                    filter_parts.append(f"[{i}:v]trim=start={start}:end={end},setpts=PTS-STARTPTS[v{i}]")
+                    filter_parts.append(f"[{i}:v]trim=start={start}:end={end},setpts=PTS-STARTPTS[v{i}_trim]")
                 else:
-                    filter_parts.append(f"[{i}:v]trim=start={start},setpts=PTS-STARTPTS[v{i}]")
+                    filter_parts.append(f"[{i}:v]trim=start={start},setpts=PTS-STARTPTS[v{i}_trim]")
             else:
-                filter_parts.append(f"[{i}:v]null[v{i}]")
+                filter_parts.append(f"[{i}:v]null[v{i}_trim]")
 
             if keep_audio:
                 if start > 0 or end is not None:
                     if end is not None:
-                        filter_parts.append(f"[{i}:a]atrim=start={start}:end={end},asetpts=PTS-STARTPTS[a{i}]")
+                        filter_parts.append(f"[{i}:a]atrim=start={start}:end={end},asetpts=PTS-STARTPTS[a{i}_trim]")
                     else:
-                        filter_parts.append(f"[{i}:a]atrim=start={start},asetpts=PTS-STARTPTS[a{i}]")
+                        filter_parts.append(f"[{i}:a]atrim=start={start},asetpts=PTS-STARTPTS[a{i}_trim]")
                 else:
-                    filter_parts.append(f"[{i}:a]anull[a{i}]")
+                    filter_parts.append(f"[{i}:a]anull[a{i}_trim]")
+
+        # Apply freeze frame tail padding if requested (composed before transitions)
+        for i, seg in enumerate(segments):
+            freeze_sec = seg.get("freeze_tail_sec")
+            if freeze_sec is not None:
+                freeze_sec = float(freeze_sec)
+            else:
+                freeze_sec = 0.0
+
+            if freeze_sec > 0.0:
+                # Video tpad clones the last frame of the video
+                filter_parts.append(f"[v{i}_trim]tpad=stop_mode=clone:stop_duration={freeze_sec}[v{i}]")
+                if keep_audio:
+                    # Audio silence padding using apad to keep A/V aligned
+                    filter_parts.append(f"[a{i}_trim]apad=pad_dur={freeze_sec}[a{i}]")
+            else:
+                filter_parts.append(f"[v{i}_trim]null[v{i}]")
+                if keep_audio:
+                    filter_parts.append(f"[a{i}_trim]anull[a{i}]")
 
         current_v = "v0"
         current_v_dur = segment_durations[0]
@@ -446,7 +491,7 @@ class VideoConcatenator:
 
     def concat_segments(self, segments: List[Dict[str, Any]], output_path: str, keep_audio: bool = False) -> str:
         """
-        Concatenate video segments with optional trimming and normalization.
+        Concatenate video segments with optional trimming, freezing, and normalization.
 
         keep_audio keeps the original audio streams in the concatenated output
         (used when the user's plan says to keep the original shot audio). Falls
@@ -463,19 +508,23 @@ class VideoConcatenator:
             logger.info(f"Segment {i} properties: {props}")
             segment_props.append(props)
 
-        # Check if there are any non-trivial transitions
-        has_non_trivial_transitions = False
-        for i in range(len(segments) - 1):
-            trans = segments[i].get("transition_out")
-            if trans and isinstance(trans, dict):
-                t_type = trans.get("type", "hard_cut")
-                duration_sec = trans.get("duration_sec", 0.0)
-                if t_type in ("dissolve", "fade_black") and duration_sec > 0:
-                    has_non_trivial_transitions = True
-                    break
+        # Check if there are any non-trivial transitions or freezes
+        has_complex_operations = False
+        for i in range(len(segments)):
+            if i < len(segments) - 1:
+                trans = segments[i].get("transition_out")
+                if trans and isinstance(trans, dict):
+                    t_type = trans.get("type", "hard_cut")
+                    duration_sec = trans.get("duration_sec", 0.0)
+                    if t_type in ("dissolve", "fade_black") and duration_sec > 0:
+                        has_complex_operations = True
+            
+            freeze_sec = segments[i].get("freeze_tail_sec")
+            if freeze_sec is not None and float(freeze_sec) > 0.0:
+                has_complex_operations = True
 
         force_norm = False
-        if has_non_trivial_transitions and os.environ.get("ELINA_TEST_ALLOW_MOCKS") != "true":
+        if has_complex_operations and os.environ.get("ELINA_TEST_ALLOW_MOCKS") != "true":
             force_norm = True
 
         # Check and normalize if heterogeneous or if non-trivial transitions require uniform formats
