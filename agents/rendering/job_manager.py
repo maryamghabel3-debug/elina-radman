@@ -104,6 +104,8 @@ class RenderJobManager:
             or "MUSIC_PROVIDER_NOT_CONFIGURED" in error_message
             or "SHOT_INDEX_OUT_OF_RANGE" in error_message
             or "SFX_ANCHOR_OUT_OF_RANGE" in error_message
+            or "SFX_AUTH_FAILED" in error_message
+            or "SFX_SEARCH_REQUEST_INVALID" in error_message
         )
 
         if is_terminal or attempts >= max_attempts:

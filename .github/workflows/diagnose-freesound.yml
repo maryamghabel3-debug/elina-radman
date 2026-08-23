@@ -1,0 +1,29 @@
+name: Diagnose Freesound
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements-core.txt
+
+      - name: Run Freesound diagnostics
+        env:
+          FREESOUND_API_KEY: ${{ secrets.FREESOUND_API_KEY }}
+          FREESOUND_CLIENT_SECRET: ${{ secrets.FREESOUND_CLIENT_SECRET }}
+        run: |
+          python scripts/diagnose_freesound.py --query rain
