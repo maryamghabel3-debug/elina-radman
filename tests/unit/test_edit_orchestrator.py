@@ -739,3 +739,328 @@ def test_render_content_music_gain_db_propagation(monkeypatch):
     # Check that recipe's music_gain_db is set to -18!
     recipe = assembler.calls[0]["recipe"]
     assert recipe.audio.music_gain_db == -18
+
+
+# === New Shot-Anchored SFX Timing Tests ===
+
+def test_anchor_shot_1_end_resolves_correctly(monkeypatch):
+    """anchor shot_1.end with offset -0.4 resolves correctly for known trims."""
+    import agents.editing.orchestrator as orch_mod
+
+    # Mock get_video_properties
+    def fake_props(path, **kwargs):
+        return {"duration": 10.0}
+    monkeypatch.setattr(orch_mod, "get_video_properties", fake_props)
+
+    # Mock VideoConcatenator to avoid needing ffmpeg
+    class MockConcatenator:
+        def concat_segments(self, segments, output_path, **kwargs):
+            with open(output_path, "wb") as f:
+                f.write(b"0" * 20000)
+            return output_path
+    monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
+
+    item = {
+        "id": "uuid-anchor-1",
+        "custom_id": "ELN-ANCHOR-1",
+        "content_type": "reel",
+        "media_keys": ["raw/v1.mp4", "raw/v2.mp4"],
+        "status": "NEEDS_EDIT",
+    }
+    db = FakeDB(item=item)
+    assembler = FakeAssembler()
+    o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=assembler)
+
+    # Segment 1 trimmed from 1.0 to 6.0 (dur = 5.0)
+    # Segment 2 trimmed from 0.0 to 5.0 (dur = 5.0)
+    video_segments = [
+        {"key": "raw/v1.mp4", "start_sec": 1.0, "end_sec": 6.0},
+        {"key": "raw/v2.mp4", "start_sec": 0.0, "end_sec": 5.0}
+    ]
+    plan_sfx = [
+        {
+            "query": "click",
+            "anchor": "shot_1.end",
+            "offset_sec": -0.4,
+            "gain_db": -6
+        }
+    ]
+
+    # Mock fetcher
+    from agents.audio.base_provider import SoundResult
+    fetched_sound = type("Fetched", (), {
+        "local_path": "/tmp/fetched_click.mp3",
+        "metadata": SoundResult(
+            provider="freesound", external_id="1", name="click",
+            license="CC0", attribution=None, duration_sec=0.5,
+            download_url="", preview_url=""
+        )
+    })
+    
+    with patch("agents.audio.sfx_fetcher.SFXFetcher") as MockFetcher:
+        fetcher_instance = MockFetcher.return_value
+        fetcher_instance.fetch_best_match.return_value = fetched_sound
+
+        result = o.render_content(
+            "ELN-ANCHOR-1",
+            video_segments=video_segments,
+            plan_sfx=plan_sfx,
+        )
+
+        assert result["ok"] is True
+        assert len(assembler.calls) == 1
+        sfx_items = assembler.calls[0]["sfx_items"]
+        assert len(sfx_items) == 1
+        # Expected: base_time = 5.0, offset = -0.4 -> resolved = 4.6
+        assert abs(sfx_items[0]["start_sec"] - 4.6) < 1e-5
+
+
+def test_anchor_resolution_accounts_for_dissolve_and_freeze(monkeypatch):
+    """resolution accounts for a dissolve overlap and a freeze tail."""
+    import agents.editing.orchestrator as orch_mod
+
+    def fake_props(path, **kwargs):
+        return {"duration": 10.0}
+    monkeypatch.setattr(orch_mod, "get_video_properties", fake_props)
+
+    # Mock VideoConcatenator to avoid needing ffmpeg
+    class MockConcatenator:
+        def concat_segments(self, segments, output_path, **kwargs):
+            with open(output_path, "wb") as f:
+                f.write(b"0" * 20000)
+            return output_path
+    monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
+
+    item = {
+        "id": "uuid-anchor-2",
+        "custom_id": "ELN-ANCHOR-2",
+        "content_type": "reel",
+        "media_keys": ["raw/v1.mp4", "raw/v2.mp4"],
+        "status": "NEEDS_EDIT",
+    }
+    db = FakeDB(item=item)
+    assembler = FakeAssembler()
+    o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=assembler)
+
+    # Segment 1: dur=5.0, freeze=0.2, transition_out=dissolve (0.5s) -> active_dur = 5.2, ends at 5.2
+    # Segment 2: dur=5.0, starts at 5.2 - 0.5 = 4.7, ends at 4.7 + 5.0 = 9.7
+    video_segments = [
+        {
+            "key": "raw/v1.mp4",
+            "start_sec": 0.0,
+            "end_sec": 5.0,
+            "freeze_tail_sec": 0.2,
+            "transition_out": {"type": "dissolve", "duration_sec": 0.5}
+        },
+        {"key": "raw/v2.mp4", "start_sec": 0.0, "end_sec": 5.0}
+    ]
+    plan_sfx = [
+        {"query": "sfx1", "anchor": "shot_2.start", "offset_sec": 0.1},
+        {"query": "sfx2", "anchor": "shot_2.end", "offset_sec": -0.2}
+    ]
+
+    from agents.audio.base_provider import SoundResult
+    fetched_sound = type("Fetched", (), {
+        "local_path": "/tmp/fetched.mp3",
+        "metadata": SoundResult(
+            provider="freesound", external_id="1", name="sfx",
+            license="CC0", attribution=None, duration_sec=0.5,
+            download_url="", preview_url=""
+        )
+    })
+    
+    with patch("agents.audio.sfx_fetcher.SFXFetcher") as MockFetcher:
+        fetcher_instance = MockFetcher.return_value
+        fetcher_instance.fetch_best_match.return_value = fetched_sound
+
+        result = o.render_content(
+            "ELN-ANCHOR-2",
+            video_segments=video_segments,
+            plan_sfx=plan_sfx,
+        )
+
+        assert result["ok"] is True
+        sfx_items = assembler.calls[0]["sfx_items"]
+        assert len(sfx_items) == 2
+        # SFX 1: starts at shot_2.start (4.7) + 0.1 = 4.8
+        assert abs(sfx_items[0]["start_sec"] - 4.8) < 1e-5
+        # SFX 2: starts at shot_2.end (9.7) - 0.2 = 9.5
+        assert abs(sfx_items[1]["start_sec"] - 9.5) < 1e-5
+
+
+def test_absolute_start_sec_unaffected(monkeypatch):
+    """absolute start_sec items unaffected by anchor resolution step (regression)."""
+    import agents.editing.orchestrator as orch_mod
+
+    def fake_props(path, **kwargs):
+        return {"duration": 10.0}
+    monkeypatch.setattr(orch_mod, "get_video_properties", fake_props)
+
+    # Mock VideoConcatenator to avoid needing ffmpeg
+    class MockConcatenator:
+        def concat_segments(self, segments, output_path, **kwargs):
+            with open(output_path, "wb") as f:
+                f.write(b"0" * 20000)
+            return output_path
+    monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
+
+    item = {
+        "id": "uuid-anchor-3",
+        "custom_id": "ELN-ANCHOR-3",
+        "content_type": "reel",
+        "media_keys": ["raw/v1.mp4"],
+        "status": "NEEDS_EDIT",
+    }
+    db = FakeDB(item=item)
+    assembler = FakeAssembler()
+    o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=assembler)
+
+    plan_sfx = [
+        {"query": "click", "start_sec": 3.7}
+    ]
+
+    from agents.audio.base_provider import SoundResult
+    fetched_sound = type("Fetched", (), {
+        "local_path": "/tmp/fetched.mp3",
+        "metadata": SoundResult(
+            provider="freesound", external_id="1", name="sfx",
+            license="CC0", attribution=None, duration_sec=0.5,
+            download_url="", preview_url=""
+        )
+    })
+    
+    with patch("agents.audio.sfx_fetcher.SFXFetcher") as MockFetcher:
+        fetcher_instance = MockFetcher.return_value
+        fetcher_instance.fetch_best_match.return_value = fetched_sound
+
+        result = o.render_content(
+            "ELN-ANCHOR-3",
+            plan_sfx=plan_sfx,
+        )
+
+        assert result["ok"] is True
+        sfx_items = assembler.calls[0]["sfx_items"]
+        assert len(sfx_items) == 1
+        assert sfx_items[0]["start_sec"] == 3.7
+
+
+def test_out_of_range_anchor_raises_terminal_error(monkeypatch):
+    """out-of-range anchor index or time exceeds total duration raises SFX_ANCHOR_OUT_OF_RANGE."""
+    import agents.editing.orchestrator as orch_mod
+
+    def fake_props(path, **kwargs):
+        return {"duration": 10.0}
+    monkeypatch.setattr(orch_mod, "get_video_properties", fake_props)
+
+    # Mock VideoConcatenator to avoid needing ffmpeg
+    class MockConcatenator:
+        def concat_segments(self, segments, output_path, **kwargs):
+            with open(output_path, "wb") as f:
+                f.write(b"0" * 20000)
+            return output_path
+    monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
+
+    item = {
+        "id": "uuid-anchor-4",
+        "custom_id": "ELN-ANCHOR-4",
+        "content_type": "reel",
+        "media_keys": ["raw/v1.mp4"],
+        "status": "NEEDS_EDIT",
+    }
+    db = FakeDB(item=item)
+    assembler = FakeAssembler()
+    o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=assembler)
+
+    # 1. Shot index out of range
+    plan_sfx_bad_idx = [{"query": "click", "anchor": "shot_2.start", "offset_sec": 0.0}]
+    
+    # 2. Resolved time exceeds total duration (which is 10.0)
+    plan_sfx_bad_time = [{"query": "click", "anchor": "shot_1.end", "offset_sec": 1.5}]
+
+    from agents.audio.base_provider import SoundResult
+    fetched_sound = type("Fetched", (), {
+        "local_path": "/tmp/fetched.mp3",
+        "metadata": SoundResult(
+            provider="freesound", external_id="1", name="sfx",
+            license="CC0", attribution=None, duration_sec=0.5,
+            download_url="", preview_url=""
+        )
+    })
+    
+    with patch("agents.audio.sfx_fetcher.SFXFetcher") as MockFetcher:
+        fetcher_instance = MockFetcher.return_value
+        fetcher_instance.fetch_best_match.return_value = fetched_sound
+
+        result_idx = o.render_content("ELN-ANCHOR-4", plan_sfx=plan_sfx_bad_idx)
+        assert result_idx["ok"] is False
+        assert "SFX_ANCHOR_OUT_OF_RANGE" in result_idx["error"]
+
+        result_time = o.render_content("ELN-ANCHOR-4", plan_sfx=plan_sfx_bad_time)
+        assert result_time["ok"] is False
+        assert "SFX_ANCHOR_OUT_OF_RANGE" in result_time["error"]
+
+
+def test_mixed_absolute_and_anchored_items(monkeypatch):
+    """mixed absolute + anchored items in one plan are all resolved correctly."""
+    import agents.editing.orchestrator as orch_mod
+
+    def fake_props(path, **kwargs):
+        return {"duration": 10.0}
+    monkeypatch.setattr(orch_mod, "get_video_properties", fake_props)
+
+    # Mock VideoConcatenator to avoid needing ffmpeg
+    class MockConcatenator:
+        def concat_segments(self, segments, output_path, **kwargs):
+            with open(output_path, "wb") as f:
+                f.write(b"0" * 20000)
+            return output_path
+    monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
+
+    item = {
+        "id": "uuid-anchor-5",
+        "custom_id": "ELN-ANCHOR-5",
+        "content_type": "reel",
+        "media_keys": ["raw/v1.mp4", "raw/v2.mp4"],
+        "status": "NEEDS_EDIT",
+    }
+    db = FakeDB(item=item)
+    assembler = FakeAssembler()
+    o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=assembler)
+
+    video_segments = [
+        {"key": "raw/v1.mp4", "start_sec": 0.0, "end_sec": 5.0},
+        {"key": "raw/v2.mp4", "start_sec": 0.0, "end_sec": 5.0}
+    ]
+    plan_sfx = [
+        {"query": "click1", "start_sec": 1.5},
+        {"query": "click2", "anchor": "shot_2.start", "offset_sec": -0.5}
+    ]
+
+    from agents.audio.base_provider import SoundResult
+    fetched_sound = type("Fetched", (), {
+        "local_path": "/tmp/fetched.mp3",
+        "metadata": SoundResult(
+            provider="freesound", external_id="1", name="sfx",
+            license="CC0", attribution=None, duration_sec=0.5,
+            download_url="", preview_url=""
+        )
+    })
+    
+    with patch("agents.audio.sfx_fetcher.SFXFetcher") as MockFetcher:
+        fetcher_instance = MockFetcher.return_value
+        fetcher_instance.fetch_best_match.return_value = fetched_sound
+
+        result = o.render_content(
+            "ELN-ANCHOR-5",
+            video_segments=video_segments,
+            plan_sfx=plan_sfx,
+        )
+
+        assert result["ok"] is True
+        sfx_items = assembler.calls[0]["sfx_items"]
+        assert len(sfx_items) == 2
+        # SFX 1 (absolute): 1.5
+        assert sfx_items[0]["start_sec"] == 1.5
+        # SFX 2 (anchored): base_time (5.0) - 0.5 = 4.5
+        assert abs(sfx_items[1]["start_sec"] - 4.5) < 1e-5
+
