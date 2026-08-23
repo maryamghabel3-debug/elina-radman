@@ -169,7 +169,7 @@ def normalize_segment(input_path: str, output_path: str, props: dict, ffmpeg_pat
 
 
 class VideoConcatenator:
-    """Concatenates multiple video clips (video stream only) into one file with transitions and freezes."""
+    """Concatenates multiple video clips (video stream only) into one file with transitions, freezes, and transforms."""
 
     def __init__(self, ffmpeg_path: str = "ffmpeg"):
         self.ffmpeg_path = ffmpeg_path
@@ -215,7 +215,7 @@ class VideoConcatenator:
 
     def build_trim_concat_command(self, segments: List[Dict[str, Any]], output_path: str, keep_audio: bool = False) -> List[str]:
         """
-        Build FFmpeg command for trimming, freezing, and concatenating video segments with transitions.
+        Build FFmpeg command for trimming, transforming, freezing, and concatenating video segments with transitions.
 
         When keep_audio is True, the original audio streams are trimmed and
         concatenated together with the video (v=1:a=1). Otherwise the output
@@ -224,7 +224,7 @@ class VideoConcatenator:
         if not segments:
             raise ValueError("No segments provided.")
 
-        # Validate segments, transitions, and freezes first
+        # Validate segments, transitions, freezes, and transforms first
         for i, seg in enumerate(segments):
             if seg.get("start_sec", 0.0) < 0:
                 raise ValueError(f"Segment {i}: start_sec cannot be negative.")
@@ -251,17 +251,43 @@ class VideoConcatenator:
                         raise
                     raise ValueError("FREEZE_DURATION_INVALID: freeze_tail_sec must be a float")
 
-        # Single segment with no trim, no transition, and no freeze: return empty to trigger copy
+            transform = seg.get("transform")
+            if transform is not None:
+                if not isinstance(transform, dict):
+                    raise ValueError("TRANSFORM_INVALID: transform must be a dictionary")
+                if len(transform) > 0:
+                    scale = transform.get("scale")
+                    x = transform.get("x")
+                    y = transform.get("y")
+                    if scale is None or x is None or y is None:
+                        raise ValueError("TRANSFORM_INVALID: transform must contain scale, x, and y")
+                    try:
+                        s_val = float(scale)
+                        if s_val < 0.8 or s_val > 1.5:
+                            raise ValueError("TRANSFORM_INVALID: scale must be between 0.8 and 1.5")
+                    except ValueError as ve:
+                        if "TRANSFORM_INVALID" in str(ve):
+                            raise
+                        raise ValueError("TRANSFORM_INVALID: scale must be a float")
+                    try:
+                        int(x)
+                        int(y)
+                    except ValueError:
+                        raise ValueError("TRANSFORM_INVALID: x and y offsets must be integers")
+
+        # Single segment with no trim, no transition, no freeze, and no transform: return empty to trigger copy
         if len(segments) == 1:
             seg = segments[0]
             start = seg.get("start_sec", 0.0)
             end = seg.get("end_sec")
             freeze_sec = seg.get("freeze_tail_sec")
             has_freeze = freeze_sec is not None and float(freeze_sec) > 0.0
-            if start == 0.0 and end is None and not has_freeze:
+            transform = seg.get("transform")
+            has_transform = transform is not None and isinstance(transform, dict) and len(transform) > 0
+            if start == 0.0 and end is None and not has_freeze and not has_transform:
                 return []
 
-        # Check if there are any non-trivial transitions or freezes
+        # Check if there are any non-trivial transitions, freezes, or transforms
         has_complex_operations = False
         for i in range(len(segments)):
             if i < len(segments) - 1:
@@ -276,8 +302,12 @@ class VideoConcatenator:
             if freeze_sec is not None and float(freeze_sec) > 0.0:
                 has_complex_operations = True
 
+            transform = segments[i].get("transform")
+            if transform is not None and isinstance(transform, dict) and len(transform) > 0:
+                has_complex_operations = True
+
         if not has_complex_operations:
-            # === LEGACY PATH (Guarantees identical behavior for absent transition_out and freezes) ===
+            # === LEGACY PATH (Guarantees identical behavior for absent transitions, freezes, and transforms) ===
             filter_parts = []
             for i, seg in enumerate(segments):
                 path = seg["path"]
@@ -331,7 +361,7 @@ class VideoConcatenator:
             ])
             return cmd
 
-        # === TRANSITION & FREEZE PATH ===
+        # === TRANSITION, FREEZE, & TRANSFORM PATH ===
         # 1. Compute duration of each trimmed segment
         segment_durations = []
         for i, seg in enumerate(segments):
@@ -349,8 +379,6 @@ class VideoConcatenator:
             freeze_sec = seg.get("freeze_tail_sec")
             if freeze_sec is not None:
                 freeze_sec = float(freeze_sec)
-                if freeze_sec < 0.0 or freeze_sec > 1.0:
-                    raise ValueError("FREEZE_DURATION_INVALID: freeze_tail_sec must be between 0.0 and 1.0")
                 dur += freeze_sec
 
             segment_durations.append(dur)
@@ -378,7 +406,31 @@ class VideoConcatenator:
                 else:
                     filter_parts.append(f"[{i}:a]anull[a{i}_trim]")
 
-        # Apply freeze frame tail padding if requested (composed before transitions)
+        # Apply transform if requested (composes first)
+        for i, seg in enumerate(segments):
+            transform = seg.get("transform")
+            if transform is not None and isinstance(transform, dict) and len(transform) > 0:
+                scale = float(transform.get("scale", 1.0))
+                x = int(transform.get("x", 0))
+                y = int(transform.get("y", 0))
+
+                scaled_w = int(round(1080 * scale))
+                scaled_h = int(round(1920 * scale))
+
+                if scale >= 1.0:
+                    crop_x = f"(in_w-1080)/2-({x})"
+                    crop_y = f"(in_h-1920)/2-({y})"
+                    transform_vf = f"scale={scaled_w}:{scaled_h},crop=1080:1920:{crop_x}:{crop_y}"
+                else:
+                    pad_x = f"(1080-in_w)/2+({x})"
+                    pad_y = f"(1920-in_h)/2+({y})"
+                    transform_vf = f"scale={scaled_w}:{scaled_h},pad=1080:1920:{pad_x}:{pad_y}:black"
+
+                filter_parts.append(f"[v{i}_trim]{transform_vf}[v{i}_trans]")
+            else:
+                filter_parts.append(f"[v{i}_trim]null[v{i}_trans]")
+
+        # Apply freeze frame tail padding if requested (composes after transform, before transitions)
         for i, seg in enumerate(segments):
             freeze_sec = seg.get("freeze_tail_sec")
             if freeze_sec is not None:
@@ -387,13 +439,13 @@ class VideoConcatenator:
                 freeze_sec = 0.0
 
             if freeze_sec > 0.0:
-                # Video tpad clones the last frame of the video
-                filter_parts.append(f"[v{i}_trim]tpad=stop_mode=clone:stop_duration={freeze_sec}[v{i}]")
+                # Video tpad clones the last frame of the transformed video stream
+                filter_parts.append(f"[v{i}_trans]tpad=stop_mode=clone:stop_duration={freeze_sec}[v{i}]")
                 if keep_audio:
                     # Audio silence padding using apad to keep A/V aligned
                     filter_parts.append(f"[a{i}_trim]apad=pad_dur={freeze_sec}[a{i}]")
             else:
-                filter_parts.append(f"[v{i}_trim]null[v{i}]")
+                filter_parts.append(f"[v{i}_trans]null[v{i}]")
                 if keep_audio:
                     filter_parts.append(f"[a{i}_trim]anull[a{i}]")
 
@@ -491,7 +543,7 @@ class VideoConcatenator:
 
     def concat_segments(self, segments: List[Dict[str, Any]], output_path: str, keep_audio: bool = False) -> str:
         """
-        Concatenate video segments with optional trimming, freezing, and normalization.
+        Concatenate video segments with optional trimming, freezing, transforming, and normalization.
 
         keep_audio keeps the original audio streams in the concatenated output
         (used when the user's plan says to keep the original shot audio). Falls
@@ -508,7 +560,7 @@ class VideoConcatenator:
             logger.info(f"Segment {i} properties: {props}")
             segment_props.append(props)
 
-        # Check if there are any non-trivial transitions or freezes
+        # Check if there are any non-trivial transitions, freezes, or transforms
         has_complex_operations = False
         for i in range(len(segments)):
             if i < len(segments) - 1:
@@ -523,11 +575,15 @@ class VideoConcatenator:
             if freeze_sec is not None and float(freeze_sec) > 0.0:
                 has_complex_operations = True
 
+            transform = segments[i].get("transform")
+            if transform is not None and isinstance(transform, dict) and len(transform) > 0:
+                has_complex_operations = True
+
         force_norm = False
         if has_complex_operations and os.environ.get("ELINA_TEST_ALLOW_MOCKS") != "true":
             force_norm = True
 
-        # Check and normalize if heterogeneous or if non-trivial transitions require uniform formats
+        # Check and normalize if heterogeneous or if non-trivial transitions/transforms require uniform formats
         if should_normalize_segments(segment_props) or force_norm:
             logger.info("Normalizing segments to canonical profile before concatenation...")
             normalized = True
