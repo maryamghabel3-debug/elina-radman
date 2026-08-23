@@ -539,3 +539,50 @@ def test_process_job_shot_index_out_of_range():
                     assert call_arg["status"] == "FAILED"
                     assert "SHOT_INDEX_OUT_OF_RANGE" in call_arg["error_message"]
                     assert "shot 3 requested but bundle has 2 shots" in call_arg["error_message"]
+
+
+def test_process_job_sends_signed_url():
+    """Test: if signed URL generation is available, message includes signed URL."""
+    mock_job = {
+        "id": "job-1",
+        "content_id": "ELN-BUNDLE-123",
+        "plan_data": {
+            "target_id": "ELN-BUNDLE-123",
+            "shots": [{"index": 1, "start": 0.0, "end": 2.5}],
+        },
+        "owner_chat_id": "12345"
+    }
+
+    mock_db = MagicMock()
+    mock_db.get_content_by_custom_id.return_value = {
+        "id": "item-123",
+        "custom_id": "ELN-BUNDLE-123",
+        "media_keys": ["path/1.mp4"]
+    }
+
+    class MockOrchestrator:
+        def render_content(self, **kwargs):
+            return {"ok": True, "output_key": "edited/final.mp4"}
+
+    class MockStorage:
+        def create_signed_url(self, key, ttl):
+            return f"https://signed.example/{key}"
+
+    with patch("scripts.render_worker.ElinaDB", lambda: mock_db):
+        with patch("agents.editing.orchestrator.EditOrchestrator", lambda: MockOrchestrator()):
+            with patch("agents.storage.supabase_storage.ElinaStorage", lambda: MockStorage()):
+                with patch("scripts.render_worker.RenderJobManager") as MockJobManager:
+                    instance = MockJobManager.return_value
+                    instance.mark_completed.return_value = {}
+
+                    with patch("urllib.request.urlopen") as mock_urlopen:
+                        result = process_job(mock_job)
+
+                        assert result is True
+                        mock_urlopen.assert_called_once()
+                        
+                        # Verify that the sent text contains the signed URL
+                        import json as _json
+                        sent_payload = _json.loads(mock_urlopen.call_args[0][0].data.decode("utf-8"))
+                        assert "https://signed.example/edited/final.mp4" in sent_payload["text"]
+                        assert "🔗 لینک دانلود موقت" in sent_payload["text"]
