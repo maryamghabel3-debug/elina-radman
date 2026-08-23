@@ -32,6 +32,28 @@ def send_telegram_message(chat_id, text):
         logger.warning(f"Telegram notification failed: {exc}")
 
 
+def send_telegram_video(chat_id, video_url, caption=None):
+    token = os.environ.get("STUDIO_BOT_TOKEN")
+    if not token or not chat_id:
+        logger.warning("Cannot send Telegram video: missing token or chat_id")
+        return False
+    try:
+        url = f"https://api.telegram.org/bot{token}/sendVideo"
+        payload = {
+            "chat_id": chat_id,
+            "video": video_url,
+        }
+        if caption:
+            payload["caption"] = caption
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=15)
+        return True
+    except Exception as exc:
+        logger.warning(f"Telegram sendVideo failed: {exc}")
+        return False
+
+
 def process_job(job) -> bool:
     job_id = job["id"]
     content_id = job["plan_data"].get("target_id", job["content_id"])
@@ -136,12 +158,33 @@ def process_job(job) -> bool:
 
         mgr = RenderJobManager()
         if result.get("ok"):
-            mgr.mark_completed(job_id, result.get("output_key", ""))
-            send_telegram_message(chat_id,
+            output_key = result.get("output_key", "")
+            mgr.mark_completed(job_id, output_key)
+
+            # Generate short-lived signed URL
+            signed_url = ""
+            try:
+                from agents.storage.supabase_storage import ElinaStorage
+                storage = ElinaStorage()
+                signed_url = storage.create_signed_url(output_key, 3600)
+            except Exception as e:
+                logger.warning(f"Failed to generate signed URL for notification: {e}")
+
+            # Prepare text message
+            msg = (
                 f"✅ رندر تمام شد!\n"
                 f"شناسه: {content_id}\n"
-                f"فایل: {result.get('output_key', 'در Supabase ذخیره شد')}"
+                f"فایل: {output_key}"
             )
+            if signed_url:
+                msg += f"\n\n🔗 لینک دانلود موقت (معتبر برای ۱ ساعت):\n{signed_url}"
+
+            send_telegram_message(chat_id, msg)
+
+            # If not in testing mode, send playable video file via sendVideo
+            if signed_url and os.environ.get("ELINA_TEST_ALLOW_MOCKS") != "true":
+                send_telegram_video(chat_id, signed_url, caption=f"🎬 ویدیو رندر شده {content_id}")
+
             logger.info(f"Job {job_id} completed successfully")
             return True
         else:
