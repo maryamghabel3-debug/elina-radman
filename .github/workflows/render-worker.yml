@@ -44,6 +44,7 @@ jobs:
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           SUPABASE_BUCKET_NAME: ${{ secrets.SUPABASE_BUCKET_NAME }}
           STUDIO_BOT_TOKEN: ${{ secrets.STUDIO_BOT_TOKEN }}
+          FREESOUND_API_KEY: ${{ secrets.FREESOUND_API_KEY }}
           ELINA_FONT_PRIMARY_PATH: /tmp/fonts/Vazirmatn-Bold.ttf
           PUBLISH_LIVE_ENABLED: "false"
         run: |
