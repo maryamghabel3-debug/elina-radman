@@ -314,14 +314,14 @@ class VideoConcatenator:
                 start = seg.get("start_sec", 0.0)
                 end = seg.get("end_sec")
 
-                # Video trim filter (forces SAR to 1:1 before trim)
+                # Video trim filter (forces SAR to 1:1 before trim, and enforces final setsar=1,setdar=9/16)
                 if start > 0 or end is not None:
                     if end is not None:
-                        filter_parts.append(f"[{i}:v]setsar=1,trim=start={start}:end={end},setpts=PTS-STARTPTS[v{i}]")
+                        filter_parts.append(f"[{i}:v]setsar=1,trim=start={start}:end={end},setpts=PTS-STARTPTS,setsar=1,setdar=9/16[v{i}]")
                     else:
-                        filter_parts.append(f"[{i}:v]setsar=1,trim=start={start},setpts=PTS-STARTPTS[v{i}]")
+                        filter_parts.append(f"[{i}:v]setsar=1,trim=start={start},setpts=PTS-STARTPTS,setsar=1,setdar=9/16[v{i}]")
                 else:
-                    filter_parts.append(f"[{i}:v]setsar=1,null[v{i}]")
+                    filter_parts.append(f"[{i}:v]setsar=1,null,setsar=1,setdar=9/16[v{i}]")
 
                 # Audio trim filter (only when keeping original audio)
                 if keep_audio:
@@ -342,6 +342,8 @@ class VideoConcatenator:
             else:
                 v_labels = "".join(f"[v{i}]" for i in range(len(segments)))
                 filter_complex = ";".join(filter_parts) + f";{v_labels}concat=n={len(segments)}:v=1:a=0[outv]"
+
+            logger.debug(f"Generated filter complex: {filter_complex}")
 
             cmd = [self.ffmpeg_path, "-y"]
             for seg in segments:
@@ -432,6 +434,7 @@ class VideoConcatenator:
                 filter_parts.append(f"[v{i}_trim]null[v{i}_trans]")
 
         # Apply freeze frame tail padding if requested (composes after transform, before transitions)
+        # Ends with final setsar=1,setdar=9/16 before consumption by concat/xfade
         for i, seg in enumerate(segments):
             freeze_sec = seg.get("freeze_tail_sec")
             if freeze_sec is not None:
@@ -441,12 +444,12 @@ class VideoConcatenator:
 
             if freeze_sec > 0.0:
                 # Video tpad clones the last frame of the transformed video stream
-                filter_parts.append(f"[v{i}_trans]tpad=stop_mode=clone:stop_duration={freeze_sec}[v{i}]")
+                filter_parts.append(f"[v{i}_trans]tpad=stop_mode=clone:stop_duration={freeze_sec},setsar=1,setdar=9/16[v{i}]")
                 if keep_audio:
                     # Audio silence padding using apad to keep A/V aligned
                     filter_parts.append(f"[a{i}_trim]apad=pad_dur={freeze_sec}[a{i}]")
             else:
-                filter_parts.append(f"[v{i}_trans]null[v{i}]")
+                filter_parts.append(f"[v{i}_trans]null,setsar=1,setdar=9/16[v{i}]")
                 if keep_audio:
                     filter_parts.append(f"[a{i}_trim]anull[a{i}]")
 
@@ -523,6 +526,7 @@ class VideoConcatenator:
                 current_a = out_a
 
         filter_complex = ";".join(filter_parts)
+        logger.debug(f"Generated filter complex: {filter_complex}")
 
         cmd = [self.ffmpeg_path, "-y"]
         for seg in segments:

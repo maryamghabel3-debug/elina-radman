@@ -383,7 +383,7 @@ def test_freeze_dissolve_compose_order(monkeypatch):
     # 1. Trim happens first
     assert "trim=start=0.0:end=5.0,setpts=PTS-STARTPTS[v0_trim]" in filter_str
     # 2. tpad is applied to v0_trans producing v0 (composing after transform)
-    assert "[v0_trans]tpad=stop_mode=clone:stop_duration=0.2[v0]" in filter_str
+    assert "[v0_trans]tpad=stop_mode=clone:stop_duration=0.2,setsar=1,setdar=9/16[v0]" in filter_str
     # 3. xfade transition is applied to v0 and v1 with computed offset 4.7
     assert "[v0][v1]xfade=transition=fade:duration=0.5:offset=4.7" in filter_str
 
@@ -531,7 +531,7 @@ def test_transform_freeze_dissolve_compose_order(monkeypatch):
     # 2. Transform: scale & crop applied to v0_trim producing v0_trans
     assert "[v0_trim]scale=1188:2112,crop=1080:1920:(in_w-1080)/2-(0):(in_h-1920)/2-(0)[v0_trans]" in filter_str
     # 3. Freeze: tpad applied to v0_trans producing v0
-    assert "[v0_trans]tpad=stop_mode=clone:stop_duration=0.2[v0]" in filter_str
+    assert "[v0_trans]tpad=stop_mode=clone:stop_duration=0.2,setsar=1,setdar=9/16[v0]" in filter_str
     # 4. Transition: xfade applied to v0 and v1
     assert "[v0][v1]xfade=transition=fade:duration=0.5:offset=4.7" in filter_str
 
@@ -590,6 +590,97 @@ def test_normalization_forces_sar_1_1():
     # Assert setsar=1 appears before trim/null and other downstream filters
     assert "setsar=1,trim=start=0.0:end=5.0" in filter_str
     assert "setsar=1,null" in filter_str
+
+
+# === New Enforced SAR/DAR Tests ===
+
+def test_final_segment_branches_enforce_sar_dar():
+    """Test A: Every final segment branch consumed by concat contains setsar=1 and setdar=9/16."""
+    concat = VideoConcatenator()
+    segments = [
+        {"path": "/input/a.mp4", "start_sec": 0.0, "end_sec": 5.0},
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0},
+    ]
+
+    cmd = concat.build_trim_concat_command(segments, "/output/merged.mp4")
+    filter_str = cmd[cmd.index("-filter_complex") + 1]
+
+    # Both legacy paths must enforce setsar=1,setdar=9/16
+    assert ",setsar=1,setdar=9/16[v0]" in filter_str
+    assert ",setsar=1,setdar=9/16[v1]" in filter_str
+
+
+def test_complex_path_ends_with_final_sar_dar(monkeypatch):
+    """Test B: transform + freeze + dissolve path still ends with final setsar/setdar before transition."""
+    import agents.editing.concatenator as concat_mod
+    def fake_props(path, **kwargs):
+        return {"duration": 10.0}
+    monkeypatch.setattr(concat_mod, "get_video_properties", fake_props)
+
+    concat = VideoConcatenator()
+    segments = [
+        {
+            "path": "/input/a.mp4",
+            "start_sec": 0.0,
+            "end_sec": 5.0,
+            "transform": {"scale": 1.1, "x": 0, "y": 0},
+            "freeze_tail_sec": 0.2,
+            "transition_out": {"type": "dissolve", "duration_sec": 0.5}
+        },
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0},
+    ]
+
+    cmd = concat.build_trim_concat_command(segments, "/output/merged.mp4")
+    filter_str = cmd[cmd.index("-filter_complex") + 1]
+
+    # Verify setsar=1,setdar=9/16 is applied to the end of the freeze step
+    assert "tpad=stop_mode=clone:stop_duration=0.2,setsar=1,setdar=9/16[v0]" in filter_str
+    assert "null,setsar=1,setdar=9/16[v1]" in filter_str
+
+
+def test_absent_ops_preserves_legacy_semantics_with_sar_dar():
+    """Test C: absent transform/freeze/transitions still preserves legacy command semantics except for the added final setsar/setdar normalization."""
+    concat = VideoConcatenator()
+    segments = [
+        {"path": "/input/a.mp4", "start_sec": 0.0, "end_sec": 5.0},
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0},
+    ]
+
+    cmd = concat.build_trim_concat_command(segments, "/output/merged.mp4")
+    filter_str = cmd[cmd.index("-filter_complex") + 1]
+
+    # Verify that the core layout and concatenation logic is perfectly preserved
+    assert "concat=n=2:v=1:a=0" in filter_str
+    assert "[v0][v1]" in filter_str
+
+
+def test_all_branches_feeding_concat_enforce_sar(monkeypatch):
+    """Test D: Assert no branch feeding concat is missing setsar=1."""
+    import agents.editing.concatenator as concat_mod
+    def fake_props(path, **kwargs):
+        return {"duration": 10.0}
+    monkeypatch.setattr(concat_mod, "get_video_properties", fake_props)
+
+    concat = VideoConcatenator()
+    segments = [
+        {
+            "path": "/input/a.mp4",
+            "start_sec": 0.0,
+            "end_sec": 5.0,
+            "freeze_tail_sec": 0.3,
+        },
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0},
+    ]
+
+    cmd = concat.build_trim_concat_command(segments, "/output/merged.mp4")
+    filter_str = cmd[cmd.index("-filter_complex") + 1]
+
+    # Verify both v0 and v1 have setsar=1 right before consumption
+    assert "[v0]" in filter_str
+    assert "[v1]" in filter_str
+    assert "setsar=1,setdar=9/16[v0]" in filter_str
+    assert "setsar=1,setdar=9/16[v1]" in filter_str
+
 
 
 
