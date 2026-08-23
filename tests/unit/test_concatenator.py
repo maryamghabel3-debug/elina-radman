@@ -563,4 +563,34 @@ def test_transform_invalid_values_raises_error():
         concat.build_trim_concat_command(segments_non_int, "/output/merged.mp4")
 
 
+# === New SAR Normalization Tests ===
+
+def test_normalization_forces_sar_1_1():
+    """Assert that the generated FFmpeg command contains setsar=1 for each input clip and appears before other filters."""
+    concat = VideoConcatenator()
+    segments = [
+        {
+            "path": "/input/a.mp4",
+            "start_sec": 0.0,
+            "end_sec": 5.0,
+            "freeze_tail_sec": 0.2,
+            "transform": {"scale": 1.1, "x": 0, "y": 0},
+            "transition_out": {"type": "dissolve", "duration_sec": 0.5}
+        },
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": None},
+    ]
+
+    cmd = concat.build_trim_concat_command(segments, "/output/merged.mp4")
+    filter_idx = cmd.index("-filter_complex")
+    filter_str = cmd[filter_idx + 1]
+
+    # Assert setsar=1 is present
+    assert "setsar=1" in filter_str
+    
+    # Assert setsar=1 appears before trim/null and other downstream filters
+    assert "setsar=1,trim=start=0.0:end=5.0" in filter_str
+    assert "setsar=1,null" in filter_str
+
+
+
 
