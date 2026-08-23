@@ -212,3 +212,105 @@ def test_concat_segments_keep_audio_falls_back_without_audio_streams(monkeypatch
         filter_str = cmd[cmd.index("-filter_complex") + 1]
         assert "v=1:a=0[outv]" in filter_str
         assert "outa" not in filter_str
+
+
+# === New Per-Segment Transition Tests ===
+
+def test_transition_absent_identical_behavior():
+    """Absent transition_out or hard_cut with 0 duration should produce identical command to legacy behavior."""
+    concat = VideoConcatenator()
+    segments_legacy = [
+        {"path": "/input/a.mp4", "start_sec": 0.0, "end_sec": 5.0},
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0},
+    ]
+    segments_with_empty_trans = [
+        {"path": "/input/a.mp4", "start_sec": 0.0, "end_sec": 5.0, "transition_out": None},
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0, "transition_out": {"type": "hard_cut", "duration_sec": 0.0}},
+    ]
+    
+    cmd_legacy = concat.build_trim_concat_command(segments_legacy, "/output/merged.mp4")
+    cmd_trans = concat.build_trim_concat_command(segments_with_empty_trans, "/output/merged.mp4")
+    assert cmd_legacy == cmd_trans
+
+
+def test_transition_dissolve_builds_xfade(monkeypatch):
+    """dissolve transition builds xfade with correct offset/duration."""
+    import agents.editing.concatenator as concat_mod
+    
+    # Mock get_video_properties to return 10.0 seconds
+    def fake_props(path, **kwargs):
+        return {
+            "codec": "h264", "width": 1080, "height": 1920, "fps": 30.0,
+            "pix_fmt": "yuv420p", "sample_rate": None, "channels": None,
+            "duration": 10.0, "has_audio": False,
+        }
+    monkeypatch.setattr(concat_mod, "get_video_properties", fake_props)
+
+    concat = VideoConcatenator()
+    segments = [
+        {"path": "/input/a.mp4", "start_sec": 0.0, "end_sec": 5.0, "transition_out": {"type": "dissolve", "duration_sec": 0.5}},
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0},
+    ]
+    
+    cmd = concat.build_trim_concat_command(segments, "/output/merged.mp4")
+    filter_idx = cmd.index("-filter_complex")
+    filter_str = cmd[filter_idx + 1]
+    
+    # offset should be 5.0 - 0.5 = 4.5
+    assert "xfade=transition=fade:duration=0.5:offset=4.5" in filter_str
+
+
+def test_transition_fade_black_builds_fade_filters():
+    """fade_black transition builds fade filters on both sides."""
+    concat = VideoConcatenator()
+    segments = [
+        {"path": "/input/a.mp4", "start_sec": 0.0, "end_sec": 5.0, "transition_out": {"type": "fade_black", "duration_sec": 0.4}},
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0},
+    ]
+    
+    cmd = concat.build_trim_concat_command(segments, "/output/merged.mp4")
+    filter_idx = cmd.index("-filter_complex")
+    filter_str = cmd[filter_idx + 1]
+    
+    # Segment 0: fade-out to black at 5.0 - 0.4 = 4.6
+    assert "fade=t=out:st=4.6:d=0.4" in filter_str
+    # Segment 1: fade-in from black at 0
+    assert "fade=t=in:st=0:d=0.4" in filter_str
+
+
+def test_transition_invalid_type_raises_error():
+    """Invalid transition type raises TRANSITION_TYPE_INVALID before running FFmpeg."""
+    concat = VideoConcatenator()
+    segments = [
+        {"path": "/input/a.mp4", "start_sec": 0.0, "end_sec": 5.0, "transition_out": {"type": "unsupported_transition", "duration_sec": 0.5}},
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0},
+    ]
+    
+    with pytest.raises(ValueError, match="TRANSITION_TYPE_INVALID"):
+        concat.build_trim_concat_command(segments, "/output/merged.mp4")
+
+
+def test_transition_keep_audio_dissolve_includes_acrossfade(monkeypatch):
+    """keep_audio=True + dissolve includes acrossfade filter."""
+    import agents.editing.concatenator as concat_mod
+    
+    def fake_props(path, **kwargs):
+        return {
+            "codec": "h264", "width": 1080, "height": 1920, "fps": 30.0,
+            "pix_fmt": "yuv420p", "sample_rate": 48000, "channels": 2,
+            "duration": 10.0, "has_audio": True,
+        }
+    monkeypatch.setattr(concat_mod, "get_video_properties", fake_props)
+
+    concat = VideoConcatenator()
+    segments = [
+        {"path": "/input/a.mp4", "start_sec": 0.0, "end_sec": 5.0, "transition_out": {"type": "dissolve", "duration_sec": 0.5}},
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0},
+    ]
+    
+    cmd = concat.build_trim_concat_command(segments, "/output/merged.mp4", keep_audio=True)
+    filter_idx = cmd.index("-filter_complex")
+    filter_str = cmd[filter_idx + 1]
+    
+    assert "acrossfade=d=0.5:c1=tri:c2=tri" in filter_str
+
