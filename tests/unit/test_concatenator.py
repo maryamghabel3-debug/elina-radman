@@ -382,8 +382,8 @@ def test_freeze_dissolve_compose_order(monkeypatch):
     
     # 1. Trim happens first
     assert "trim=start=0.0:end=5.0,setpts=PTS-STARTPTS[v0_trim]" in filter_str
-    # 2. tpad is applied to v0_trim producing v0
-    assert "[v0_trim]tpad=stop_mode=clone:stop_duration=0.2[v0]" in filter_str
+    # 2. tpad is applied to v0_trans producing v0 (composing after transform)
+    assert "[v0_trans]tpad=stop_mode=clone:stop_duration=0.2[v0]" in filter_str
     # 3. xfade transition is applied to v0 and v1 with computed offset 4.7
     assert "[v0][v1]xfade=transition=fade:duration=0.5:offset=4.7" in filter_str
 
@@ -430,5 +430,137 @@ def test_freeze_out_of_range_raises_error():
         
     with pytest.raises(ValueError, match="FREEZE_DURATION_INVALID"):
         concat.build_trim_concat_command(segments_high, "/output/merged.mp4")
+
+
+# === New Transform Tests ===
+
+def test_transform_absent_identical_behavior():
+    """Absent transform or empty dict produces identical command to legacy behavior."""
+    concat = VideoConcatenator()
+    segments_legacy = [
+        {"path": "/input/a.mp4", "start_sec": 0.0, "end_sec": 5.0},
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0},
+    ]
+    segments_with_empty_trans = [
+        {"path": "/input/a.mp4", "start_sec": 0.0, "end_sec": 5.0, "transform": None},
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0, "transform": {}},
+    ]
+    
+    cmd_legacy = concat.build_trim_concat_command(segments_legacy, "/output/merged.mp4")
+    cmd_trans = concat.build_trim_concat_command(segments_with_empty_trans, "/output/merged.mp4")
+    assert cmd_legacy == cmd_trans
+
+
+def test_transform_scale_crop_filter_chain():
+    """scale 1.03 + y -12 produces expected scale+crop filter chain with unchanged output resolution (1080x1920)."""
+    concat = VideoConcatenator()
+    segments = [
+        {
+            "path": "/input/a.mp4",
+            "start_sec": 0.0,
+            "end_sec": 5.0,
+            "transform": {"scale": 1.03, "x": 0, "y": -12}
+        },
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0},
+    ]
+    
+    cmd = concat.build_trim_concat_command(segments, "/output/merged.mp4")
+    filter_idx = cmd.index("-filter_complex")
+    filter_str = cmd[filter_idx + 1]
+    
+    # 1080 * 1.03 = 1112.4 -> 1112, 1920 * 1.03 = 1977.6 -> 1978
+    assert "scale=1112:1978" in filter_str
+    # crop output is exactly 1080x1920, offsets (in_w-1080)/2-0 and (in_h-1920)/2-(-12)
+    assert "crop=1080:1920:(in_w-1080)/2-(0):(in_h-1920)/2-(-12)" in filter_str
+
+
+def test_transform_scale_pad_filter_chain():
+    """scale < 1.0 (e.g. 0.9) produces expected scale+pad filter chain with unchanged output resolution."""
+    concat = VideoConcatenator()
+    segments = [
+        {
+            "path": "/input/a.mp4",
+            "start_sec": 0.0,
+            "end_sec": 5.0,
+            "transform": {"scale": 0.9, "x": 5, "y": -5}
+        },
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0},
+    ]
+    
+    cmd = concat.build_trim_concat_command(segments, "/output/merged.mp4")
+    filter_idx = cmd.index("-filter_complex")
+    filter_str = cmd[filter_idx + 1]
+    
+    # 1080 * 0.9 = 972, 1920 * 0.9 = 1728
+    assert "scale=972:1728" in filter_str
+    assert "pad=1080:1920:(1080-in_w)/2+(5):(1920-in_h)/2+(-5):black" in filter_str
+
+
+def test_transform_freeze_dissolve_compose_order(monkeypatch):
+    """composes in correct order (transform -> freeze -> transition)."""
+    import agents.editing.concatenator as concat_mod
+    
+    def fake_props(path, **kwargs):
+        return {
+            "codec": "h264", "width": 1080, "height": 1920, "fps": 30.0,
+            "pix_fmt": "yuv420p", "sample_rate": None, "channels": None,
+            "duration": 10.0, "has_audio": False,
+        }
+    monkeypatch.setattr(concat_mod, "get_video_properties", fake_props)
+
+    concat = VideoConcatenator()
+    segments = [
+        {
+            "path": "/input/a.mp4",
+            "start_sec": 0.0,
+            "end_sec": 5.0,
+            "transform": {"scale": 1.1, "x": 0, "y": 0},
+            "freeze_tail_sec": 0.2,
+            "transition_out": {"type": "dissolve", "duration_sec": 0.5}
+        },
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0},
+    ]
+    
+    cmd = concat.build_trim_concat_command(segments, "/output/merged.mp4")
+    filter_idx = cmd.index("-filter_complex")
+    filter_str = cmd[filter_idx + 1]
+    
+    # Order verification:
+    # 1. Trim: trim=... producing v0_trim
+    assert "trim=start=0.0:end=5.0,setpts=PTS-STARTPTS[v0_trim]" in filter_str
+    # 2. Transform: scale & crop applied to v0_trim producing v0_trans
+    assert "[v0_trim]scale=1188:2112,crop=1080:1920:(in_w-1080)/2-(0):(in_h-1920)/2-(0)[v0_trans]" in filter_str
+    # 3. Freeze: tpad applied to v0_trans producing v0
+    assert "[v0_trans]tpad=stop_mode=clone:stop_duration=0.2[v0]" in filter_str
+    # 4. Transition: xfade applied to v0 and v1
+    assert "[v0][v1]xfade=transition=fade:duration=0.5:offset=4.7" in filter_str
+
+
+def test_transform_invalid_values_raises_error():
+    """Invalid scale (< 0.8 or > 1.5) or invalid coordinates raises ValueError with TRANSFORM_INVALID."""
+    concat = VideoConcatenator()
+    
+    segments_low = [
+        {"path": "/input/a.mp4", "transform": {"scale": 0.7, "x": 0, "y": 0}},
+        {"path": "/input/b.mp4"},
+    ]
+    segments_high = [
+        {"path": "/input/a.mp4", "transform": {"scale": 1.6, "x": 0, "y": 0}},
+        {"path": "/input/b.mp4"},
+    ]
+    segments_non_int = [
+        {"path": "/input/a.mp4", "transform": {"scale": 1.0, "x": "abc", "y": 0}},
+        {"path": "/input/b.mp4"},
+    ]
+    
+    with pytest.raises(ValueError, match="TRANSFORM_INVALID"):
+        concat.build_trim_concat_command(segments_low, "/output/merged.mp4")
+        
+    with pytest.raises(ValueError, match="TRANSFORM_INVALID"):
+        concat.build_trim_concat_command(segments_high, "/output/merged.mp4")
+        
+    with pytest.raises(ValueError, match="TRANSFORM_INVALID"):
+        concat.build_trim_concat_command(segments_non_int, "/output/merged.mp4")
+
 
 
