@@ -149,7 +149,8 @@ class EditOrchestrator:
                         key=s["key"],
                         start_sec=s.get("start_sec", 0.0),
                         end_sec=s.get("end_sec"),
-                        transition_out=s.get("transition_out")
+                        transition_out=s.get("transition_out"),
+                        freeze_tail_sec=s.get("freeze_tail_sec")
                     )
                     for s in video_segments
                 ]
@@ -211,6 +212,7 @@ class EditOrchestrator:
                         "start_sec": seg.start_sec,
                         "end_sec": seg.end_sec,
                         "transition_out": getattr(seg, "transition_out", None),
+                        "freeze_tail_sec": getattr(seg, "freeze_tail_sec", None),
                     })
 
                 # Concatenate segments (with optional trimming). Keep the

@@ -129,6 +129,8 @@ def process_job(job) -> bool:
                 }
                 if "transition_out" in shot:
                     seg_dict["transition_out"] = shot["transition_out"]
+                if "freeze_tail_sec" in shot:
+                    seg_dict["freeze_tail_sec"] = shot["freeze_tail_sec"]
                 video_segments.append(seg_dict)
 
         # A plan that removes every shot leaves nothing to render: fail loudly

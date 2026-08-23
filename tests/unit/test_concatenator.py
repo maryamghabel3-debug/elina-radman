@@ -314,3 +314,121 @@ def test_transition_keep_audio_dissolve_includes_acrossfade(monkeypatch):
     
     assert "acrossfade=d=0.5:c1=tri:c2=tri" in filter_str
 
+
+# === New Freeze Frame Tail Tests ===
+
+def test_freeze_absent_identical_behavior():
+    """Absent freeze_tail_sec or 0.0 duration produces identical command to legacy behavior."""
+    concat = VideoConcatenator()
+    segments_legacy = [
+        {"path": "/input/a.mp4", "start_sec": 0.0, "end_sec": 5.0},
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0},
+    ]
+    segments_with_empty_freeze = [
+        {"path": "/input/a.mp4", "start_sec": 0.0, "end_sec": 5.0, "freeze_tail_sec": None},
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0, "freeze_tail_sec": 0.0},
+    ]
+    
+    cmd_legacy = concat.build_trim_concat_command(segments_legacy, "/output/merged.mp4")
+    cmd_freeze = concat.build_trim_concat_command(segments_with_empty_freeze, "/output/merged.mp4")
+    assert cmd_legacy == cmd_freeze
+
+
+def test_freeze_adds_tpad():
+    """freeze_tail_sec=0.2 adds tpad filter with clone stop_duration."""
+    concat = VideoConcatenator()
+    segments = [
+        {"path": "/input/a.mp4", "start_sec": 0.0, "end_sec": 5.0, "freeze_tail_sec": 0.2},
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0},
+    ]
+    
+    cmd = concat.build_trim_concat_command(segments, "/output/merged.mp4")
+    filter_idx = cmd.index("-filter_complex")
+    filter_str = cmd[filter_idx + 1]
+    
+    assert "tpad=stop_mode=clone:stop_duration=0.2" in filter_str
+
+
+def test_freeze_dissolve_compose_order(monkeypatch):
+    """freeze frame pads the clip first, then the transition is calculated from the padded clip."""
+    import agents.editing.concatenator as concat_mod
+    
+    def fake_props(path, **kwargs):
+        return {
+            "codec": "h264", "width": 1080, "height": 1920, "fps": 30.0,
+            "pix_fmt": "yuv420p", "sample_rate": None, "channels": None,
+            "duration": 10.0, "has_audio": False,
+        }
+    monkeypatch.setattr(concat_mod, "get_video_properties", fake_props)
+
+    concat = VideoConcatenator()
+    # Segment 0 has duration 5.0, freeze 0.2s, dissolve 0.5s.
+    # Total segment active duration = 5.0 + 0.2 = 5.2s.
+    # xfade offset should be 5.2 - 0.5 = 4.7s.
+    segments = [
+        {
+            "path": "/input/a.mp4",
+            "start_sec": 0.0,
+            "end_sec": 5.0,
+            "freeze_tail_sec": 0.2,
+            "transition_out": {"type": "dissolve", "duration_sec": 0.5}
+        },
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0},
+    ]
+    
+    cmd = concat.build_trim_concat_command(segments, "/output/merged.mp4")
+    filter_idx = cmd.index("-filter_complex")
+    filter_str = cmd[filter_idx + 1]
+    
+    # 1. Trim happens first
+    assert "trim=start=0.0:end=5.0,setpts=PTS-STARTPTS[v0_trim]" in filter_str
+    # 2. tpad is applied to v0_trim producing v0
+    assert "[v0_trim]tpad=stop_mode=clone:stop_duration=0.2[v0]" in filter_str
+    # 3. xfade transition is applied to v0 and v1 with computed offset 4.7
+    assert "[v0][v1]xfade=transition=fade:duration=0.5:offset=4.7" in filter_str
+
+
+def test_freeze_keep_audio_adds_apad(monkeypatch):
+    """keep_audio=True + freeze adds apad filter to pad audio with silence."""
+    import agents.editing.concatenator as concat_mod
+    
+    def fake_props(path, **kwargs):
+        return {
+            "codec": "h264", "width": 1080, "height": 1920, "fps": 30.0,
+            "pix_fmt": "yuv420p", "sample_rate": 48000, "channels": 2,
+            "duration": 10.0, "has_audio": True,
+        }
+    monkeypatch.setattr(concat_mod, "get_video_properties", fake_props)
+
+    concat = VideoConcatenator()
+    segments = [
+        {"path": "/input/a.mp4", "start_sec": 0.0, "end_sec": 5.0, "freeze_tail_sec": 0.3},
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0},
+    ]
+    
+    cmd = concat.build_trim_concat_command(segments, "/output/merged.mp4", keep_audio=True)
+    filter_idx = cmd.index("-filter_complex")
+    filter_str = cmd[filter_idx + 1]
+    
+    assert "apad=pad_dur=0.3" in filter_str
+
+
+def test_freeze_out_of_range_raises_error():
+    """freeze_tail_sec out of range raises ValueError with FREEZE_DURATION_INVALID."""
+    concat = VideoConcatenator()
+    segments_low = [
+        {"path": "/input/a.mp4", "start_sec": 0.0, "end_sec": 5.0, "freeze_tail_sec": -0.1},
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0},
+    ]
+    segments_high = [
+        {"path": "/input/a.mp4", "start_sec": 0.0, "end_sec": 5.0, "freeze_tail_sec": 1.1},
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0},
+    ]
+    
+    with pytest.raises(ValueError, match="FREEZE_DURATION_INVALID"):
+        concat.build_trim_concat_command(segments_low, "/output/merged.mp4")
+        
+    with pytest.raises(ValueError, match="FREEZE_DURATION_INVALID"):
+        concat.build_trim_concat_command(segments_high, "/output/merged.mp4")
+
+
