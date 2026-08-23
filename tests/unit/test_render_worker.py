@@ -586,3 +586,64 @@ def test_process_job_sends_signed_url():
                         sent_payload = _json.loads(mock_urlopen.call_args[0][0].data.decode("utf-8"))
                         assert "https://signed.example/edited/final.mp4" in sent_payload["text"]
                         assert "🔗 لینک دانلود موقت" in sent_payload["text"]
+
+
+def test_process_job_terminal_error_exits_cleanly():
+    """Test A — terminal error exits cleanly:
+    Given a job that triggers SHOT_INDEX_OUT_OF_RANGE,
+    assert it returns False and does NOT raise any exception (exit 0 path)."""
+    mock_job = {
+        "id": "job-range-err",
+        "content_id": "ELN-BUNDLE-123",
+        "plan_data": {
+            "target_id": "ELN-BUNDLE-123",
+            "shots": [{"index": 5, "start": 0.0, "end": 2.5}], # out of range (max index 2)
+        },
+        "owner_chat_id": "12345"
+    }
+
+    mock_db = MagicMock()
+    mock_db.get_content_by_custom_id.return_value = {
+        "id": "item-123",
+        "custom_id": "ELN-BUNDLE-123",
+        "media_keys": ["path/1.mp4", "path/2.mp4"]
+    }
+
+    with patch("scripts.render_worker.ElinaDB", lambda: mock_db):
+        with patch("scripts.render_worker.RenderJobManager") as MockJobManager:
+            instance = MockJobManager.return_value
+
+            with patch("urllib.request.urlopen"):
+                result = process_job(mock_job)
+
+                assert result is False # completed with False but does NOT raise!
+
+
+def test_process_job_unexpected_error_raises_exception():
+    """Test B — unexpected error still surfaces:
+    Given a job where an unexpected exception occurs (e.g. database client raises),
+    assert it re-raises the exception so the worker exits 1."""
+    mock_job = {
+        "id": "job-unexpected",
+        "content_id": "ELN-BUNDLE-123",
+        "plan_data": {
+            "target_id": "ELN-BUNDLE-123",
+            "shots": [{"index": 1, "start": 0.0, "end": 2.5}],
+        },
+        "owner_chat_id": "12345"
+    }
+
+    mock_db = MagicMock()
+    # Database call raises an unexpected exception
+    mock_db.get_content_by_custom_id.side_effect = Exception("Supabase DB crash")
+
+    with patch("scripts.render_worker.ElinaDB", lambda: mock_db):
+        with patch("scripts.render_worker.RenderJobManager") as MockJobManager:
+            instance = MockJobManager.return_value
+            instance.mark_failed.return_value = {}
+
+            with patch("urllib.request.urlopen"):
+                with pytest.raises(Exception) as excinfo:
+                    process_job(mock_job)
+                
+                assert "Supabase DB crash" in str(excinfo.value)
