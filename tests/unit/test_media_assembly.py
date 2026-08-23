@@ -435,3 +435,84 @@ def test_build_command_mute_original_keeps_music_gain_drops_base_audio():
     # Music gain still applied
     assert "[1:a]volume=-10dB[music_gained]" in filter_arg
 
+
+# === New Polish Audio Suite Tests ===
+
+def test_sfx_loudness_normalization():
+    """SFX with normalize_loudness=True adds loudnorm filter before volume."""
+    engine = MediaAssemblyEngine()
+    recipe = make_recipe()
+    sfx_items = [
+        {
+            "path": "sfx.mp3",
+            "start_sec": 1.0,
+            "gain_db": -5,
+            "normalize_loudness": True,
+        }
+    ]
+    cmd = engine.build_assembly_command(
+        recipe=recipe,
+        video_path="/tmp/v.mp4",
+        voice_path=None,
+        music_path=None,
+        hook_png_path=None,
+        output_path="/tmp/o.mp4",
+        sfx_items=sfx_items,
+    )
+    filter_arg = cmd[cmd.index("-filter_complex") + 1]
+    
+    # Assert loudnorm is present
+    assert "loudnorm=I=-16:TP=-1.5:LRA=11" in filter_arg
+    # Assert loudnorm comes before volume
+    assert "loudnorm=I=-16:TP=-1.5:LRA=11,volume=-5dB" in filter_arg
+
+
+def test_sfx_background_bed_loop_and_trim():
+    """SFX with background_bed=True loops infinitely and trims to total video duration."""
+    engine = MediaAssemblyEngine()
+    recipe = make_recipe()
+    sfx_items = [
+        {
+            "path": "ambient.mp3",
+            "background_bed": True,
+            "fade_in_sec": 0.5,
+            "fade_out_sec": 1.0,
+            "gain_db": -12,
+            "normalize_loudness": False,
+        }
+    ]
+    
+    # Specify total video duration = 15.5 seconds
+    cmd = engine.build_assembly_command(
+        recipe=recipe,
+        video_path="/tmp/v.mp4",
+        voice_path=None,
+        music_path=None,
+        hook_png_path=None,
+        output_path="/tmp/o.mp4",
+        sfx_items=sfx_items,
+        video_duration=15.5,
+    )
+    
+    # Verify -stream_loop -1 is placed right before input
+    inputs = []
+    for idx, arg in enumerate(cmd):
+        if arg == "-i":
+            # get the preceding args if it was loop
+            if idx >= 2 and cmd[idx-2] == "-stream_loop" and cmd[idx-1] == "-1":
+                inputs.append((cmd[idx-2], cmd[idx-1], cmd[idx+1]))
+            else:
+                inputs.append(cmd[idx+1])
+    
+    # The sfx item input (ambient.mp3) must be prepended by loop flags
+    assert ("-stream_loop", "-1", "ambient.mp3") in inputs
+
+    # Verify atrim matches video duration and fade out starts at 15.5 - 1.0 = 14.5s
+    filter_arg = cmd[cmd.index("-filter_complex") + 1]
+    assert "atrim=start=0:end=15.5" in filter_str if "filter_str" in locals() else "atrim=start=0:end=15.5" in filter_arg
+    assert "afade=t=in:st=0:d=0.5" in filter_arg
+    assert "afade=t=out:st=14.5:d=1.0" in filter_arg
+    # Verify no adelay is generated
+    assert "adelay" not in filter_arg
+
+

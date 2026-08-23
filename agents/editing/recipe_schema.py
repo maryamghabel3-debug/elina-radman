@@ -11,6 +11,16 @@ class VideoSegmentConfig:
     transform: Optional[Dict[str, Any]] = None
 
 @dataclass
+class SFXConfig:
+    key: Optional[str] = None
+    start_sec: float = 0.0
+    gain_db: int = 0
+    fade_in_sec: float = 0.0
+    fade_out_sec: float = 0.0
+    normalize_loudness: bool = True
+    background_bed: bool = False
+
+@dataclass
 class InputMediaConfig:
     video_keys: List[str] = field(default_factory=list)
     video_segments: List[VideoSegmentConfig] = field(default_factory=list)

@@ -64,6 +64,7 @@ class MediaAssemblyEngine:
         output_path: str,
         sfx_items: Optional[List[dict]] = None,
         use_base_audio: bool = False,
+        video_duration: Optional[float] = None,
     ) -> List[str]:
         """
         Constructs the ffmpeg command as a list of arguments.
@@ -77,6 +78,9 @@ class MediaAssemblyEngine:
             raise ValueError("Recipe must have content_id.")
         if not video_path:
             raise ValueError("video_path is required.")
+
+        if video_duration is None:
+            video_duration = _get_audio_duration(video_path, ffprobe_binary=self.ffprobe_binary)
 
         cmd = [self.ffmpeg_binary, "-y"]
 
@@ -93,6 +97,8 @@ class MediaAssemblyEngine:
         if sfx_items:
             current_input_index = 1 + (1 if voice_path else 0) + (1 if music_path else 0) + (1 if hook_png_path else 0)
             for sfx in sfx_items:
+                if sfx.get("background_bed"):
+                    cmd += ["-stream_loop", "-1"]
                 cmd += ["-i", sfx["path"]]
                 sfx_indices.append(current_input_index)
                 current_input_index += 1
@@ -152,26 +158,48 @@ class MediaAssemblyEngine:
                 idx = sfx_indices[i]
                 filters = []
 
-                # Fade in
-                fade_in_sec = sfx.get("fade_in_sec", 0.0)
-                if fade_in_sec > 0:
-                    filters.append(f"afade=t=in:st=0:d={fade_in_sec}")
-
-                # Fade out
-                fade_out_sec = sfx.get("fade_out_sec", 0.0)
-                if fade_out_sec > 0:
-                    duration = sfx.get("duration") or sfx.get("duration_sec") or _get_audio_duration(sfx["path"], ffprobe_binary=self.ffprobe_binary)
-                    if duration > fade_out_sec:
-                        filters.append(f"afade=t=out:st={duration - fade_out_sec}:d={fade_out_sec}")
+                # Loudness normalization (default true) before gain_db
+                normalize_loudness = sfx.get("normalize_loudness", True)
+                if normalize_loudness:
+                    filters.append("loudnorm=I=-16:TP=-1.5:LRA=11")
 
                 # Volume / gain
                 gain_db = sfx.get("gain_db", 0)
                 filters.append(f"volume={gain_db}dB")
 
-                # Adelay
-                start_sec = sfx.get("start_sec", 0.0)
-                delay_ms = int(start_sec * 1000)
-                filters.append(f"adelay={delay_ms}|{delay_ms}")
+                # Background bed vs normal anchored SFX
+                bg_bed = sfx.get("background_bed", False)
+                if bg_bed:
+                    # Ignore anchors/start_sec. Trim to video_duration
+                    filters.append(f"atrim=start=0:end={video_duration},asetpts=PTS-STARTPTS")
+
+                    # Apply fade_in at 0.0
+                    fade_in_sec = sfx.get("fade_in_sec", 0.0)
+                    if fade_in_sec > 0:
+                        filters.append(f"afade=t=in:st=0:d={fade_in_sec}")
+
+                    # Apply fade_out at the very end of the video
+                    fade_out_sec = sfx.get("fade_out_sec", 0.0)
+                    if fade_out_sec > 0:
+                        st_out = max(0.0, video_duration - fade_out_sec)
+                        filters.append(f"afade=t=out:st={st_out}:d={fade_out_sec}")
+                else:
+                    # Fade in
+                    fade_in_sec = sfx.get("fade_in_sec", 0.0)
+                    if fade_in_sec > 0:
+                        filters.append(f"afade=t=in:st=0:d={fade_in_sec}")
+
+                    # Fade out
+                    fade_out_sec = sfx.get("fade_out_sec", 0.0)
+                    if fade_out_sec > 0:
+                        duration = sfx.get("duration") or sfx.get("duration_sec") or _get_audio_duration(sfx["path"], ffprobe_binary=self.ffprobe_binary)
+                        if duration > fade_out_sec:
+                            filters.append(f"afade=t=out:st={duration - fade_out_sec}:d={fade_out_sec}")
+
+                    # Adelay
+                    start_sec = sfx.get("start_sec", 0.0)
+                    delay_ms = int(start_sec * 1000)
+                    filters.append(f"adelay={delay_ms}|{delay_ms}")
 
                 filter_str = ",".join(filters)
                 filter_parts.append(f"[{idx}:a]{filter_str}[sfx_{i}_clean]")
@@ -265,6 +293,7 @@ class MediaAssemblyEngine:
         timeout_seconds: int = 300,
         sfx_items: Optional[List[dict]] = None,
         use_base_audio: bool = False,
+        video_duration: Optional[float] = None,
     ) -> str:
         """
         Executes the ffmpeg assembly command.
@@ -279,6 +308,7 @@ class MediaAssemblyEngine:
             output_path=output_path,
             sfx_items=sfx_items,
             use_base_audio=use_base_audio,
+            video_duration=video_duration,
         )
 
         out_dir = os.path.dirname(output_path)

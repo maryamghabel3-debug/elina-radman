@@ -282,6 +282,8 @@ class EditOrchestrator:
                             "attribution": attribution,
                             "anchor": sfx.get("anchor"),
                             "offset_sec": sfx.get("offset_sec", sfx.get("offset", 0.0)),
+                            "normalize_loudness": sfx.get("normalize_loudness", True),
+                            "background_bed": sfx.get("background_bed", False),
                         })
 
                 # Resolve SFX requested by the Persian edit plan (query -> sound
@@ -318,6 +320,8 @@ class EditOrchestrator:
                             "attribution": getattr(fetched.metadata, "attribution", None),
                             "anchor": sfx.get("anchor"),
                             "offset_sec": sfx.get("offset_sec", sfx.get("offset", 0.0)),
+                            "normalize_loudness": sfx.get("normalize_loudness", True),
+                            "background_bed": sfx.get("background_bed", False),
                         })
 
                 # Render hook PNG if requested
@@ -333,50 +337,50 @@ class EditOrchestrator:
                     )
                     hook_png_path = str(hook_png)
 
+                # 1. Compute duration of each segment on the global timeline
+                seg_timeline = []
+                current_time = 0.0
+                segment_durations = []
+                for i, seg in enumerate(local_segments):
+                    start = seg.get("start_sec", 0.0)
+                    end = seg.get("end_sec")
+                    if end is not None:
+                        dur = end - start
+                    else:
+                        props = get_video_properties(seg["path"])
+                        source_dur = props.get("duration", 0.0)
+                        dur = source_dur - start
+                    dur = max(0.0, dur)
+                    
+                    # Account for freeze frame duration padding
+                    freeze_sec = seg.get("freeze_tail_sec")
+                    if freeze_sec is not None:
+                        dur += float(freeze_sec)
+                    segment_durations.append(dur)
+
+                # Compute global start and end times for each segment
+                for i, seg in enumerate(local_segments):
+                    active_dur = segment_durations[i]
+                    start_time = current_time
+                    end_time = current_time + active_dur
+                    seg_timeline.append({"start": start_time, "end": end_time})
+                    
+                    overlap = 0.0
+                    if i < len(local_segments) - 1:
+                        trans = local_segments[i].get("transition_out") or {}
+                        t_type = trans.get("type", "hard_cut")
+                        duration_sec = float(trans.get("duration_sec", 0.0))
+                        if t_type == "dissolve" and duration_sec > 0:
+                            overlap = max(0.05, min(1.0, duration_sec))
+                            next_active_dur = segment_durations[i+1]
+                            overlap = min(overlap, active_dur, next_active_dur)
+                    
+                    current_time = end_time - overlap
+                
+                total_duration = current_time
+
                 # Resolve anchored SFX timing based on segment durations and overlaps
                 if sfx_items:
-                    # 1. Compute duration of each segment on the global timeline
-                    seg_timeline = []
-                    current_time = 0.0
-                    segment_durations = []
-                    for i, seg in enumerate(local_segments):
-                        start = seg.get("start_sec", 0.0)
-                        end = seg.get("end_sec")
-                        if end is not None:
-                            dur = end - start
-                        else:
-                            props = get_video_properties(seg["path"], ffprobe_binary="ffprobe")
-                            source_dur = props.get("duration", 0.0)
-                            dur = source_dur - start
-                        dur = max(0.0, dur)
-                        
-                        # Account for freeze frame duration padding
-                        freeze_sec = seg.get("freeze_tail_sec")
-                        if freeze_sec is not None:
-                            dur += float(freeze_sec)
-                        segment_durations.append(dur)
-
-                    # Compute global start and end times for each segment
-                    for i, seg in enumerate(local_segments):
-                        active_dur = segment_durations[i]
-                        start_time = current_time
-                        end_time = current_time + active_dur
-                        seg_timeline.append({"start": start_time, "end": end_time})
-                        
-                        overlap = 0.0
-                        if i < len(local_segments) - 1:
-                            trans = local_segments[i].get("transition_out") or {}
-                            t_type = trans.get("type", "hard_cut")
-                            duration_sec = float(trans.get("duration_sec", 0.0))
-                            if t_type == "dissolve" and duration_sec > 0:
-                                overlap = max(0.05, min(1.0, duration_sec))
-                                next_active_dur = segment_durations[i+1]
-                                overlap = min(overlap, active_dur, next_active_dur)
-                        
-                        current_time = end_time - overlap
-                    
-                    total_duration = current_time
-
                     # 2. Resolve anchored sound effects
                     for sfx in sfx_items:
                         anchor_str = sfx.get("anchor")
@@ -422,6 +426,7 @@ class EditOrchestrator:
                     output_path=str(output_video),
                     sfx_items=sfx_items if sfx_items else None,
                     use_base_audio=use_base_audio,
+                    video_duration=total_duration,
                 )
 
                 qc_errors = run_qc_checks(str(output_video), recipe)
