@@ -1,6 +1,6 @@
 import os
 import logging
-from typing import List
+from typing import List, Optional
 import requests
 
 from agents.audio.base_provider import BaseSoundProvider, SoundResult, DownloadedSound
@@ -8,7 +8,6 @@ from agents.audio.base_provider import BaseSoundProvider, SoundResult, Downloade
 logger = logging.getLogger(__name__)
 
 FREESOUND_API_BASE = "https://freesound.org/apiv2"
-ALLOWED_LICENSES = ["Creative Commons 0", "Attribution"]
 
 ALIAS_MAP = {
     "rain ambience distant": ["rain ambience", "rain", "light rain"],
@@ -29,6 +28,42 @@ ALIAS_MAP = {
 def find_aliases(query: str) -> List[str]:
     q_norm = query.lower().strip()
     return ALIAS_MAP.get(q_norm, [])
+
+
+def normalize_license(raw_license: str) -> Optional[str]:
+    if not raw_license:
+        return None
+
+    raw_lower = raw_license.lower().strip()
+
+    # Explicitly reject non-commercial or invalid licenses first
+    if (
+        "noncommercial" in raw_lower
+        or "non-commercial" in raw_lower
+        or "by-nc" in raw_lower
+        or "sampling+" in raw_lower
+    ):
+        return None
+
+    # Recognize CC0
+    if (
+        "creative commons 0" in raw_lower
+        or "publicdomain/zero" in raw_lower
+        or "cc0" in raw_lower
+    ):
+        return "cc0"
+
+    # Recognize Attribution
+    if (
+        raw_lower == "attribution"
+        or "attribution" in raw_lower
+        or "cc-by" in raw_lower
+        or raw_lower == "by"
+        or "/licenses/by/" in raw_lower
+    ):
+        return "attribution"
+
+    return None
 
 
 class FreesoundProvider(BaseSoundProvider):
@@ -57,7 +92,7 @@ class FreesoundProvider(BaseSoundProvider):
         results = []
         # Try each candidate with initial duration limit
         for cand in candidates:
-            results = self._search_raw(cand, max_duration_sec=max_duration_sec, limit=limit)
+            results = self._search_strategy(cand, max_duration_sec=max_duration_sec, limit=limit)
             if results:
                 logger.info(f"Freesound query '{cand}' succeeded with {len(results)} results.")
                 return results
@@ -65,16 +100,55 @@ class FreesoundProvider(BaseSoundProvider):
         # If strict duration limit produced zero results, allow one controlled fallback to 30.0s for the exact query
         if max_duration_sec <= 15.0:
             logger.info(f"Strict duration limit ({max_duration_sec}s) returned zero results. Retrying exact query '{query}' with 30s limit.")
-            results = self._search_raw(query, max_duration_sec=30.0, limit=limit)
+            results = self._search_strategy(query, max_duration_sec=30.0, limit=limit)
             if results:
                 return results
 
         return []
 
-    def _search_raw(self, query: str, max_duration_sec: float, limit: int) -> List[SoundResult]:
+    def _search_strategy(self, query: str, max_duration_sec: float, limit: int) -> List[SoundResult]:
+        # Step 1: Search CC0 separately
+        cc0_results = self._search_request(query, max_duration_sec, filter_license='license:"Creative Commons 0"', limit=limit)
+
+        # Step 2: Search Attribution separately
+        by_results = self._search_request(query, max_duration_sec, filter_license='license:Attribution', limit=limit)
+
+        # Step 3: Merge and deduplicate
+        merged = {}
+        for r in cc0_results + by_results:
+            merged[r.external_id] = r
+
+        final_results = []
+        for r in merged.values():
+            if normalize_license(r.license) is not None:
+                final_results.append(r)
+
+        if len(final_results) > 0:
+            return final_results[:limit]
+
+        # Fallback: if server-filtered searches are empty, perform one controlled duration-only request with larger page size
+        logger.info("Server-filtered searches returned 0. Retrying with controlled duration-only query with larger page size...")
+        raw_results = self._search_request(query, max_duration_sec, filter_license=None, limit=limit * 4)
+
+        fallback_results = []
+        seen = set()
+        for r in raw_results:
+            if r.external_id not in seen:
+                seen.add(r.external_id)
+                if normalize_license(r.license) is not None:
+                    fallback_results.append(r)
+
+        return fallback_results[:limit]
+
+    def _search_request(self, query: str, max_duration_sec: float, filter_license: Optional[str], limit: int) -> List[SoundResult]:
+        # Build filter parameter
+        filter_str = f"duration:[0 TO {max_duration_sec}]"
+        if filter_license:
+            filter_str += f" {filter_license}"
+
         params = {
             "query": query,
-            "filter": f"duration:[0 TO {max_duration_sec}] license:(\"Creative Commons 0\" OR \"Attribution\")",
+            "filter": filter_str,
             "sort": "score",
             "page_size": limit,
             "fields": "id,name,license,username,duration,previews,tags,score",
@@ -119,11 +193,10 @@ class FreesoundProvider(BaseSoundProvider):
         results = []
         for item in data.get("results", []):
             license_name = item.get("license", "")
-            if not any(allowed in license_name for allowed in ALLOWED_LICENSES):
-                continue
 
             attribution = None
-            if "Attribution" in license_name and "Creative Commons 0" not in license_name:
+            norm_lic = normalize_license(license_name)
+            if norm_lic == "attribution":
                 username = item.get('username') or 'unknown'
                 name = item.get('name') or 'sound'
                 attribution = f"{name} by {username} — {license_name}"
