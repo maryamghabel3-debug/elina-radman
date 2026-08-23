@@ -383,7 +383,7 @@ def test_freeze_dissolve_compose_order(monkeypatch):
     # 1. Trim happens first
     assert "trim=start=0.0:end=5.0,setpts=PTS-STARTPTS[v0_trim]" in filter_str
     # 2. tpad is applied to v0_trans producing v0 (composing after transform)
-    assert "[v0_trans]tpad=stop_mode=clone:stop_duration=0.2,setsar=1,setdar=9/16[v0]" in filter_str
+    assert "[v0_trans]tpad=stop_mode=clone:stop_duration=0.2,settb=AVTB,setsar=1,setdar=9/16[v0]" in filter_str
     # 3. xfade transition is applied to v0 and v1 with computed offset 4.7
     assert "[v0][v1]xfade=transition=fade:duration=0.5:offset=4.7" in filter_str
 
@@ -531,7 +531,7 @@ def test_transform_freeze_dissolve_compose_order(monkeypatch):
     # 2. Transform: scale & crop applied to v0_trim producing v0_trans
     assert "[v0_trim]scale=1188:2112,crop=1080:1920:(in_w-1080)/2-(0):(in_h-1920)/2-(0)[v0_trans]" in filter_str
     # 3. Freeze: tpad applied to v0_trans producing v0
-    assert "[v0_trans]tpad=stop_mode=clone:stop_duration=0.2,setsar=1,setdar=9/16[v0]" in filter_str
+    assert "[v0_trans]tpad=stop_mode=clone:stop_duration=0.2,settb=AVTB,setsar=1,setdar=9/16[v0]" in filter_str
     # 4. Transition: xfade applied to v0 and v1
     assert "[v0][v1]xfade=transition=fade:duration=0.5:offset=4.7" in filter_str
 
@@ -606,8 +606,8 @@ def test_final_segment_branches_enforce_sar_dar():
     filter_str = cmd[cmd.index("-filter_complex") + 1]
 
     # Both legacy paths must enforce setsar=1,setdar=9/16
-    assert ",setsar=1,setdar=9/16[v0]" in filter_str
-    assert ",setsar=1,setdar=9/16[v1]" in filter_str
+    assert ",settb=AVTB,setsar=1,setdar=9/16[v0]" in filter_str
+    assert ",settb=AVTB,setsar=1,setdar=9/16[v1]" in filter_str
 
 
 def test_complex_path_ends_with_final_sar_dar(monkeypatch):
@@ -634,8 +634,8 @@ def test_complex_path_ends_with_final_sar_dar(monkeypatch):
     filter_str = cmd[cmd.index("-filter_complex") + 1]
 
     # Verify setsar=1,setdar=9/16 is applied to the end of the freeze step
-    assert "tpad=stop_mode=clone:stop_duration=0.2,setsar=1,setdar=9/16[v0]" in filter_str
-    assert "null,setsar=1,setdar=9/16[v1]" in filter_str
+    assert "tpad=stop_mode=clone:stop_duration=0.2,settb=AVTB,setsar=1,setdar=9/16[v0]" in filter_str
+    assert "null,settb=AVTB,setsar=1,setdar=9/16[v1]" in filter_str
 
 
 def test_absent_ops_preserves_legacy_semantics_with_sar_dar():
@@ -678,8 +678,38 @@ def test_all_branches_feeding_concat_enforce_sar(monkeypatch):
     # Verify both v0 and v1 have setsar=1 right before consumption
     assert "[v0]" in filter_str
     assert "[v1]" in filter_str
-    assert "setsar=1,setdar=9/16[v0]" in filter_str
-    assert "setsar=1,setdar=9/16[v1]" in filter_str
+    assert "settb=AVTB,setsar=1,setdar=9/16[v0]" in filter_str
+    assert "settb=AVTB,setsar=1,setdar=9/16[v1]" in filter_str
+
+
+def test_final_segment_branches_enforce_uniform_timebase(monkeypatch):
+    """Test E / Regression Test: assert both final video branches feeding xfade end with settb=AVTB,setsar=1,setdar=9/16 and settb appears BEFORE setsar/setdar."""
+    import agents.editing.concatenator as concat_mod
+    def fake_props(path, **kwargs):
+        return {"duration": 10.0}
+    monkeypatch.setattr(concat_mod, "get_video_properties", fake_props)
+
+    concat = VideoConcatenator()
+    # segment 0 has freeze_tail_sec=0.2, segment 1 does not have freeze.
+    # dissolve between them.
+    segments = [
+        {
+            "path": "/input/a.mp4",
+            "start_sec": 0.0,
+            "end_sec": 5.0,
+            "freeze_tail_sec": 0.2,
+            "transition_out": {"type": "dissolve", "duration_sec": 0.5}
+        },
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0},
+    ]
+
+    cmd = concat.build_trim_concat_command(segments, "/output/merged.mp4")
+    filter_str = cmd[cmd.index("-filter_complex") + 1]
+
+    # Verify setsar=1,setdar=9/16 is applied to the end of the freeze step
+    assert "tpad=stop_mode=clone:stop_duration=0.2,settb=AVTB,setsar=1,setdar=9/16[v0]" in filter_str
+    assert "null,settb=AVTB,setsar=1,setdar=9/16[v1]" in filter_str
+
 
 
 
