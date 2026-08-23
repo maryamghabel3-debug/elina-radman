@@ -295,6 +295,7 @@ async def test_4_sfx_provider_not_configured(monkeypatch):
     }
 
     db = FakeDB()
+    storage = FakeStorage()
 
     class MockConcatenator:
         def concat_segments(self, segments, output_path, **kwargs):
@@ -304,6 +305,7 @@ async def test_4_sfx_provider_not_configured(monkeypatch):
 
     with patch("scripts.render_worker.ElinaDB", lambda: db), \
          patch("agents.editing.orchestrator.ElinaDB", lambda: db), \
+         patch("agents.editing.orchestrator.ElinaStorage", lambda: storage), \
          patch("agents.editing.orchestrator.VideoConcatenator", lambda: MockConcatenator()), \
          patch("agents.audio.sfx_fetcher.SFXFetcher", side_effect=ValueError("Missing FREESOUND_API_KEY")), \
          patch("scripts.render_worker.RenderJobManager") as MockJobManager, \
@@ -345,9 +347,11 @@ async def test_5_music_requested_without_asset():
         "status": "NEEDS_EDIT",
     }
     db = FakeDB(item=item)
+    storage = FakeStorage()
 
     with patch("scripts.render_worker.ElinaDB", lambda: db), \
          patch("agents.editing.orchestrator.ElinaDB", lambda: db), \
+         patch("agents.editing.orchestrator.ElinaStorage", lambda: storage), \
          patch("scripts.render_worker.RenderJobManager") as MockJobManager, \
          patch("urllib.request.urlopen"):
         

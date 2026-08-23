@@ -188,20 +188,43 @@ def process_job(job) -> bool:
             logger.info(f"Job {job_id} completed successfully")
             return True
         else:
-            mgr.mark_failed(job_id, result.get("error", "unknown"))
+            err_msg = result.get("error", "unknown")
+            mgr.mark_failed(job_id, err_msg)
             send_telegram_message(chat_id,
-                f"❌ رندر ناموفق بود:\n{result.get('error', 'خطای نامشخص')}"
+                f"❌ رندر ناموفق بود:\n{err_msg}"
             )
-            logger.error(f"Job {job_id} failed: {result.get('error')}")
-            return False
+            logger.error(f"Job {job_id} failed: {err_msg}")
+
+            # Check if this error is a terminal expected error
+            is_terminal = (
+                "INVALID_SOURCE_ASSET_PLACEHOLDER" in err_msg
+                or "TARGET_CONTENT_NOT_FOUND" in err_msg
+                or "SUPERSEDED" in err_msg
+                or "SFX_PROVIDER_NOT_CONFIGURED" in err_msg
+                or "SFX_FETCH_FAILED" in err_msg
+                or "SFX_INVALID_PLAN_ENTRY" in err_msg
+                or "MUSIC_PROVIDER_NOT_CONFIGURED" in err_msg
+                or "SHOT_INDEX_OUT_OF_RANGE" in err_msg
+                or "PLAN_ALL_SHOTS_REMOVED" in err_msg
+            )
+            if is_terminal:
+                return False
+            else:
+                raise RuntimeError(f"Unexpected rendering error: {err_msg}")
 
     except Exception as exc:
         logger.exception(f"Job {job_id} crashed")
-        RenderJobManager().mark_failed(job_id, str(exc))
-        send_telegram_message(chat_id,
-            f"❌ خطای سیستمی در رندر:\n{type(exc).__name__}: {str(exc)[:200]}"
-        )
-        return False
+        try:
+            RenderJobManager().mark_failed(job_id, str(exc))
+        except Exception as db_exc:
+            logger.error(f"Failed to mark job as failed: {db_exc}")
+        try:
+            send_telegram_message(chat_id,
+                f"❌ خطای سیستمی در رندر:\n{type(exc).__name__}: {str(exc)[:200]}"
+            )
+        except Exception:
+            pass
+        raise exc
 
 
 def main():
@@ -211,9 +234,13 @@ def main():
         logger.info("No queued render jobs found.")
         return
 
-    success = process_job(job)
-    if not success:
-        logger.error("Render worker job execution failed.")
+    try:
+        success = process_job(job)
+        if not success:
+            logger.info("Job failed with terminal/expected error (exit 0)")
+            sys.exit(0)
+    except Exception as exc:
+        logger.exception("Render worker job execution failed with unexpected infrastructure error (exit 1)")
         sys.exit(1)
 
 
