@@ -103,6 +103,7 @@ class RenderJobManager:
             or "SFX_INVALID_PLAN_ENTRY" in error_message
             or "MUSIC_PROVIDER_NOT_CONFIGURED" in error_message
             or "SHOT_INDEX_OUT_OF_RANGE" in error_message
+            or "SFX_ANCHOR_OUT_OF_RANGE" in error_message
         )
 
         if is_terminal or attempts >= max_attempts:

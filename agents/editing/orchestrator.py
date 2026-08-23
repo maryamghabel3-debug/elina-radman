@@ -280,6 +280,8 @@ class EditOrchestrator:
                             "fade_in_sec": fade_in_sec,
                             "fade_out_sec": fade_out_sec,
                             "attribution": attribution,
+                            "anchor": sfx.get("anchor"),
+                            "offset_sec": sfx.get("offset_sec", sfx.get("offset", 0.0)),
                         })
 
                 # Resolve SFX requested by the Persian edit plan (query -> sound
@@ -314,6 +316,8 @@ class EditOrchestrator:
                             "fade_in_sec": float(sfx.get("fade_in_sec", sfx.get("fade_in", 0.0))),
                             "fade_out_sec": float(sfx.get("fade_out_sec", sfx.get("fade_out", 0.0))),
                             "attribution": getattr(fetched.metadata, "attribution", None),
+                            "anchor": sfx.get("anchor"),
+                            "offset_sec": sfx.get("offset_sec", sfx.get("offset", 0.0)),
                         })
 
                 # Render hook PNG if requested
@@ -328,6 +332,85 @@ class EditOrchestrator:
                         canvas_size=(1080, 300),
                     )
                     hook_png_path = str(hook_png)
+
+                # Resolve anchored SFX timing based on segment durations and overlaps
+                if sfx_items:
+                    # 1. Compute duration of each segment on the global timeline
+                    seg_timeline = []
+                    current_time = 0.0
+                    segment_durations = []
+                    for i, seg in enumerate(local_segments):
+                        start = seg.get("start_sec", 0.0)
+                        end = seg.get("end_sec")
+                        if end is not None:
+                            dur = end - start
+                        else:
+                            props = get_video_properties(seg["path"], ffprobe_binary="ffprobe")
+                            source_dur = props.get("duration", 0.0)
+                            dur = source_dur - start
+                        dur = max(0.0, dur)
+                        
+                        # Account for freeze frame duration padding
+                        freeze_sec = seg.get("freeze_tail_sec")
+                        if freeze_sec is not None:
+                            dur += float(freeze_sec)
+                        segment_durations.append(dur)
+
+                    # Compute global start and end times for each segment
+                    for i, seg in enumerate(local_segments):
+                        active_dur = segment_durations[i]
+                        start_time = current_time
+                        end_time = current_time + active_dur
+                        seg_timeline.append({"start": start_time, "end": end_time})
+                        
+                        overlap = 0.0
+                        if i < len(local_segments) - 1:
+                            trans = local_segments[i].get("transition_out") or {}
+                            t_type = trans.get("type", "hard_cut")
+                            duration_sec = float(trans.get("duration_sec", 0.0))
+                            if t_type == "dissolve" and duration_sec > 0:
+                                overlap = max(0.05, min(1.0, duration_sec))
+                                next_active_dur = segment_durations[i+1]
+                                overlap = min(overlap, active_dur, next_active_dur)
+                        
+                        current_time = end_time - overlap
+                    
+                    total_duration = current_time
+
+                    # 2. Resolve anchored sound effects
+                    for sfx in sfx_items:
+                        anchor_str = sfx.get("anchor")
+                        if anchor_str:
+                            if not anchor_str.startswith("shot_") or "." not in anchor_str:
+                                raise ValueError("SFX_ANCHOR_OUT_OF_RANGE: invalid anchor format")
+                            
+                            try:
+                                parts = anchor_str.split(".")
+                                shot_part = parts[0]
+                                point_part = parts[1]
+                                
+                                shot_idx_1based = int(shot_part.split("_")[1])
+                                if shot_idx_1based < 1 or shot_idx_1based > len(local_segments):
+                                    raise ValueError(f"SFX_ANCHOR_OUT_OF_RANGE: shot_{shot_idx_1based} out of range (total shots: {len(local_segments)})")
+                                
+                                if point_part not in ("start", "end"):
+                                    raise ValueError("SFX_ANCHOR_OUT_OF_RANGE: anchor point must be start or end")
+                                    
+                                shot_idx = shot_idx_1based - 1
+                                base_time = seg_timeline[shot_idx][point_part]
+                                offset = float(sfx.get("offset_sec", sfx.get("offset", 0.0)))
+                                
+                                resolved_time = base_time + offset
+                                resolved_time = max(0.0, resolved_time)
+                                
+                                if resolved_time > total_duration:
+                                    raise ValueError(f"SFX_ANCHOR_OUT_OF_RANGE: resolved time {resolved_time} exceeds total duration {total_duration}")
+                                
+                                sfx["start_sec"] = resolved_time
+                            except (IndexError, ValueError) as exc:
+                                if "SFX_ANCHOR_OUT_OF_RANGE" in str(exc):
+                                    raise
+                                raise ValueError(f"SFX_ANCHOR_OUT_OF_RANGE: malformed anchor '{anchor_str}'") from exc
 
                 # Assemble video
                 self.assembler.run_assembly(
