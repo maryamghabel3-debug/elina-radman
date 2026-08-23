@@ -169,7 +169,7 @@ def normalize_segment(input_path: str, output_path: str, props: dict, ffmpeg_pat
 
 
 class VideoConcatenator:
-    """Concatenates multiple video clips (video stream only) into one file with transitions, freezes, and transforms."""
+    """Concatenates multiple video clips (video stream only) into one file with transitions, freezes, transforms, and keyframes."""
 
     def __init__(self, ffmpeg_path: str = "ffmpeg"):
         self.ffmpeg_path = ffmpeg_path
@@ -215,7 +215,7 @@ class VideoConcatenator:
 
     def build_trim_concat_command(self, segments: List[Dict[str, Any]], output_path: str, keep_audio: bool = False) -> List[str]:
         """
-        Build FFmpeg command for trimming, transforming, freezing, and concatenating video segments with transitions.
+        Build FFmpeg command for trimming, transforming, keyframing, freezing, and concatenating video segments with transitions.
 
         When keep_audio is True, the original audio streams are trimmed and
         concatenated together with the video (v=1:a=1). Otherwise the output
@@ -275,7 +275,7 @@ class VideoConcatenator:
                     except ValueError:
                         raise ValueError("TRANSFORM_INVALID: x and y offsets must be integers")
 
-        # Single segment with no trim, no transition, no freeze, and no transform: return empty to trigger copy
+        # Single segment with no trim, no transition, no freeze, no transform, and no keyframes: return empty to trigger copy
         if len(segments) == 1:
             seg = segments[0]
             start = seg.get("start_sec", 0.0)
@@ -284,10 +284,12 @@ class VideoConcatenator:
             has_freeze = freeze_sec is not None and float(freeze_sec) > 0.0
             transform = seg.get("transform")
             has_transform = transform is not None and isinstance(transform, dict) and len(transform) > 0
-            if start == 0.0 and end is None and not has_freeze and not has_transform:
+            keyframes = seg.get("brightness_keyframes")
+            has_keyframes = keyframes and isinstance(keyframes, list) and len(keyframes) > 0
+            if start == 0.0 and end is None and not has_freeze and not has_transform and not has_keyframes:
                 return []
 
-        # Check if there are any non-trivial transitions, freezes, or transforms
+        # Check if there are any non-trivial transitions, freezes, transforms, or brightness keyframes
         has_complex_operations = False
         for i in range(len(segments)):
             if i < len(segments) - 1:
@@ -306,8 +308,12 @@ class VideoConcatenator:
             if transform is not None and isinstance(transform, dict) and len(transform) > 0:
                 has_complex_operations = True
 
+            keyframes = segments[i].get("brightness_keyframes")
+            if keyframes and isinstance(keyframes, list) and len(keyframes) > 0:
+                has_complex_operations = True
+
         if not has_complex_operations:
-            # === LEGACY PATH (Guarantees identical behavior for absent transitions, freezes, and transforms) ===
+            # === LEGACY PATH (Guarantees identical behavior for absent transitions, freezes, transforms, and keyframes) ===
             filter_parts = []
             for i, seg in enumerate(segments):
                 path = seg["path"]
@@ -363,7 +369,7 @@ class VideoConcatenator:
             ])
             return cmd
 
-        # === TRANSITION, FREEZE, & TRANSFORM PATH ===
+        # === TRANSITION, FREEZE, TRANSFORM, & KEYFRAMES PATH ===
         # 1. Compute duration of each trimmed segment
         segment_durations = []
         for i, seg in enumerate(segments):
@@ -433,7 +439,22 @@ class VideoConcatenator:
             else:
                 filter_parts.append(f"[v{i}_trim]null[v{i}_trans]")
 
-        # Apply freeze frame tail padding if requested (composes after transform, before transitions)
+        # Apply brightness keyframes if requested (composes after transform, before freeze)
+        for i, seg in enumerate(segments):
+            keyframes = seg.get("brightness_keyframes")
+            if keyframes and isinstance(keyframes, list) and len(keyframes) > 0:
+                expr = "0.0"
+                for kf in reversed(keyframes):
+                    t_start = float(kf.get("t_start", 0.0))
+                    t_end = float(kf.get("t_end", 0.0))
+                    brightness = float(kf.get("brightness", 0.0))
+                    expr = f"if(between(t,{t_start},{t_end}),{brightness},{expr})"
+                brightness_vf = f"eq=brightness='{expr}'"
+                filter_parts.append(f"[v{i}_trans]{brightness_vf}[v{i}_bright]")
+            else:
+                filter_parts.append(f"[v{i}_trans]null[v{i}_bright]")
+
+        # Apply freeze frame tail padding if requested (composes after brightness, before transitions)
         # Ends with final settb=AVTB,setsar=1,setdar=9/16 before consumption by concat/xfade
         for i, seg in enumerate(segments):
             freeze_sec = seg.get("freeze_tail_sec")
@@ -443,13 +464,13 @@ class VideoConcatenator:
                 freeze_sec = 0.0
 
             if freeze_sec > 0.0:
-                # Video tpad clones the last frame of the transformed video stream
-                filter_parts.append(f"[v{i}_trans]tpad=stop_mode=clone:stop_duration={freeze_sec},settb=AVTB,setsar=1,setdar=9/16[v{i}]")
+                # Video tpad clones the last frame of the keyframed video stream
+                filter_parts.append(f"[v{i}_bright]tpad=stop_mode=clone:stop_duration={freeze_sec},settb=AVTB,setsar=1,setdar=9/16[v{i}]")
                 if keep_audio:
                     # Audio silence padding using apad to keep A/V aligned
                     filter_parts.append(f"[a{i}_trim]apad=pad_dur={freeze_sec}[a{i}]")
             else:
-                filter_parts.append(f"[v{i}_trans]null,settb=AVTB,setsar=1,setdar=9/16[v{i}]")
+                filter_parts.append(f"[v{i}_bright]null,settb=AVTB,setsar=1,setdar=9/16[v{i}]")
                 if keep_audio:
                     filter_parts.append(f"[a{i}_trim]anull[a{i}]")
 
@@ -548,7 +569,7 @@ class VideoConcatenator:
 
     def concat_segments(self, segments: List[Dict[str, Any]], output_path: str, keep_audio: bool = False) -> str:
         """
-        Concatenate video segments with optional trimming, freezing, transforming, and normalization.
+        Concatenate video segments with optional trimming, freezing, transforming, keyframing, and normalization.
 
         keep_audio keeps the original audio streams in the concatenated output
         (used when the user's plan says to keep the original shot audio). Falls
@@ -565,7 +586,7 @@ class VideoConcatenator:
             logger.info(f"Segment {i} properties: {props}")
             segment_props.append(props)
 
-        # Check if there are any non-trivial transitions, freezes, or transforms
+        # Check if there are any non-trivial transitions, freezes, transforms, or keyframes
         has_complex_operations = False
         for i in range(len(segments)):
             if i < len(segments) - 1:
@@ -582,6 +603,10 @@ class VideoConcatenator:
 
             transform = segments[i].get("transform")
             if transform is not None and isinstance(transform, dict) and len(transform) > 0:
+                has_complex_operations = True
+
+            keyframes = segments[i].get("brightness_keyframes")
+            if keyframes and isinstance(keyframes, list) and len(keyframes) > 0:
                 has_complex_operations = True
 
         force_norm = False

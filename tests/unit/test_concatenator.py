@@ -382,8 +382,8 @@ def test_freeze_dissolve_compose_order(monkeypatch):
     
     # 1. Trim happens first
     assert "trim=start=0.0:end=5.0,setpts=PTS-STARTPTS[v0_trim]" in filter_str
-    # 2. tpad is applied to v0_trans producing v0 (composing after transform)
-    assert "[v0_trans]tpad=stop_mode=clone:stop_duration=0.2,settb=AVTB,setsar=1,setdar=9/16[v0]" in filter_str
+    # 2. tpad is applied to v0_bright producing v0 (composing after transform and brightness)
+    assert "[v0_bright]tpad=stop_mode=clone:stop_duration=0.2,settb=AVTB,setsar=1,setdar=9/16[v0]" in filter_str
     # 3. xfade transition is applied to v0 and v1 with computed offset 4.7
     assert "[v0][v1]xfade=transition=fade:duration=0.5:offset=4.7" in filter_str
 
@@ -530,8 +530,8 @@ def test_transform_freeze_dissolve_compose_order(monkeypatch):
     assert "trim=start=0.0:end=5.0,setpts=PTS-STARTPTS[v0_trim]" in filter_str
     # 2. Transform: scale & crop applied to v0_trim producing v0_trans
     assert "[v0_trim]scale=1188:2112,crop=1080:1920:(in_w-1080)/2-(0):(in_h-1920)/2-(0)[v0_trans]" in filter_str
-    # 3. Freeze: tpad applied to v0_trans producing v0
-    assert "[v0_trans]tpad=stop_mode=clone:stop_duration=0.2,settb=AVTB,setsar=1,setdar=9/16[v0]" in filter_str
+    # 3. Freeze: tpad applied to v0_bright producing v0
+    assert "[v0_bright]tpad=stop_mode=clone:stop_duration=0.2,settb=AVTB,setsar=1,setdar=9/16[v0]" in filter_str
     # 4. Transition: xfade applied to v0 and v1
     assert "[v0][v1]xfade=transition=fade:duration=0.5:offset=4.7" in filter_str
 
@@ -709,6 +709,100 @@ def test_final_segment_branches_enforce_uniform_timebase(monkeypatch):
     # Verify setsar=1,setdar=9/16 is applied to the end of the freeze step
     assert "tpad=stop_mode=clone:stop_duration=0.2,settb=AVTB,setsar=1,setdar=9/16[v0]" in filter_str
     assert "null,settb=AVTB,setsar=1,setdar=9/16[v1]" in filter_str
+
+
+# === New Brightness Keyframes Tests ===
+
+def test_brightness_keyframes_generate_eq_filter():
+    """brightness keyframes generate eq=brightness filter with correct timing."""
+    concat = VideoConcatenator()
+    segments = [
+        {
+            "path": "/input/a.mp4",
+            "brightness_keyframes": [
+                {"t_start": 1.40, "t_end": 1.55, "brightness": -0.35}
+            ]
+        },
+        {"path": "/input/b.mp4"}
+    ]
+
+    cmd = concat.build_trim_concat_command(segments, "/output/merged.mp4")
+    filter_str = cmd[cmd.index("-filter_complex") + 1]
+
+    assert "eq=brightness='if(between(t,1.4,1.55),-0.35,0.0)'" in filter_str
+
+
+def test_brightness_multiple_keyframes_nesting():
+    """multiple windows generate nested between() logic recursively from inside out."""
+    concat = VideoConcatenator()
+    segments = [
+        {
+            "path": "/input/a.mp4",
+            "brightness_keyframes": [
+                {"t_start": 1.40, "t_end": 1.55, "brightness": -0.35},
+                {"t_start": 2.35, "t_end": 2.50, "brightness": -0.40}
+            ]
+        },
+        {"path": "/input/b.mp4"}
+    ]
+
+    cmd = concat.build_trim_concat_command(segments, "/output/merged.mp4")
+    filter_str = cmd[cmd.index("-filter_complex") + 1]
+
+    # Expected: if(between(t,1.4,1.55),-0.35,if(between(t,2.35,2.5),-0.4,0.0))
+    assert "eq=brightness='if(between(t,1.4,1.55),-0.35,if(between(t,2.35,2.5),-0.4,0.0))'" in filter_str
+
+
+def test_segments_without_brightness_keep_old_behavior():
+    """segments without brightness_keyframes keep old behavior (null/no brightness filter)."""
+    concat = VideoConcatenator()
+    segments = [
+        {"path": "/input/a.mp4"},
+        {"path": "/input/b.mp4"}
+    ]
+
+    cmd = concat.build_trim_concat_command(segments, "/output/merged.mp4")
+    filter_str = cmd[cmd.index("-filter_complex") + 1]
+
+    assert "eq=brightness" not in filter_str
+
+
+def test_full_pipeline_compose_order(monkeypatch):
+    """transform + brightness + freeze + dissolve compose in correct order."""
+    import agents.editing.concatenator as concat_mod
+    def fake_props(path, **kwargs):
+        return {"duration": 10.0}
+    monkeypatch.setattr(concat_mod, "get_video_properties", fake_props)
+
+    concat = VideoConcatenator()
+    segments = [
+        {
+            "path": "/input/a.mp4",
+            "start_sec": 0.0,
+            "end_sec": 5.0,
+            "transform": {"scale": 1.1, "x": 0, "y": 0},
+            "brightness_keyframes": [
+                {"t_start": 1.40, "t_end": 1.55, "brightness": -0.35}
+            ],
+            "freeze_tail_sec": 0.2,
+            "transition_out": {"type": "dissolve", "duration_sec": 0.5}
+        },
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0}
+    ]
+
+    cmd = concat.build_trim_concat_command(segments, "/output/merged.mp4")
+    filter_str = cmd[cmd.index("-filter_complex") + 1]
+
+    # 1. Trim trim=... producing v0_trim
+    assert "trim=start=0.0:end=5.0,setpts=PTS-STARTPTS[v0_trim]" in filter_str
+    # 2. Transform applied to v0_trim producing v0_trans
+    assert "[v0_trim]scale=1188:2112,crop=1080:1920:(in_w-1080)/2-(0):(in_h-1920)/2-(0)[v0_trans]" in filter_str
+    # 3. Brightness applied to v0_trans producing v0_bright
+    assert "[v0_trans]eq=brightness='if(between(t,1.4,1.55),-0.35,0.0)'[v0_bright]" in filter_str
+    # 4. Freeze/normalization applied to v0_bright producing v0
+    assert "[v0_bright]tpad=stop_mode=clone:stop_duration=0.2,settb=AVTB,setsar=1,setdar=9/16[v0]" in filter_str
+    # 5. Transition applied to v0 and v1
+    assert "[v0][v1]xfade=transition=fade:duration=0.5:offset=4.7" in filter_str
 
 
 
