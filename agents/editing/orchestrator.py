@@ -7,7 +7,7 @@ from typing import Optional, Dict, Any, List
 
 from agents.db.supabase_client import ElinaDB
 from agents.storage.supabase_storage import ElinaStorage
-from agents.editing.recipe_schema import EditRecipe
+from agents.editing.recipe_schema import EditRecipe, VideoSegmentConfig
 from agents.editing.typography_engine import TypographyEngine
 from agents.editing.media_assembly import MediaAssemblyEngine, run_qc_checks
 from agents.editing.concatenator import VideoConcatenator, get_video_properties
@@ -145,7 +145,12 @@ class EditOrchestrator:
             if video_segments:
                 # Convert dicts to VideoSegmentConfig-like dicts
                 recipe.input_media.video_segments = [
-                    type("VSC", (), {"key": s["key"], "start_sec": s.get("start_sec", 0.0), "end_sec": s.get("end_sec")})()
+                    VideoSegmentConfig(
+                        key=s["key"],
+                        start_sec=s.get("start_sec", 0.0),
+                        end_sec=s.get("end_sec"),
+                        transition_out=s.get("transition_out")
+                    )
                     for s in video_segments
                 ]
                 recipe.input_media.video_keys = []
@@ -205,6 +210,7 @@ class EditOrchestrator:
                         "path": str(vpath),
                         "start_sec": seg.start_sec,
                         "end_sec": seg.end_sec,
+                        "transition_out": getattr(seg, "transition_out", None),
                     })
 
                 # Concatenate segments (with optional trimming). Keep the

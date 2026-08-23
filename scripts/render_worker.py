@@ -122,11 +122,14 @@ def process_job(job) -> bool:
             idx = shot.get("index", 1) - 1  # 0-based index
             if idx < len(media_keys):
                 key = media_keys[idx]
-                video_segments.append({
+                seg_dict = {
                     "key": key,
                     "start_sec": shot.get("start", 0.0),
                     "end_sec": shot.get("end"),
-                })
+                }
+                if "transition_out" in shot:
+                    seg_dict["transition_out"] = shot["transition_out"]
+                video_segments.append(seg_dict)
 
         # A plan that removes every shot leaves nothing to render: fail loudly
         # with a typed error instead of silently rendering the full bundle.

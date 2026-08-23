@@ -169,7 +169,7 @@ def normalize_segment(input_path: str, output_path: str, props: dict, ffmpeg_pat
 
 
 class VideoConcatenator:
-    """Concatenates multiple video clips (video stream only) into one file."""
+    """Concatenates multiple video clips (video stream only) into one file with transitions."""
 
     def __init__(self, ffmpeg_path: str = "ffmpeg"):
         self.ffmpeg_path = ffmpeg_path
@@ -215,7 +215,7 @@ class VideoConcatenator:
 
     def build_trim_concat_command(self, segments: List[Dict[str, Any]], output_path: str, keep_audio: bool = False) -> List[str]:
         """
-        Build FFmpeg command for trimming and concatenating video segments.
+        Build FFmpeg command for trimming and concatenating video segments with transitions.
 
         When keep_audio is True, the original audio streams are trimmed and
         concatenated together with the video (v=1:a=1). Otherwise the output
@@ -224,7 +224,7 @@ class VideoConcatenator:
         if not segments:
             raise ValueError("No segments provided.")
 
-        # Validate segments
+        # Validate segments and transitions first
         for i, seg in enumerate(segments):
             if seg.get("start_sec", 0.0) < 0:
                 raise ValueError(f"Segment {i}: start_sec cannot be negative.")
@@ -232,7 +232,15 @@ class VideoConcatenator:
             if end is not None and end <= seg.get("start_sec", 0.0):
                 raise ValueError(f"Segment {i}: end_sec must be greater than start_sec.")
 
-        # Single segment with no trim: return empty to trigger copy
+            trans = seg.get("transition_out")
+            if trans is not None:
+                if not isinstance(trans, dict):
+                    raise ValueError("TRANSITION_TYPE_INVALID: transition_out must be a dictionary")
+                t_type = trans.get("type", "hard_cut")
+                if t_type not in ("hard_cut", "dissolve", "fade_black"):
+                    raise ValueError(f"TRANSITION_TYPE_INVALID: invalid transition type '{t_type}'")
+
+        # Single segment with no trim and no transition: return empty to trigger copy
         if len(segments) == 1:
             seg = segments[0]
             start = seg.get("start_sec", 0.0)
@@ -240,14 +248,93 @@ class VideoConcatenator:
             if start == 0.0 and end is None:
                 return []
 
-        # Build trim+concat filter graph
-        filter_parts = []
+        # Check if there are any non-trivial transitions
+        has_non_trivial_transitions = False
+        for i in range(len(segments) - 1):
+            trans = segments[i].get("transition_out")
+            if trans and isinstance(trans, dict):
+                t_type = trans.get("type", "hard_cut")
+                duration_sec = trans.get("duration_sec", 0.0)
+                if t_type in ("dissolve", "fade_black") and duration_sec > 0:
+                    has_non_trivial_transitions = True
+                    break
+
+        if not has_non_trivial_transitions:
+            # === LEGACY PATH (Guarantees identical behavior for absent transition_out) ===
+            filter_parts = []
+            for i, seg in enumerate(segments):
+                path = seg["path"]
+                start = seg.get("start_sec", 0.0)
+                end = seg.get("end_sec")
+
+                # Video trim filter
+                if start > 0 or end is not None:
+                    if end is not None:
+                        filter_parts.append(f"[{i}:v]trim=start={start}:end={end},setpts=PTS-STARTPTS[v{i}]")
+                    else:
+                        filter_parts.append(f"[{i}:v]trim=start={start},setpts=PTS-STARTPTS[v{i}]")
+                else:
+                    filter_parts.append(f"[{i}:v]null[v{i}]")
+
+                # Audio trim filter (only when keeping original audio)
+                if keep_audio:
+                    if start > 0 or end is not None:
+                        if end is not None:
+                            filter_parts.append(f"[{i}:a]atrim=start={start}:end={end},asetpts=PTS-STARTPTS[a{i}]")
+                        else:
+                            filter_parts.append(f"[{i}:a]atrim=start={start},asetpts=PTS-STARTPTS[a{i}]")
+                    else:
+                        filter_parts.append(f"[{i}:a]anull[a{i}]")
+
+            if keep_audio:
+                interleaved_labels = "".join(f"[v{i}][a{i}]" for i in range(len(segments)))
+                filter_complex = (
+                    ";".join(filter_parts)
+                    + f";{interleaved_labels}concat=n={len(segments)}:v=1:a=1[outv][outa]"
+                )
+            else:
+                v_labels = "".join(f"[v{i}]" for i in range(len(segments)))
+                filter_complex = ";".join(filter_parts) + f";{v_labels}concat=n={len(segments)}:v=1:a=0[outv]"
+
+            cmd = [self.ffmpeg_path, "-y"]
+            for seg in segments:
+                cmd.extend(["-i", seg["path"]])
+
+            cmd.extend([
+                "-filter_complex", filter_complex,
+                "-map", "[outv]",
+            ])
+            if keep_audio:
+                cmd.extend(["-map", "[outa]", "-c:a", "aac", "-ar", "48000", "-ac", "2"])
+            cmd.extend([
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-crf", "23",
+                output_path,
+            ])
+            return cmd
+
+        # === TRANSITION PATH ===
+        # 1. Compute duration of each trimmed segment
+        segment_durations = []
         for i, seg in enumerate(segments):
-            path = seg["path"]
+            start = seg.get("start_sec", 0.0)
+            end = seg.get("end_sec")
+            if end is not None:
+                dur = end - start
+            else:
+                props = get_video_properties(seg["path"], ffprobe_binary="ffprobe")
+                source_dur = props.get("duration", 0.0)
+                dur = source_dur - start
+            dur = max(0.0, dur)
+            segment_durations.append(dur)
+
+        filter_parts = []
+        # Trim clips to [v0], [v1]... and [a0], [a1]...
+        for i, seg in enumerate(segments):
             start = seg.get("start_sec", 0.0)
             end = seg.get("end_sec")
 
-            # Video trim filter
             if start > 0 or end is not None:
                 if end is not None:
                     filter_parts.append(f"[{i}:v]trim=start={start}:end={end},setpts=PTS-STARTPTS[v{i}]")
@@ -256,7 +343,6 @@ class VideoConcatenator:
             else:
                 filter_parts.append(f"[{i}:v]null[v{i}]")
 
-            # Audio trim filter (only when keeping original audio)
             if keep_audio:
                 if start > 0 or end is not None:
                     if end is not None:
@@ -266,30 +352,90 @@ class VideoConcatenator:
                 else:
                     filter_parts.append(f"[{i}:a]anull[a{i}]")
 
-        # Create concat filter. With keep_audio, concat expects the segment
-        # streams interleaved per segment: [v0][a0][v1][a1]... (verified against
-        # ffmpeg 7; grouped [v0][v1][a0][a1] fails with a media-type mismatch).
-        if keep_audio:
-            interleaved_labels = "".join(f"[v{i}][a{i}]" for i in range(len(segments)))
-            filter_complex = (
-                ";".join(filter_parts)
-                + f";{interleaved_labels}concat=n={len(segments)}:v=1:a=1[outv][outa]"
-            )
-        else:
-            v_labels = "".join(f"[v{i}]" for i in range(len(segments)))
-            filter_complex = ";".join(filter_parts) + f";{v_labels}concat=n={len(segments)}:v=1:a=0[outv]"
+        current_v = "v0"
+        current_v_dur = segment_durations[0]
+        current_a = "a0" if keep_audio else None
 
-        # Build command
+        for i in range(len(segments) - 1):
+            next_v = f"v{i+1}"
+            next_v_dur = segment_durations[i+1]
+            next_a = f"a{i+1}" if keep_audio else None
+
+            trans = segments[i].get("transition_out") or {}
+            t_type = trans.get("type", "hard_cut")
+            duration_sec = float(trans.get("duration_sec", 0.0))
+
+            if t_type in ("dissolve", "fade_black"):
+                duration_sec = max(0.05, min(1.0, duration_sec))
+
+            out_v = f"v_step_{i}"
+            out_a = f"a_step_{i}" if keep_audio else None
+
+            if t_type == "dissolve" and duration_sec > 0:
+                # dissolve: use FFmpeg xfade filter (transition=fade)
+                # honoring duration_sec (clamp 0.05-1.0s)
+                # Duration accounting: xfade overlaps clips; total duration will shrink by the transition duration.
+                offset = current_v_dur - duration_sec
+                if offset < 0:
+                    offset = 0.0
+
+                filter_parts.append(f"[{current_v}][{next_v}]xfade=transition=fade:duration={duration_sec}:offset={offset}[{out_v}]")
+
+                if keep_audio:
+                    filter_parts.append(f"[{current_a}][{next_a}]acrossfade=d={duration_sec}:c1=tri:c2=tri[{out_a}]")
+
+                current_v_dur = current_v_dur + next_v_dur - duration_sec
+
+            elif t_type == "fade_black" and duration_sec > 0:
+                # fade_black: fade-out to black at end of segment N and fade-in from black on segment N+1
+                # Duration accounting: fade_black does not overlap clips; total duration is preserved.
+                v_fade_out = f"v_fade_out_{i}"
+                v_fade_in = f"v_fade_in_{i}"
+
+                st_out = current_v_dur - duration_sec
+                if st_out < 0:
+                    st_out = 0.0
+
+                filter_parts.append(f"[{current_v}]fade=t=out:st={st_out}:d={duration_sec}[{v_fade_out}]")
+                filter_parts.append(f"[{next_v}]fade=t=in:st=0:d={duration_sec}[{v_fade_in}]")
+                filter_parts.append(f"[{v_fade_out}][{v_fade_in}]concat=n=2:v=1:a=0[{out_v}]")
+
+                if keep_audio:
+                    a_fade_out = f"a_fade_out_{i}"
+                    a_fade_in = f"a_fade_in_{i}"
+
+                    filter_parts.append(f"[{current_a}]afade=t=out:st={st_out}:d={duration_sec}[{a_fade_out}]")
+                    filter_parts.append(f"[{next_a}]afade=t=in:st=0:d={duration_sec}[{a_fade_in}]")
+                    filter_parts.append(f"[{a_fade_out}][{a_fade_in}]concat=n=2:v=0:a=1[{out_a}]")
+
+                current_v_dur = current_v_dur + next_v_dur
+
+            else:
+                # hard_cut: current concat behavior (no change)
+                # Duration accounting: hard_cut does not overlap clips; total duration is preserved.
+                filter_parts.append(f"[{current_v}][{next_v}]concat=n=2:v=1:a=0[{out_v}]")
+
+                if keep_audio:
+                    filter_parts.append(f"[{current_a}][{next_a}]concat=n=2:v=0:a=1[{out_a}]")
+
+                current_v_dur = current_v_dur + next_v_dur
+
+            current_v = out_v
+            if keep_audio:
+                current_a = out_a
+
+        filter_complex = ";".join(filter_parts)
+
         cmd = [self.ffmpeg_path, "-y"]
         for seg in segments:
             cmd.extend(["-i", seg["path"]])
 
         cmd.extend([
             "-filter_complex", filter_complex,
-            "-map", "[outv]",
+            "-map", f"[{current_v}]",
         ])
         if keep_audio:
-            cmd.extend(["-map", "[outa]", "-c:a", "aac", "-ar", "48000", "-ac", "2"])
+            cmd.extend(["-map", f"[{current_a}]", "-c:a", "aac", "-ar", "48000", "-ac", "2"])
         cmd.extend([
             "-c:v", "libx264",
             "-preset", "fast",
@@ -317,8 +463,23 @@ class VideoConcatenator:
             logger.info(f"Segment {i} properties: {props}")
             segment_props.append(props)
 
-        # Check and normalize if heterogeneous
-        if should_normalize_segments(segment_props):
+        # Check if there are any non-trivial transitions
+        has_non_trivial_transitions = False
+        for i in range(len(segments) - 1):
+            trans = segments[i].get("transition_out")
+            if trans and isinstance(trans, dict):
+                t_type = trans.get("type", "hard_cut")
+                duration_sec = trans.get("duration_sec", 0.0)
+                if t_type in ("dissolve", "fade_black") and duration_sec > 0:
+                    has_non_trivial_transitions = True
+                    break
+
+        force_norm = False
+        if has_non_trivial_transitions and os.environ.get("ELINA_TEST_ALLOW_MOCKS") != "true":
+            force_norm = True
+
+        # Check and normalize if heterogeneous or if non-trivial transitions require uniform formats
+        if should_normalize_segments(segment_props) or force_norm:
             logger.info("Normalizing segments to canonical profile before concatenation...")
             normalized = True
             normalized_segments = []
