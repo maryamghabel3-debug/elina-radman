@@ -809,3 +809,196 @@ def test_full_pipeline_compose_order(monkeypatch):
 
 
 
+
+# === New Visual Adjustments (Per-Segment Color Match) Tests ===
+
+def test_visual_adjustments_generate_eq_filter():
+    """visual_adjustments generate a static eq filter with all four parameters on the segment stream."""
+    concat = VideoConcatenator()
+    segments = [
+        {
+            "path": "/input/a.mp4",
+            "start_sec": 0.0,
+            "end_sec": 5.0,
+            "visual_adjustments": {"brightness": 0.1, "contrast": 1.2, "saturation": 0.9, "gamma": 1.1},
+        },
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0},
+    ]
+
+    cmd = concat.build_trim_concat_command(segments, "/output/merged.mp4")
+    filter_str = cmd[cmd.index("-filter_complex") + 1]
+
+    # Full static eq filter with all four parameters
+    assert "eq=brightness=0.1:contrast=1.2:saturation=0.9:gamma=1.1" in filter_str
+    # Applied to the transformed stream of segment 0 only, producing v0_adj
+    assert "[v0_trans]eq=brightness=0.1:contrast=1.2:saturation=0.9:gamma=1.1[v0_adj]" in filter_str
+    # Segment 1 has no adjustments: plain null passthrough to brightness stage
+    assert "[v1_trans]null[v1_bright]" in filter_str
+    # Segment 1 must not get any eq filter
+    assert "[v1_trans]eq=" not in filter_str
+
+
+def test_visual_adjustments_partial_values_use_defaults():
+    """A partial visual_adjustments dict fills missing keys with defaults (0.0 / 1.0)."""
+    concat = VideoConcatenator()
+    segments = [
+        {"path": "/input/a.mp4", "start_sec": 0.0, "end_sec": 5.0, "visual_adjustments": {"contrast": 1.25}},
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0},
+    ]
+
+    cmd = concat.build_trim_concat_command(segments, "/output/merged.mp4")
+    filter_str = cmd[cmd.index("-filter_complex") + 1]
+
+    assert "eq=brightness=0.0:contrast=1.25:saturation=1.0:gamma=1.0" in filter_str
+
+
+def test_visual_adjustments_identity_omits_filter():
+    """All-default visual_adjustments (and empty dict) are identity: legacy command preserved exactly."""
+    concat = VideoConcatenator()
+    segments_legacy = [
+        {"path": "/input/a.mp4", "start_sec": 0.0, "end_sec": 5.0},
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0},
+    ]
+    segments_identity = [
+        {
+            "path": "/input/a.mp4",
+            "start_sec": 0.0,
+            "end_sec": 5.0,
+            "visual_adjustments": {"brightness": 0.0, "contrast": 1.0, "saturation": 1.0, "gamma": 1.0},
+        },
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0, "visual_adjustments": {}},
+    ]
+
+    cmd_legacy = concat.build_trim_concat_command(segments_legacy, "/output/merged.mp4")
+    cmd_identity = concat.build_trim_concat_command(segments_identity, "/output/merged.mp4")
+
+    assert cmd_identity == cmd_legacy
+    assert "eq=brightness=" not in cmd_identity[cmd_identity.index("-filter_complex") + 1]
+
+
+def test_visual_adjustments_boundary_values_are_valid():
+    """Boundary values (-1.0/1.0, -2.0/2.0, 0.0/3.0, 0.1/10.0) are accepted and produce the eq filter."""
+    concat = VideoConcatenator()
+    segments = [
+        {
+            "path": "/input/a.mp4",
+            "start_sec": 0.0,
+            "end_sec": 5.0,
+            "visual_adjustments": {"brightness": -1.0, "contrast": -2.0, "saturation": 0.0, "gamma": 0.1},
+        },
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0},
+    ]
+
+    cmd = concat.build_trim_concat_command(segments, "/output/merged.mp4")
+    filter_str = cmd[cmd.index("-filter_complex") + 1]
+
+    assert "eq=brightness=-1.0:contrast=-2.0:saturation=0.0:gamma=0.1" in filter_str
+
+
+def test_visual_adjustments_compose_order_before_keyframes_and_freeze(monkeypatch):
+    """Full chain order: trim -> transform -> visual_adjustments (static eq) -> brightness_keyframes (dynamic eq) -> freeze -> transition."""
+    import agents.editing.concatenator as concat_mod
+
+    def fake_props(path, **kwargs):
+        return {"duration": 10.0}
+
+    monkeypatch.setattr(concat_mod, "get_video_properties", fake_props)
+
+    concat = VideoConcatenator()
+    segments = [
+        {
+            "path": "/input/a.mp4",
+            "start_sec": 0.0,
+            "end_sec": 5.0,
+            "transform": {"scale": 1.1, "x": 0, "y": 0},
+            "visual_adjustments": {"brightness": -0.05, "contrast": 1.1},
+            "brightness_keyframes": [
+                {"t_start": 1.40, "t_end": 1.55, "brightness": -0.35}
+            ],
+            "freeze_tail_sec": 0.2,
+            "transition_out": {"type": "dissolve", "duration_sec": 0.5},
+        },
+        {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0},
+    ]
+
+    cmd = concat.build_trim_concat_command(segments, "/output/merged.mp4")
+    filter_str = cmd[cmd.index("-filter_complex") + 1]
+
+    # 1. Trim producing v0_trim
+    assert "trim=start=0.0:end=5.0,setpts=PTS-STARTPTS[v0_trim]" in filter_str
+    # 2. Transform applied to v0_trim producing v0_trans
+    assert "[v0_trim]scale=1188:2112,crop=1080:1920:(in_w-1080)/2-(0):(in_h-1920)/2-(0)[v0_trans]" in filter_str
+    # 3. Static visual adjustments applied to v0_trans producing v0_adj
+    assert "[v0_trans]eq=brightness=-0.05:contrast=1.1:saturation=1.0:gamma=1.0[v0_adj]" in filter_str
+    # 4. Dynamic brightness keyframes applied to v0_adj producing v0_bright (two consecutive eq filters)
+    assert "[v0_adj]eq=brightness='if(between(t,1.4,1.55),-0.35,0.0)'[v0_bright]" in filter_str
+    # 5. Freeze/normalization applied to v0_bright producing v0
+    assert "[v0_bright]tpad=stop_mode=clone:stop_duration=0.2,settb=AVTB,setsar=1,setdar=9/16[v0]" in filter_str
+    # 6. Transition applied to v0 and v1
+    assert "[v0][v1]xfade=transition=fade:duration=0.5:offset=4.7" in filter_str
+
+    # Explicit positional order: static eq before dynamic eq before freeze before xfade
+    idx_static_eq = filter_str.index("[v0_trans]eq=brightness=-0.05")
+    idx_dynamic_eq = filter_str.index("[v0_adj]eq=brightness='if(between(t,1.4,1.55)")
+    idx_freeze = filter_str.index("[v0_bright]tpad=stop_mode=clone:stop_duration=0.2")
+    idx_transition = filter_str.index("[v0][v1]xfade=transition=fade:duration=0.5:offset=4.7")
+    assert idx_static_eq < idx_dynamic_eq < idx_freeze < idx_transition
+
+
+def test_visual_adjustments_invalid_values_raise_error():
+    """Out-of-range brightness/contrast/saturation/gamma raises VISUAL_ADJUSTMENTS_INVALID before FFmpeg."""
+    concat = VideoConcatenator()
+
+    invalid_cases = [
+        {"brightness": 1.5},      # > 1.0
+        {"brightness": -1.5},     # < -1.0
+        {"contrast": 2.5},        # > 2.0
+        {"contrast": -2.5},       # < -2.0
+        {"saturation": 3.5},      # > 3.0
+        {"saturation": -0.1},     # < 0.0
+        {"gamma": 0.05},          # < 0.1
+        {"gamma": 12.0},          # > 10.0
+    ]
+
+    for bad_va in invalid_cases:
+        segments = [
+            {"path": "/input/a.mp4", "start_sec": 0.0, "end_sec": 5.0, "visual_adjustments": bad_va},
+            {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0},
+        ]
+        with pytest.raises(ValueError, match="VISUAL_ADJUSTMENTS_INVALID"):
+            concat.build_trim_concat_command(segments, "/output/merged.mp4")
+
+
+def test_visual_adjustments_invalid_shape_raises_error():
+    """Non-dict visual_adjustments, non-numeric values, and unknown keys raise VISUAL_ADJUSTMENTS_INVALID."""
+    concat = VideoConcatenator()
+
+    bad_shapes = [
+        "brightness=0.1",                          # string instead of dict
+        {"brightness": "0.1"},                     # non-numeric value
+        {"brightness": True},                      # bool is not accepted
+        {"brighthness": 0.5},                      # unknown key
+        [1, 2, 3],                                 # list instead of dict
+    ]
+
+    for bad_va in bad_shapes:
+        segments = [
+            {"path": "/input/a.mp4", "start_sec": 0.0, "end_sec": 5.0, "visual_adjustments": bad_va},
+            {"path": "/input/b.mp4", "start_sec": 0.0, "end_sec": 5.0},
+        ]
+        with pytest.raises(ValueError, match="VISUAL_ADJUSTMENTS_INVALID"):
+            concat.build_trim_concat_command(segments, "/output/merged.mp4")
+
+
+def test_visual_adjustments_single_segment_not_copied():
+    """A single untrimmed segment with non-identity visual_adjustments must NOT take the copy bypass."""
+    concat = VideoConcatenator()
+    segments = [
+        {"path": "/input/a.mp4", "start_sec": 0.0, "end_sec": None, "visual_adjustments": {"saturation": 0.8}},
+    ]
+
+    cmd = concat.build_trim_concat_command(segments, "/output/copy.mp4")
+
+    assert cmd != []
+    filter_str = cmd[cmd.index("-filter_complex") + 1]
+    assert "eq=brightness=0.0:contrast=1.0:saturation=0.8:gamma=1.0" in filter_str

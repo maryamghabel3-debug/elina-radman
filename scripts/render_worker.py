@@ -135,6 +135,8 @@ def process_job(job) -> bool:
                     seg_dict["transform"] = shot["transform"]
                 if "brightness_keyframes" in shot:
                     seg_dict["brightness_keyframes"] = shot["brightness_keyframes"]
+                if "visual_adjustments" in shot:
+                    seg_dict["visual_adjustments"] = shot["visual_adjustments"]
                 video_segments.append(seg_dict)
 
         # A plan that removes every shot leaves nothing to render: fail loudly

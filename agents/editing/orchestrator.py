@@ -152,7 +152,8 @@ class EditOrchestrator:
                         transition_out=s.get("transition_out"),
                         freeze_tail_sec=s.get("freeze_tail_sec"),
                         transform=s.get("transform"),
-                        brightness_keyframes=s.get("brightness_keyframes")
+                        brightness_keyframes=s.get("brightness_keyframes"),
+                        visual_adjustments=s.get("visual_adjustments")
                     )
                     for s in video_segments
                 ]
@@ -217,6 +218,7 @@ class EditOrchestrator:
                         "freeze_tail_sec": getattr(seg, "freeze_tail_sec", None),
                         "transform": getattr(seg, "transform", None),
                         "brightness_keyframes": getattr(seg, "brightness_keyframes", None),
+                        "visual_adjustments": getattr(seg, "visual_adjustments", None),
                     })
 
                 # Concatenate segments (with optional trimming). Keep the
