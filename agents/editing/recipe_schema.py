@@ -10,6 +10,7 @@ class VideoSegmentConfig:
     freeze_tail_sec: Optional[float] = None
     transform: Optional[Dict[str, Any]] = None
     brightness_keyframes: Optional[List[Dict[str, Any]]] = None
+    visual_adjustments: Optional[Dict[str, Any]] = None
 
 @dataclass
 class SFXConfig:
@@ -105,6 +106,28 @@ class EditRecipe:
                 errors.append(f"Video segment start_sec cannot be negative: {seg.start_sec}.")
             if seg.end_sec is not None and seg.end_sec <= seg.start_sec:
                 errors.append(f"Video segment end_sec must be greater than start_sec: end={seg.end_sec}, start={seg.start_sec}.")
+            # Validate static per-segment color grade (visual_adjustments)
+            va = seg.visual_adjustments
+            if va is not None:
+                if not isinstance(va, dict):
+                    errors.append(f"Visual adjustments for segment '{seg.key}' must be a dictionary.")
+                else:
+                    va_ranges = {
+                        "brightness": (-1.0, 1.0),
+                        "contrast": (-2.0, 2.0),
+                        "saturation": (0.0, 3.0),
+                        "gamma": (0.1, 10.0),
+                    }
+                    for va_key, va_val in va.items():
+                        if va_key not in va_ranges:
+                            errors.append(f"Visual adjustments for segment '{seg.key}' contain unknown key: '{va_key}'.")
+                            continue
+                        if isinstance(va_val, bool) or not isinstance(va_val, (int, float)):
+                            errors.append(f"Visual adjustments '{va_key}' for segment '{seg.key}' must be a number.")
+                            continue
+                        lo, hi = va_ranges[va_key]
+                        if va_val < lo or va_val > hi:
+                            errors.append(f"Visual adjustments '{va_key}' for segment '{seg.key}' must be between {lo} and {hi}: got {va_val}.")
         if self.hook.enabled:
             if not self.hook.text.strip():
                 errors.append("Hook is enabled but text is empty.")
@@ -149,12 +172,14 @@ class EditRecipe:
                     freeze_tail_sec = float(freeze_tail_sec)
                 transform = seg.get("transform")
                 brightness_keyframes = seg.get("brightness_keyframes")
+                visual_adjustments = seg.get("visual_adjustments")
                 video_segments.append(VideoSegmentConfig(
                     key=key, start_sec=start, end_sec=end,
                     transition_out=transition_out,
                     freeze_tail_sec=freeze_tail_sec,
                     transform=transform,
-                    brightness_keyframes=brightness_keyframes
+                    brightness_keyframes=brightness_keyframes,
+                    visual_adjustments=visual_adjustments
                 ))
 
         # Support legacy video_keys list (convert to segments if no segments provided)
