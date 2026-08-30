@@ -1,3 +1,4 @@
+import asyncio
 import os
 import tempfile
 import logging
@@ -128,6 +129,7 @@ class EditOrchestrator:
         mute_original: bool = True,
         plan_sfx: Optional[List[Dict[str, Any]]] = None,
         plan_music: Optional[Dict[str, Any]] = None,
+        plan_voice: Optional[Dict[str, Any]] = None,
         job_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         item = self.db.get_content_by_custom_id(custom_id)
@@ -233,9 +235,63 @@ class EditOrchestrator:
                     base_props = get_video_properties(str(base_video))
                     use_base_audio = bool(base_props.get("has_audio", False))
 
-                # Download voice track if present
+                # Resolve the narration track. An explicit plan voice (M15)
+                # takes priority over an item-level voice_key asset: generate
+                # the speech from text via VoiceGenerator, persist the file to
+                # storage, and feed the local path to the assembly engine the
+                # same way a downloaded voice asset is consumed.
                 voice_path = None
-                if recipe.input_media.voice_key:
+                if plan_voice is not None:
+                    if not isinstance(plan_voice, dict) or not (plan_voice.get("text") or "").strip():
+                        raise ValueError("VOICE_INVALID_PLAN_ENTRY: plan voice requires non-empty 'text'")
+
+                    from agents.audio.voice_generator import VoiceGenerator, VoiceGenerationError
+
+                    voice_path = str(tmp / "voice_tts.mp3")
+                    try:
+                        asyncio.run(
+                            VoiceGenerator().generate(
+                                text=(plan_voice.get("text") or "").strip(),
+                                voice=plan_voice.get("voice") or "dilara",
+                                rate=plan_voice.get("rate") or "+0%",
+                                output_path=voice_path,
+                            )
+                        )
+                    except VoiceGenerationError as exc:
+                        # Fail the job with the typed error. Terminal codes
+                        # (VOICE_TEXT_TOO_LONG, VOICE_UNSUPPORTED, ...) are
+                        # registered in RenderJobManager; VOICE_GENERATION_FAILED
+                        # stays retryable for transient network issues.
+                        raise RuntimeError(f"{exc.code}: {exc.detail}") from exc
+
+                    # Persist the generated narration (same key pattern as the
+                    # edited video output).
+                    if job_id:
+                        voice_key = f"voice/{custom_id}/{job_id}.mp3"
+                    else:
+                        import datetime
+                        voice_ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S%f")[:-3]
+                        voice_key = f"voice/{custom_id}/render-{voice_ts}.mp3"
+                    self.storage.upload_file(voice_path, voice_key, content_type="audio/mpeg")
+                    recipe.input_media.voice_key = voice_key
+
+                    # Carry gain/start into the recipe audio config so the
+                    # assembly engine applies them in the final mix.
+                    if plan_voice.get("gain_db") is not None:
+                        try:
+                            recipe.audio.voice_gain_db = int(plan_voice["gain_db"])
+                        except (TypeError, ValueError):
+                            raise ValueError("VOICE_INVALID_PLAN_ENTRY: voice gain_db must be an integer")
+                    if plan_voice.get("start_sec") is not None:
+                        try:
+                            voice_start = float(plan_voice["start_sec"])
+                        except (TypeError, ValueError):
+                            raise ValueError("VOICE_INVALID_PLAN_ENTRY: voice start_sec must be a number")
+                        if voice_start < 0:
+                            raise ValueError("VOICE_INVALID_PLAN_ENTRY: voice start_sec cannot be negative")
+                        recipe.audio.voice_start_sec = voice_start
+                elif recipe.input_media.voice_key:
+                    # Download voice track if present
                     voice_path = str(tmp / "voice.mp3")
                     self.storage.download_file(recipe.input_media.voice_key, voice_path)
 

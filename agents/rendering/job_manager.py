@@ -106,6 +106,14 @@ class RenderJobManager:
             or "SFX_ANCHOR_OUT_OF_RANGE" in error_message
             or "SFX_AUTH_FAILED" in error_message
             or "SFX_SEARCH_REQUEST_INVALID" in error_message
+            # Voice generation: plan-data/validation errors are terminal.
+            # VOICE_GENERATION_FAILED is intentionally NOT terminal: it usually
+            # means a transient network issue and the job should be retried.
+            or "VOICE_TEXT_EMPTY" in error_message
+            or "VOICE_TEXT_TOO_LONG" in error_message
+            or "VOICE_UNSUPPORTED" in error_message
+            or "VOICE_RATE_INVALID" in error_message
+            or "VOICE_INVALID_PLAN_ENTRY" in error_message
         )
 
         if is_terminal or attempts >= max_attempts:

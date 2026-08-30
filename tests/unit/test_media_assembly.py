@@ -516,3 +516,57 @@ def test_sfx_background_bed_loop_and_trim():
     assert "adelay" not in filter_arg
 
 
+
+# === New Voice Gain/Start (M15 Persian TTS) Tests ===
+
+def test_build_command_voice_gain_and_start_chain():
+    """voice_gain_db + voice_start_sec prepend volume/adelay to the voice chain before denoise."""
+    engine = MediaAssemblyEngine()
+    recipe = make_recipe()
+    recipe.audio = AudioConfig(voice_key="voice.wav", music_key=None, voice_gain_db=-3, voice_start_sec=1.5)
+    cmd = engine.build_assembly_command(
+        recipe=recipe,
+        video_path="/tmp/v.mp4",
+        voice_path="/tmp/voice.wav",
+        music_path=None,
+        hook_png_path=None,
+        output_path="/tmp/o.mp4",
+    )
+    fc = cmd[cmd.index("-filter_complex") + 1]
+    assert "[1:a]adelay=1500|1500,volume=-3dB,afftdn=nf=-30[voice_clean]" in fc
+
+
+def test_build_command_voice_gain_only_chain():
+    """voice_gain_db without start_sec adds only the volume filter."""
+    engine = MediaAssemblyEngine()
+    recipe = make_recipe()
+    recipe.audio = AudioConfig(voice_key="voice.wav", music_key=None, voice_gain_db=2)
+    cmd = engine.build_assembly_command(
+        recipe=recipe,
+        video_path="/tmp/v.mp4",
+        voice_path="/tmp/voice.wav",
+        music_path=None,
+        hook_png_path=None,
+        output_path="/tmp/o.mp4",
+    )
+    fc = cmd[cmd.index("-filter_complex") + 1]
+    assert "[1:a]volume=2dB,afftdn=nf=-30[voice_clean]" in fc
+
+
+def test_build_command_voice_chain_default_unchanged():
+    """Default AudioConfig (no gain/start) keeps the historical voice chain byte-for-byte."""
+    engine = MediaAssemblyEngine()
+    recipe = make_recipe()
+    recipe.audio = AudioConfig(voice_key="voice.wav", music_key=None)
+    cmd = engine.build_assembly_command(
+        recipe=recipe,
+        video_path="/tmp/v.mp4",
+        voice_path="/tmp/voice.wav",
+        music_path=None,
+        hook_png_path=None,
+        output_path="/tmp/o.mp4",
+    )
+    fc = cmd[cmd.index("-filter_complex") + 1]
+    assert "[1:a]afftdn=nf=-30[voice_clean]" in fc
+    assert "adelay" not in fc
+    assert "volume=" not in fc

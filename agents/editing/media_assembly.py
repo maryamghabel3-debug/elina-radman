@@ -106,11 +106,19 @@ class MediaAssemblyEngine:
         # Filter complex
         filter_parts = []
 
-        # Denoise voice if present
+        # Denoise voice if present (optional gain + start delay applied first,
+        # both disabled by default so the historical voice chain is unchanged)
         voice_index = 1 if voice_path else None
         if voice_index is not None:
+            voice_prefix = []
+            if recipe.audio.voice_start_sec is not None and recipe.audio.voice_start_sec > 0:
+                delay_ms = int(round(recipe.audio.voice_start_sec * 1000))
+                voice_prefix.append(f"adelay={delay_ms}|{delay_ms}")
+            if recipe.audio.voice_gain_db is not None:
+                voice_prefix.append(f"volume={int(recipe.audio.voice_gain_db)}dB")
             afftdn = build_ffmpeg_afftdn_filter(-30)
-            filter_parts.append(f"[{voice_index}:a]{afftdn}[voice_clean]")
+            voice_chain = ",".join(voice_prefix + [afftdn])
+            filter_parts.append(f"[{voice_index}:a]{voice_chain}[voice_clean]")
 
         # Process music volume / gain if present
         music_stream_label = None

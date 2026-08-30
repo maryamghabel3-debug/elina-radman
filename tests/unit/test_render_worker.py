@@ -647,3 +647,47 @@ def test_process_job_unexpected_error_raises_exception():
                     process_job(mock_job)
                 
                 assert "Supabase DB crash" in str(excinfo.value)
+
+
+def test_process_job_forwards_plan_voice():
+    """plan_data with a 'voice' field must be forwarded to
+    orchestrator.render_content as plan_voice (M15 wiring)."""
+    voice_plan = {"text": "سلام", "voice": "farid", "rate": "-10%", "gain_db": -3, "start_sec": 0.5}
+    mock_job = {
+        "id": "job-voice",
+        "content_id": "ELN-BUNDLE-123",
+        "plan_data": {
+            "target_id": "ELN-BUNDLE-123",
+            "shots": [{"index": 1, "start": 0.0, "end": 2.5}],
+            "hook": "متن هوک",
+            "voice": voice_plan,
+        },
+        "owner_chat_id": "12345",
+    }
+
+    mock_db = MagicMock()
+    mock_db.get_content_by_custom_id.return_value = {
+        "id": "item-123",
+        "custom_id": "ELN-BUNDLE-123",
+        "media_keys": ["path/1.mp4"]
+    }
+
+    mock_orchestrator_calls = []
+    class MockOrchestrator:
+        def render_content(self, **kwargs):
+            mock_orchestrator_calls.append(kwargs)
+            return {"ok": True, "output_key": "edited/final.mp4"}
+
+    with patch("scripts.render_worker.ElinaDB", lambda: mock_db):
+        with patch("agents.editing.orchestrator.EditOrchestrator", lambda: MockOrchestrator()):
+            with patch("scripts.render_worker.RenderJobManager") as MockJobManager:
+                instance = MockJobManager.return_value
+                instance.mark_completed.return_value = {}
+                instance.mark_failed.return_value = {}
+                with patch("urllib.request.urlopen"):
+                    process_job(mock_job)
+
+    assert len(mock_orchestrator_calls) == 1
+    call = mock_orchestrator_calls[0]
+    assert call["plan_voice"] == voice_plan
+    instance.mark_completed.assert_called_once_with("job-voice", "edited/final.mp4")
