@@ -1064,3 +1064,155 @@ def test_mixed_absolute_and_anchored_items(monkeypatch):
         # SFX 2 (anchored): base_time (5.0) - 0.5 = 4.5
         assert abs(sfx_items[1]["start_sec"] - 4.5) < 1e-5
 
+
+# === New Plan Voice (M15 Persian TTS) Tests ===
+
+class FakeVoiceGenerator:
+    """Stands in for VoiceGenerator: records calls and writes a fake mp3."""
+    instances = []
+
+    def __init__(self, *args, **kwargs):
+        self.calls = []
+        FakeVoiceGenerator.instances.append(self)
+
+    async def generate(self, text, voice="dilara", rate="+0%", output_path=None):
+        self.calls.append({"text": text, "voice": voice, "rate": rate, "output_path": output_path})
+        with open(output_path, "wb") as f:
+            f.write(b"FAKE-TTS-AUDIO")
+        return output_path
+
+
+def test_render_content_plan_voice_generates_and_wires_assembly(monkeypatch):
+    """Test G: plan_data with voice field -> orchestrator calls VoiceGenerator,
+    uploads the file to voice/{custom_id}/{job_id}.mp3, and passes the local
+    voice path + gain/start into the assembly step."""
+    import agents.editing.orchestrator as orch_mod
+
+    class MockConcatenator:
+        def concat_segments(self, segments, output_path, **kwargs):
+            with open(output_path, "wb") as f:
+                f.write(b"0" * 20000)
+            return output_path
+
+    monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
+
+    FakeVoiceGenerator.instances = []
+    db = FakeDB(item={
+        "id": "uuid-voice-g",
+        "custom_id": "ELN-VOICE-G",
+        "content_type": "reel",
+        "media_keys": ["raw/video.mp4"],
+        "status": "NEEDS_EDIT",
+    })
+    storage = FakeStorage()
+    assembler = FakeAssembler()
+    o = EditOrchestrator(db=db, storage=storage, typography=FakeTypography(), assembler=assembler)
+
+    with patch("agents.audio.voice_generator.VoiceGenerator", FakeVoiceGenerator):
+        result = o.render_content(
+            "ELN-VOICE-G",
+            actor="tester",
+            job_id="jobvoice1",
+            plan_voice={
+                "text": "سلام، این ویدیو درباره‌ی تو است.",
+                "voice": "farid",
+                "rate": "-10%",
+                "gain_db": -3,
+                "start_sec": 1.5,
+            },
+        )
+
+    assert result["ok"] is True
+    # VoiceGenerator called once with the plan values
+    assert len(FakeVoiceGenerator.instances) == 1
+    gen_call = FakeVoiceGenerator.instances[0].calls[0]
+    assert gen_call["text"] == "سلام، این ویدیو درباره‌ی تو است."
+    assert gen_call["voice"] == "farid"
+    assert gen_call["rate"] == "-10%"
+    # Generated file uploaded to voice/{custom_id}/{job_id}.mp3
+    voice_uploads = [u for u in storage.uploads if u[1].startswith("voice/ELN-VOICE-G/")]
+    assert len(voice_uploads) == 1
+    assert voice_uploads[0][1] == "voice/ELN-VOICE-G/jobvoice1.mp3"
+    assert voice_uploads[0][2] == "audio/mpeg"
+    # Local voice path passed to the assembly
+    call = assembler.calls[0]
+    assert call["voice_path"] is not None
+    assert call["voice_path"].endswith("voice_tts.mp3")
+    # gain/start carried into the recipe audio config; voice_key recorded
+    recipe = call["recipe"]
+    assert recipe.audio.voice_gain_db == -3
+    assert recipe.audio.voice_start_sec == 1.5
+    assert recipe.input_media.voice_key == "voice/ELN-VOICE-G/jobvoice1.mp3"
+
+
+def test_render_content_without_plan_voice_unchanged(monkeypatch):
+    """Test H: plan_data without voice field -> zero behavior change:
+    VoiceGenerator never called, item voice asset downloaded and used."""
+    import agents.editing.orchestrator as orch_mod
+
+    class MockConcatenator:
+        def concat_segments(self, segments, output_path, **kwargs):
+            with open(output_path, "wb") as f:
+                f.write(b"0" * 20000)
+            return output_path
+
+    monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
+
+    db = FakeDB(item={
+        "id": "uuid-voice-h",
+        "custom_id": "ELN-VOICE-H",
+        "content_type": "reel",
+        "media_keys": ["raw/video.mp4"],
+        "voice_key": "audio/voice.mp3",
+        "status": "NEEDS_EDIT",
+    })
+    storage = FakeStorage()
+    assembler = FakeAssembler()
+    o = EditOrchestrator(db=db, storage=storage, typography=FakeTypography(), assembler=assembler)
+
+    with patch("agents.audio.voice_generator.VoiceGenerator") as MockGen:
+        result = o.render_content("ELN-VOICE-H", actor="tester")
+
+    assert result["ok"] is True
+    MockGen.assert_not_called()
+    # Old behavior: item voice asset downloaded and passed to the assembly
+    assert any("audio/voice.mp3" in d[0] for d in storage.downloads)
+    assert assembler.calls[0]["voice_path"].endswith("voice.mp3")
+    # No voice storage upload
+    assert not any(u[1].startswith("voice/") for u in storage.uploads)
+    # Recipe audio config untouched
+    assert assembler.calls[0]["recipe"].audio.voice_gain_db is None
+    assert assembler.calls[0]["recipe"].audio.voice_start_sec is None
+
+
+def test_render_content_plan_voice_generation_failure_is_typed(monkeypatch):
+    """Voice generation failure after retries fails the job with the typed error."""
+    import agents.editing.orchestrator as orch_mod
+    from agents.audio.voice_generator import VoiceGenerationError
+
+    class MockConcatenator:
+        def concat_segments(self, segments, output_path, **kwargs):
+            with open(output_path, "wb") as f:
+                f.write(b"0" * 20000)
+            return output_path
+
+    monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
+
+    class FailingVoiceGenerator:
+        async def generate(self, text, voice="dilara", rate="+0%", output_path=None):
+            raise VoiceGenerationError("VOICE_TEXT_TOO_LONG", "text is 5000 characters; maximum is 2000")
+
+    db = FakeDB()
+    o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=FakeAssembler())
+
+    with patch("agents.audio.voice_generator.VoiceGenerator", FailingVoiceGenerator):
+        result = o.render_content(
+            "ELN-RAW-TEST",
+            actor="tester",
+            plan_voice={"text": "خ" * 5000},
+        )
+
+    assert result["ok"] is False
+    assert "VOICE_TEXT_TOO_LONG" in result["error"]
+    statuses = [s[0] for s in db.status_updates]
+    assert "EDIT_FAILED" in statuses

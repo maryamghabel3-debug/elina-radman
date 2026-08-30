@@ -164,6 +164,7 @@ def process_job(job) -> bool:
             mute_original=plan.get("mute_original", True),
             plan_sfx=plan.get("sfx") or None,
             plan_music=plan.get("music"),
+            plan_voice=plan.get("voice"),
             job_id=job_id,
         )
 
@@ -220,6 +221,11 @@ def process_job(job) -> bool:
                 or "SFX_ANCHOR_OUT_OF_RANGE" in err_msg
                 or "SFX_AUTH_FAILED" in err_msg
                 or "SFX_SEARCH_REQUEST_INVALID" in err_msg
+                or "VOICE_TEXT_EMPTY" in err_msg
+                or "VOICE_TEXT_TOO_LONG" in err_msg
+                or "VOICE_UNSUPPORTED" in err_msg
+                or "VOICE_RATE_INVALID" in err_msg
+                or "VOICE_INVALID_PLAN_ENTRY" in err_msg
             )
             if is_terminal:
                 return False

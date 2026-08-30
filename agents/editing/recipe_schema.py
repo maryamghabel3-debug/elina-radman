@@ -58,6 +58,10 @@ class AudioConfig:
     music_key: Optional[str] = None
     music_gain_db: int = -12
     ducking: AudioDucking = field(default_factory=AudioDucking)
+    # Optional voice (narration) mix settings. None = no extra processing,
+    # which preserves the historical voice chain byte-for-byte.
+    voice_gain_db: Optional[int] = None
+    voice_start_sec: Optional[float] = None
 
 @dataclass
 class CoverConfig:
