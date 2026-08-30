@@ -130,6 +130,7 @@ class EditOrchestrator:
         plan_sfx: Optional[List[Dict[str, Any]]] = None,
         plan_music: Optional[Dict[str, Any]] = None,
         plan_voice: Optional[Dict[str, Any]] = None,
+        plan_subtitles: Optional[List[Dict[str, Any]]] = None,
         job_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         item = self.db.get_content_by_custom_id(custom_id)
@@ -476,6 +477,40 @@ class EditOrchestrator:
                                     raise
                                 raise ValueError(f"SFX_ANCHOR_OUT_OF_RANGE: malformed anchor '{anchor_str}'") from exc
 
+                # Timed Persian subtitles (M16): validate, render PNG assets
+                # into the job temp dir, and pass overlay definitions to the
+                # final assembly. PNGs live inside the temp directory, so the
+                # existing temporary-directory lifecycle cleans them up after
+                # FFmpeg completes.
+                subtitle_overlays = None
+                if plan_subtitles:
+                    from agents.editing.subtitle_renderer import (
+                        SubtitleRenderer,
+                        overlay_position,
+                        parse_subtitle_entries,
+                    )
+
+                    # Raises SUBTITLE_CONFIG_INVALID on any invalid entry
+                    entries = parse_subtitle_entries(plan_subtitles)
+                    recipe.subtitles = entries
+
+                    # Raises SUBTITLE_FONT_NOT_FOUND when no font is resolvable
+                    renderer = SubtitleRenderer()
+                    subtitle_overlays = []
+                    for i, entry in enumerate(entries):
+                        png_path = str(tmp / f"subtitle_{i:03d}.png")
+                        renderer.render(entry, png_path)
+                        x_expr, y_expr = overlay_position(entry)
+                        subtitle_overlays.append({
+                            "path": png_path,
+                            "start_sec": entry.start_sec,
+                            "end_sec": entry.end_sec,
+                            "x": x_expr,
+                            "y": y_expr,
+                            "fade_in_sec": entry.fade_in_sec,
+                            "fade_out_sec": entry.fade_out_sec,
+                        })
+
                 # Assemble video
                 self.assembler.run_assembly(
                     recipe=recipe,
@@ -487,6 +522,7 @@ class EditOrchestrator:
                     sfx_items=sfx_items if sfx_items else None,
                     use_base_audio=use_base_audio,
                     video_duration=total_duration,
+                    subtitle_overlays=subtitle_overlays,
                 )
 
                 qc_errors = run_qc_checks(str(output_video), recipe)

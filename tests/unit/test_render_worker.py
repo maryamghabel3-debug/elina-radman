@@ -691,3 +691,48 @@ def test_process_job_forwards_plan_voice():
     call = mock_orchestrator_calls[0]
     assert call["plan_voice"] == voice_plan
     instance.mark_completed.assert_called_once_with("job-voice", "edited/final.mp4")
+
+
+def test_process_job_forwards_plan_subtitles():
+    """plan_data with a 'subtitles' field must be forwarded to
+    orchestrator.render_content as plan_subtitles (M16 wiring)."""
+    subs_plan = [
+        {"text": "بعضی لبخندها انتخاب ما نیستند.", "start_sec": 1.0, "end_sec": 4.0},
+        {"text": "خط دوم", "start_sec": 5.0, "end_sec": 8.0, "position": "center"},
+    ]
+    mock_job = {
+        "id": "job-subs",
+        "content_id": "ELN-BUNDLE-123",
+        "plan_data": {
+            "target_id": "ELN-BUNDLE-123",
+            "shots": [{"index": 1, "start": 0.0, "end": 2.5}],
+            "hook": "متن هوک",
+            "subtitles": subs_plan,
+        },
+        "owner_chat_id": "12345",
+    }
+
+    mock_db = MagicMock()
+    mock_db.get_content_by_custom_id.return_value = {
+        "id": "item-123",
+        "custom_id": "ELN-BUNDLE-123",
+        "media_keys": ["path/1.mp4"]
+    }
+
+    mock_orchestrator_calls = []
+    class MockOrchestrator:
+        def render_content(self, **kwargs):
+            mock_orchestrator_calls.append(kwargs)
+            return {"ok": True, "output_key": "edited/final.mp4"}
+
+    with patch("scripts.render_worker.ElinaDB", lambda: mock_db):
+        with patch("agents.editing.orchestrator.EditOrchestrator", lambda: MockOrchestrator()):
+            with patch("scripts.render_worker.RenderJobManager") as MockJobManager:
+                instance = MockJobManager.return_value
+                instance.mark_completed.return_value = {}
+                instance.mark_failed.return_value = {}
+                with patch("urllib.request.urlopen"):
+                    process_job(mock_job)
+
+    assert len(mock_orchestrator_calls) == 1
+    assert mock_orchestrator_calls[0]["plan_subtitles"] == subs_plan

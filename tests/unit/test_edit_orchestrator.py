@@ -1216,3 +1216,164 @@ def test_render_content_plan_voice_generation_failure_is_typed(monkeypatch):
     assert "VOICE_TEXT_TOO_LONG" in result["error"]
     statuses = [s[0] for s in db.status_updates]
     assert "EDIT_FAILED" in statuses
+
+# === New Plan Subtitles (M16 Timed Persian Subtitles) Tests ===
+
+class FakeSubtitleRenderer:
+    """Stands in for SubtitleRenderer: records entries and writes fake PNGs."""
+    renders = []
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def render(self, entry, output_path):
+        FakeSubtitleRenderer.renders.append(entry)
+        with open(output_path, "wb") as f:
+            f.write(b"FAKE-PNG-DATA")
+        return output_path
+
+
+def test_render_content_plan_subtitles_renders_and_passes_to_assembly(monkeypatch):
+    """Test O: plan_data with subtitles -> orchestrator validates, renders
+    subtitle PNG assets into the temp dir, and passes overlay definitions
+    (with position expressions) into the assembly step."""
+    import agents.editing.orchestrator as orch_mod
+
+    class MockConcatenator:
+        def concat_segments(self, segments, output_path, **kwargs):
+            with open(output_path, "wb") as f:
+                f.write(b"0" * 20000)
+            return output_path
+
+    monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
+
+    FakeSubtitleRenderer.renders = []
+    db = FakeDB(item={
+        "id": "uuid-sub-o",
+        "custom_id": "ELN-SUB-O",
+        "content_type": "reel",
+        "media_keys": ["raw/video.mp4"],
+        "status": "NEEDS_EDIT",
+    })
+    storage = FakeStorage()
+    assembler = FakeAssembler()
+    o = EditOrchestrator(db=db, storage=storage, typography=FakeTypography(), assembler=assembler)
+
+    subs_plan = [
+        {"text": "اولین خط زیرنویس", "start_sec": 0.5, "end_sec": 2.5},
+        {"text": "خط دوم", "start_sec": 3.0, "end_sec": 5.0, "position": "center", "margin_bottom": 250},
+    ]
+
+    with patch("agents.editing.subtitle_renderer.SubtitleRenderer", FakeSubtitleRenderer):
+        result = o.render_content("ELN-SUB-O", actor="tester", plan_subtitles=subs_plan)
+
+    assert result["ok"] is True
+    # Both entries rendered
+    assert len(FakeSubtitleRenderer.renders) == 2
+    # Overlays passed to the assembly in order with position expressions
+    overlays = assembler.calls[0]["subtitle_overlays"]
+    assert len(overlays) == 2
+    assert overlays[0]["path"].endswith("subtitle_000.png")
+    assert overlays[1]["path"].endswith("subtitle_001.png")
+    assert overlays[0]["start_sec"] == 0.5 and overlays[0]["end_sec"] == 2.5
+    assert overlays[0]["x"] == "(W-w)/2" and overlays[0]["y"] == "H-h-180"
+    assert overlays[1]["x"] == "(W-w)/2" and overlays[1]["y"] == "(H-h)/2"
+    assert overlays[0]["fade_in_sec"] == 0.12 and overlays[0]["fade_out_sec"] == 0.12
+    # Recipe carries the parsed entries
+    recipe = assembler.calls[0]["recipe"]
+    assert recipe.subtitles is not None
+    assert len(recipe.subtitles) == 2
+    assert recipe.subtitles[0].text == "اولین خط زیرنویس"
+    assert recipe.subtitles[1].position == "center"
+
+
+def test_render_content_subtitles_invalid_config_is_typed(monkeypatch):
+    """Invalid subtitle entries fail the job with SUBTITLE_CONFIG_INVALID."""
+    import agents.editing.orchestrator as orch_mod
+
+    class MockConcatenator:
+        def concat_segments(self, segments, output_path, **kwargs):
+            with open(output_path, "wb") as f:
+                f.write(b"0" * 20000)
+            return output_path
+
+    monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
+
+    db = FakeDB()
+    o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=FakeAssembler())
+
+    with patch("agents.editing.subtitle_renderer.SubtitleRenderer") as MockRenderer:
+        result = o.render_content(
+            "ELN-RAW-TEST",
+            actor="tester",
+            plan_subtitles=[{"text": "   ", "start_sec": 0.0, "end_sec": 2.0}],
+        )
+
+    assert result["ok"] is False
+    assert "SUBTITLE_CONFIG_INVALID" in result["error"]
+    statuses = [s[0] for s in db.status_updates]
+    assert "EDIT_FAILED" in statuses
+    # Renderer must not be constructed for invalid config
+    MockRenderer.assert_not_called()
+
+
+def test_render_content_subtitles_font_failure_is_typed(monkeypatch):
+    """Test P: no resolvable font -> job fails with SUBTITLE_FONT_NOT_FOUND."""
+    import agents.editing.orchestrator as orch_mod
+
+    class MockConcatenator:
+        def concat_segments(self, segments, output_path, **kwargs):
+            with open(output_path, "wb") as f:
+                f.write(b"0" * 20000)
+            return output_path
+
+    monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
+
+    class NoFontRenderer:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError(
+                "SUBTITLE_FONT_NOT_FOUND: no Persian-capable font available "
+                "(set ELINA_FONT_PRIMARY_PATH to a valid .ttf/.otf)"
+            )
+
+    db = FakeDB()
+    o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=FakeAssembler())
+
+    with patch("agents.editing.subtitle_renderer.SubtitleRenderer", NoFontRenderer):
+        result = o.render_content(
+            "ELN-RAW-TEST",
+            actor="tester",
+            plan_subtitles=[{"text": "سلام", "start_sec": 0.0, "end_sec": 2.0}],
+        )
+
+    assert result["ok"] is False
+    assert "SUBTITLE_FONT_NOT_FOUND" in result["error"]
+    statuses = [s[0] for s in db.status_updates]
+    assert "EDIT_FAILED" in statuses
+
+
+def test_render_content_without_subtitles_unchanged(monkeypatch):
+    """No-subtitle regression: subtitle_overlays=None and recipe.subtitles=None;
+    no subtitle rendering happens."""
+    import agents.editing.orchestrator as orch_mod
+
+    class MockConcatenator:
+        def concat_segments(self, segments, output_path, **kwargs):
+            with open(output_path, "wb") as f:
+                f.write(b"0" * 20000)
+            return output_path
+
+    monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
+
+    FakeSubtitleRenderer.renders = []
+    db = FakeDB()
+    assembler = FakeAssembler()
+    o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=assembler)
+
+    with patch("agents.editing.subtitle_renderer.SubtitleRenderer", FakeSubtitleRenderer):
+        result = o.render_content("ELN-RAW-TEST", actor="tester")
+
+    assert result["ok"] is True
+    assert FakeSubtitleRenderer.renders == []
+    assert assembler.calls[0]["subtitle_overlays"] is None
+    assert assembler.calls[0]["recipe"].subtitles is None

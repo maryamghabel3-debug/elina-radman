@@ -65,6 +65,7 @@ class MediaAssemblyEngine:
         sfx_items: Optional[List[dict]] = None,
         use_base_audio: bool = False,
         video_duration: Optional[float] = None,
+        subtitle_overlays: Optional[List[dict]] = None,
     ) -> List[str]:
         """
         Constructs the ffmpeg command as a list of arguments.
@@ -73,6 +74,12 @@ class MediaAssemblyEngine:
         use_base_audio mixes the original audio stream of the base video
         (input 0) into the final audio when the user asked to keep the
         original shot audio.
+
+        subtitle_overlays (M16) is a list of global-timed subtitle overlays:
+        {"path", "start_sec", "end_sec", "x", "y", "fade_in_sec", "fade_out_sec"}.
+        Each PNG is added as an input and chained with an enable-gated
+        overlay on the fully composed video. None/[] leaves the command
+        unchanged.
         """
         if not recipe.content_id:
             raise ValueError("Recipe must have content_id.")
@@ -101,6 +108,22 @@ class MediaAssemblyEngine:
                     cmd += ["-stream_loop", "-1"]
                 cmd += ["-i", sfx["path"]]
                 sfx_indices.append(current_input_index)
+                current_input_index += 1
+
+        # Subtitle PNG inputs (M16), appended after all other inputs so no
+        # existing input index changes. Each still image is looped for the
+        # subtitle window duration so the stream has frames (and fades work)
+        # across the whole enable window.
+        subtitle_indices = []
+        if subtitle_overlays:
+            current_input_index = (
+                1 + (1 if voice_path else 0) + (1 if music_path else 0)
+                + (1 if hook_png_path else 0) + len(sfx_indices)
+            )
+            for sub in subtitle_overlays:
+                window = round(float(sub["end_sec"]) - float(sub["start_sec"]), 3)
+                cmd += ["-loop", "1", "-t", f"{window:g}", "-i", sub["path"]]
+                subtitle_indices.append(current_input_index)
                 current_input_index += 1
 
         # Filter complex
@@ -261,11 +284,47 @@ class MediaAssemblyEngine:
         else:
             final_video_label = "0:v"
 
+        # Subtitle overlays (M16): global-timed PNG overlays chained after all
+        # other video processing (trim/concat/transform/freeze/transitions are
+        # already baked into the base video; the hook overlay, if present, is
+        # part of the current chain). Without subtitles the command is unchanged.
+        subtitle_map_label = None
+        if subtitle_overlays:
+            current_video = f"[{final_video_label}]" if final_video_label != "0:v" else "[0:v]"
+            for i, sub in enumerate(subtitle_overlays):
+                idx = subtitle_indices[i]
+                start = float(sub["start_sec"])
+                end = float(sub["end_sec"])
+                fade_in = float(sub.get("fade_in_sec", 0.0))
+                fade_out = float(sub.get("fade_out_sec", 0.0))
+
+                # Prepare the subtitle image stream: shift its timeline onto
+                # the global window [start, end], then optional alpha fades at
+                # the window edges (st values are in the shifted/global time).
+                # The enable gate on the overlay keeps it inside the window.
+                sub_filters = [f"setpts=PTS+{start:g}/TB", "format=rgba"]
+                if fade_in > 0:
+                    sub_filters.append(f"fade=t=in:st={start:g}:d={fade_in:g}:alpha=1")
+                if fade_out > 0:
+                    sub_filters.append(f"fade=t=out:st={end - fade_out:g}:d={fade_out:g}:alpha=1")
+                filter_parts.append(f"[{idx}:v]{','.join(sub_filters)}[sub{i}]")
+
+                nxt = f"v_sub{i}"
+                filter_parts.append(
+                    f"{current_video}[sub{i}]overlay=x={sub['x']}:y={sub['y']}:"
+                    f"enable='between(t,{sub['start_sec']},{sub['end_sec']})'[{nxt}]"
+                )
+                current_video = f"[{nxt}]"
+            subtitle_map_label = current_video
+
         if filter_parts:
             cmd += ["-filter_complex", ";".join(filter_parts)]
             # Input stream references (e.g. "0:v") must NOT be bracketed in -map;
             # only filter-graph output labels (e.g. "[final_video]") are bracketed.
-            map_video_label = f"[{final_video_label}]" if final_video_label != "0:v" else final_video_label
+            if subtitle_map_label:
+                map_video_label = subtitle_map_label
+            else:
+                map_video_label = f"[{final_video_label}]" if final_video_label != "0:v" else final_video_label
             cmd += ["-map", map_video_label]
             if final_audio_label:
                 cmd += ["-map", f"[{final_audio_label}]"]
@@ -302,6 +361,7 @@ class MediaAssemblyEngine:
         sfx_items: Optional[List[dict]] = None,
         use_base_audio: bool = False,
         video_duration: Optional[float] = None,
+        subtitle_overlays: Optional[List[dict]] = None,
     ) -> str:
         """
         Executes the ffmpeg assembly command.
@@ -317,6 +377,7 @@ class MediaAssemblyEngine:
             sfx_items=sfx_items,
             use_base_audio=use_base_audio,
             video_duration=video_duration,
+            subtitle_overlays=subtitle_overlays,
         )
 
         out_dir = os.path.dirname(output_path)

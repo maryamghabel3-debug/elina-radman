@@ -570,3 +570,184 @@ def test_build_command_voice_chain_default_unchanged():
     assert "[1:a]afftdn=nf=-30[voice_clean]" in fc
     assert "adelay" not in fc
     assert "volume=" not in fc
+
+# === New Timed Persian Subtitle Overlay Tests (M16) ===
+
+def make_subtitle_overlays():
+    return [
+        {
+            "path": "/tmp/subtitles/subtitle_000.png",
+            "start_sec": 1.0,
+            "end_sec": 4.0,
+            "x": "(W-w)/2",
+            "y": "H-h-180",
+            "fade_in_sec": 0.12,
+            "fade_out_sec": 0.12,
+        },
+        {
+            "path": "/tmp/subtitles/subtitle_001.png",
+            "start_sec": 5.0,
+            "end_sec": 8.0,
+            "x": "(W-w)/2",
+            "y": "(H-h)/2",
+            "fade_in_sec": 0.0,
+            "fade_out_sec": 0.0,
+        },
+    ]
+
+
+def test_build_command_single_subtitle_overlay():
+    """I: one subtitle produces a PNG input and a timed, enable-gated overlay."""
+    engine = MediaAssemblyEngine()
+    recipe = make_recipe()
+    recipe.audio = AudioConfig()  # no voice/music: video-only base
+    overlays = make_subtitle_overlays()[:1]
+    cmd = engine.build_assembly_command(
+        recipe=recipe,
+        video_path="/tmp/v.mp4",
+        voice_path=None,
+        music_path=None,
+        hook_png_path=None,
+        output_path="/tmp/o.mp4",
+        subtitle_overlays=overlays,
+    )
+    # PNG added as a looped input (window duration) after the video
+    assert "/tmp/v.mp4" in cmd
+    png_idx = cmd.index("/tmp/subtitles/subtitle_000.png")
+    # input is looped for the window duration (4.0 - 1.0 = 3)
+    assert cmd[png_idx - 5:png_idx] == ["-loop", "1", "-t", "3", "-i"]
+
+    fc = cmd[cmd.index("-filter_complex") + 1]
+    # Timeline shifted to the global window [1.0, 4.0]; fades at the edges:
+    # fade-in at 1.0, fade-out at end - fade_out = 4.0 - 0.12 = 3.88
+    assert "[1:v]setpts=PTS+1/TB,format=rgba,fade=t=in:st=1:d=0.12:alpha=1,fade=t=out:st=3.88:d=0.12:alpha=1[sub0]" in fc
+    assert "[0:v][sub0]overlay=x=(W-w)/2:y=H-h-180:enable='between(t,1.0,4.0)'[v_sub0]" in fc
+    # Final video maps to the last subtitle chain label
+    assert cmd[cmd.index("-map") + 1] == "[v_sub0]"
+
+
+def test_build_command_multiple_subtitles_chained_in_order():
+    """J: multiple subtitle overlays chain sequentially in plan order,
+    after the hook overlay, and the map points at the last label."""
+    engine = MediaAssemblyEngine()
+    recipe = make_recipe()  # voice + music + hook
+    overlays = make_subtitle_overlays()
+    cmd = engine.build_assembly_command(
+        recipe=recipe,
+        video_path="/tmp/v.mp4",
+        voice_path="/tmp/voice.wav",
+        music_path="/tmp/music.mp3",
+        hook_png_path="/tmp/hook.png",
+        output_path="/tmp/o.mp4",
+        subtitle_overlays=overlays,
+    )
+    fc = cmd[cmd.index("-filter_complex") + 1]
+    # Both PNGs present as inputs (after video, voice, music, hook)
+    assert cmd[cmd.index("/tmp/subtitles/subtitle_000.png") - 1] == "-i"
+    assert cmd[cmd.index("/tmp/subtitles/subtitle_001.png") - 1] == "-i"
+
+    # Chain: hook overlay first, then subtitles in order
+    assert "[0:v][3:v]overlay=(W-w)/2:(H-h)/3:enable='between(t,0.0,3.0)'[final_video]" in fc
+    assert "[final_video][sub0]overlay=x=(W-w)/2:y=H-h-180:enable='between(t,1.0,4.0)'[v_sub0]" in fc
+    assert "[v_sub0][sub1]overlay=x=(W-w)/2:y=(H-h)/2:enable='between(t,5.0,8.0)'[v_sub1]" in fc
+    # Map the last subtitle label
+    assert cmd[cmd.index("-map") + 1] == "[v_sub1]"
+    # Audio mapping is preserved (voice+music ducking chain untouched)
+    assert "[final_audio]" in fc
+
+
+def test_build_command_subtitle_fades_generated_correctly():
+    """K: fade-in/out alpha filters match the requested durations; zero fades
+    emit only format=rgba."""
+    engine = MediaAssemblyEngine()
+    recipe = make_recipe()
+    recipe.audio = AudioConfig()
+    overlays = make_subtitle_overlays()
+    cmd = engine.build_assembly_command(
+        recipe=recipe,
+        video_path="/tmp/v.mp4",
+        voice_path=None,
+        music_path=None,
+        hook_png_path=None,
+        output_path="/tmp/o.mp4",
+        subtitle_overlays=overlays,
+    )
+    fc = cmd[cmd.index("-filter_complex") + 1]
+    # Subtitle 0: fades on both edges of the global window [1.0, 4.0]
+    assert "[1:v]setpts=PTS+1/TB,format=rgba,fade=t=in:st=1:d=0.12:alpha=1,fade=t=out:st=3.88:d=0.12:alpha=1[sub0]" in fc
+    # Subtitle 1: zero fades -> timeline shift + format only
+    assert "[2:v]setpts=PTS+5/TB,format=rgba[sub1]" in fc
+
+
+def test_build_command_subtitle_position_rules():
+    """L: bottom/center/top position expressions appear in the overlay filter."""
+    from agents.editing.subtitle_renderer import overlay_position, parse_subtitle_entries, TOP_SAFE_MARGIN
+    engine = MediaAssemblyEngine()
+    recipe = make_recipe()
+    recipe.audio = AudioConfig()
+
+    cases = [
+        ({}, "(W-w)/2", "H-h-180"),            # bottom_center (default margin)
+        ({"position": "center"}, "(W-w)/2", "(H-h)/2"),
+        ({"position": "top_center"}, "(W-w)/2", str(TOP_SAFE_MARGIN)),
+        ({"margin_bottom": 250}, "(W-w)/2", "H-h-250"),
+    ]
+    for i, (extra, x_expr, y_expr) in enumerate(cases):
+        entry = parse_subtitle_entries([{"text": "متن", "start_sec": 0.5, "end_sec": 2.5, **extra}])[0]
+        x, y = overlay_position(entry)
+        overlays = [{
+            "path": f"/tmp/subtitles/sub_{i}.png",
+            "start_sec": 0.5,
+            "end_sec": 2.5,
+            "x": x,
+            "y": y,
+            "fade_in_sec": 0.0,
+            "fade_out_sec": 0.0,
+        }]
+        cmd = engine.build_assembly_command(
+            recipe=recipe,
+            video_path="/tmp/v.mp4",
+            voice_path=None,
+            music_path=None,
+            hook_png_path=None,
+            output_path="/tmp/o.mp4",
+            subtitle_overlays=overlays,
+        )
+        fc = cmd[cmd.index("-filter_complex") + 1]
+        assert f"overlay=x={x_expr}:y={y_expr}:enable='between(t,0.5,2.5)'[v_sub0]" in fc
+
+
+def test_build_command_absent_subtitles_unchanged():
+    """M: absent subtitles (None or []) leave the command exactly as before."""
+    engine = MediaAssemblyEngine()
+    recipe = make_recipe()
+    base = engine.build_assembly_command(
+        recipe=recipe,
+        video_path="/tmp/v.mp4",
+        voice_path="/tmp/voice.wav",
+        music_path="/tmp/music.mp3",
+        hook_png_path=None,
+        output_path="/tmp/o.mp4",
+    )
+    with_none = engine.build_assembly_command(
+        recipe=recipe,
+        video_path="/tmp/v.mp4",
+        voice_path="/tmp/voice.wav",
+        music_path="/tmp/music.mp3",
+        hook_png_path=None,
+        output_path="/tmp/o.mp4",
+        subtitle_overlays=None,
+    )
+    with_empty = engine.build_assembly_command(
+        recipe=recipe,
+        video_path="/tmp/v.mp4",
+        voice_path="/tmp/voice.wav",
+        music_path="/tmp/music.mp3",
+        hook_png_path=None,
+        output_path="/tmp/o.mp4",
+        subtitle_overlays=[],
+    )
+    assert base == with_none == with_empty
+    fc = base[base.index("-filter_complex") + 1]
+    assert "[sub" not in fc
+    assert "v_sub" not in fc
