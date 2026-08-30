@@ -39,11 +39,25 @@ class HookConfig:
     end_sec: float = 3.0
 
 @dataclass
-class SubtitleConfig:
-    enabled: bool = False
-    source_text: str = ""
-    style: str = "farsi_cinematic_bottom"
-    highlight_keywords: bool = False
+class SubtitleEntry:
+    """One timed Persian subtitle on the global final timeline (TASK M16).
+
+    Rendered as a transparent PNG (shaped RTL text + semi-transparent
+    background box) and overlaid with FFmpeg on the fully composed video.
+    """
+    text: str
+    start_sec: float
+    end_sec: float
+    position: str = "bottom_center"
+    style: str = "default"
+    font_size: int = 52
+    max_width_ratio: float = 0.82
+    margin_bottom: int = 180
+    font_color: str = "#FFFFFF"
+    background_color: str = "#000000"
+    background_opacity: float = 0.55
+    fade_in_sec: float = 0.12
+    fade_out_sec: float = 0.12
 
 @dataclass
 class AudioDucking:
@@ -84,7 +98,7 @@ class EditRecipe:
     preset: str = "elina_cinematic_reel"
     input_media: InputMediaConfig = field(default_factory=InputMediaConfig)
     hook: HookConfig = field(default_factory=HookConfig)
-    subtitles: SubtitleConfig = field(default_factory=SubtitleConfig)
+    subtitles: Optional[List[SubtitleEntry]] = None
     audio: AudioConfig = field(default_factory=AudioConfig)
     cover: CoverConfig = field(default_factory=CoverConfig)
     export: ExportConfig = field(default_factory=ExportConfig)
@@ -139,8 +153,38 @@ class EditRecipe:
                 errors.append("Hook start_sec cannot be negative.")
             if self.hook.end_sec <= self.hook.start_sec:
                 errors.append("Hook end_sec must be greater than start_sec.")
-        if self.subtitles.enabled and not self.subtitles.source_text.strip():
-            errors.append("Subtitles enabled but source_text is empty.")
+        # Validate timed subtitles (M16)
+        if self.subtitles is not None:
+            if not isinstance(self.subtitles, list):
+                errors.append("subtitles must be a list of subtitle entries.")
+            else:
+                supported_positions = ("bottom_center", "center", "top_center")
+                supported_styles = ("default", "hook", "whisper", "name_reveal")
+                for s_idx, sub in enumerate(self.subtitles):
+                    if not isinstance(sub, SubtitleEntry):
+                        errors.append(f"Subtitle {s_idx} must be a SubtitleEntry.")
+                        continue
+                    if not sub.text.strip():
+                        errors.append(f"Subtitle {s_idx} text must be non-empty.")
+                    if sub.start_sec < 0:
+                        errors.append(f"Subtitle {s_idx} start_sec cannot be negative.")
+                    if sub.end_sec <= sub.start_sec:
+                        errors.append(f"Subtitle {s_idx} end_sec must be greater than start_sec.")
+                    if not 24 <= sub.font_size <= 120:
+                        errors.append(f"Subtitle {s_idx} font_size must be between 24 and 120.")
+                    if not 0.3 <= sub.max_width_ratio <= 0.95:
+                        errors.append(f"Subtitle {s_idx} max_width_ratio must be between 0.3 and 0.95.")
+                    if not 0.0 <= sub.background_opacity <= 1.0:
+                        errors.append(f"Subtitle {s_idx} background_opacity must be between 0 and 1.")
+                    if sub.fade_in_sec < 0 or sub.fade_out_sec < 0:
+                        errors.append(f"Subtitle {s_idx} fade durations cannot be negative.")
+                    duration = sub.end_sec - sub.start_sec
+                    if sub.fade_in_sec + sub.fade_out_sec > duration:
+                        errors.append(f"Subtitle {s_idx} fade durations exceed subtitle duration ({duration}s).")
+                    if sub.position not in supported_positions:
+                        errors.append(f"Subtitle {s_idx} position '{sub.position}' is not supported.")
+                    if sub.style not in supported_styles:
+                        errors.append(f"Subtitle {s_idx} style '{sub.style}' is not supported.")
         if self.export.fps <= 0:
             errors.append("Export fps must be greater than 0.")
         if self.export.max_size_mb <= 0:
@@ -198,7 +242,31 @@ class EditRecipe:
             video_segments = [VideoSegmentConfig(key=k) for k in v_keys]
 
         hook_data = data.get("hook", {})
-        sub_data = data.get("subtitles", {})
+        raw_subtitles = data.get("subtitles")
+        subtitles = None
+        if raw_subtitles is not None:
+            if isinstance(raw_subtitles, list):
+                subtitles = [
+                    SubtitleEntry(
+                        text=str(s.get("text", "")),
+                        start_sec=float(s.get("start_sec", 0.0)),
+                        end_sec=float(s.get("end_sec", 0.0)),
+                        position=s.get("position", "bottom_center"),
+                        style=s.get("style", "default"),
+                        font_size=int(s.get("font_size", 52)),
+                        max_width_ratio=float(s.get("max_width_ratio", 0.82)),
+                        margin_bottom=int(s.get("margin_bottom", 180)),
+                        font_color=s.get("font_color", "#FFFFFF"),
+                        background_color=s.get("background_color", "#000000"),
+                        background_opacity=float(s.get("background_opacity", 0.55)),
+                        fade_in_sec=float(s.get("fade_in_sec", 0.12)),
+                        fade_out_sec=float(s.get("fade_out_sec", 0.12)),
+                    )
+                    for s in raw_subtitles
+                    if isinstance(s, dict)
+                ]
+            else:
+                subtitles = None  # non-list values are reported by validate()
         audio_data = data.get("audio", {})
         duck_data = audio_data.get("ducking", {}) if isinstance(audio_data, dict) else {}
         cov_data = data.get("cover", {})
@@ -223,12 +291,7 @@ class EditRecipe:
                 start_sec=hook_data.get("start_sec", 0.0),
                 end_sec=hook_data.get("end_sec", 3.0),
             ),
-            subtitles=SubtitleConfig(
-                enabled=sub_data.get("enabled", False),
-                source_text=sub_data.get("source_text", ""),
-                style=sub_data.get("style", "farsi_cinematic_bottom"),
-                highlight_keywords=sub_data.get("highlight_keywords", False),
-            ),
+            subtitles=subtitles,
             audio=AudioConfig(
                 voice_key=audio_data.get("voice_key"),
                 music_key=audio_data.get("music_key"),

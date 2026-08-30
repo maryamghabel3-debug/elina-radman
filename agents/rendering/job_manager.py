@@ -114,6 +114,8 @@ class RenderJobManager:
             or "VOICE_UNSUPPORTED" in error_message
             or "VOICE_RATE_INVALID" in error_message
             or "VOICE_INVALID_PLAN_ENTRY" in error_message
+            or "SUBTITLE_CONFIG_INVALID" in error_message
+            or "SUBTITLE_FONT_NOT_FOUND" in error_message
         )
 
         if is_terminal or attempts >= max_attempts:

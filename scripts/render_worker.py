@@ -165,6 +165,7 @@ def process_job(job) -> bool:
             plan_sfx=plan.get("sfx") or None,
             plan_music=plan.get("music"),
             plan_voice=plan.get("voice"),
+            plan_subtitles=plan.get("subtitles"),
             job_id=job_id,
         )
 
@@ -226,6 +227,8 @@ def process_job(job) -> bool:
                 or "VOICE_UNSUPPORTED" in err_msg
                 or "VOICE_RATE_INVALID" in err_msg
                 or "VOICE_INVALID_PLAN_ENTRY" in err_msg
+                or "SUBTITLE_CONFIG_INVALID" in err_msg
+                or "SUBTITLE_FONT_NOT_FOUND" in err_msg
             )
             if is_terminal:
                 return False
