@@ -350,3 +350,79 @@ result = CarouselPlanner().plan(topic="...", mode="ai_planned",
 - Reel cover generation (M18E)
 - carousel publishing automation (scheduler already supports it once an
   item exists)
+
+## Telegram Studio flow (M18D)
+
+Owner-only conversational carousel studio in `scripts/elina_studio_bot.py`.
+All state-machine logic lives in `agents/studio/carousel_session.py` (the bot
+is a thin transport layer). Session state is stored in
+`context.chat_data["carousel_session"]` — separate from the `/plan` flow keys,
+so the two flows never collide. Sessions expire after 30 minutes.
+
+### States
+
+```
+/carousel
+   └─ MODE_SELECT
+        ├─ "1" (عکس و متن)      → COLLECT_IMAGES → /done → COLLECT_TEXTS → /done → BUILDING → PREVIEW
+        ├─ "2" (عکس + موضوع)    → COLLECT_IMAGES → /done → COLLECT_TOPIC → (topic)  → BUILDING → PREVIEW
+        └─ "3" (فقط موضوع)      → COLLECT_TOPIC → (topic)                        → BUILDING → PREVIEW
+PREVIEW: /carousel_ok | /carousel_edit | /carousel_theme | /carousel_cancel
+```
+
+### Example conversation (Persian)
+
+```
+/carousel
+→ ۱) عکس و متن می‌دهم   ۲) عکس می‌دهم + موضوع   ۳) فقط موضوع، الینا خودش بسازد
+1
+→ حالا عکس‌ها را یکی‌یکی بفرست (حداقل 2، حداکثر 10). وقتی تمام شد /done بزن.
+[عکس ۱]
+→ ✅ عکس 1 ثبت شد.
+[عکس ۲]
+→ ✅ عکس 2 ثبت شد.
+/done
+→ حالا 2 متن اسلاید را به ترتیب بفرست. برای بدنه: عنوان | بدنه
+بعضی لبخندها انتخاب ما نیستند | اما با فهم، شکل می‌گیرند
+→ ✅ متن 1 ثبت شد.
+بعضی‌ها پیش از ما ساخته شده‌اند
+→ ✅ متن 2 ثبت شد.
+/done
+→ ⏳ در حال ساخت کاروسل...
+→ 🎨 پیش‌نمایش کاروسل: ... + [آلبوم تصاویر به‌ترتیب]
+/carousel_ok
+→ ✅ کاروسل تأیید و ذخیره شد. شناسه: ELN-CAR-YYYYMMDD-xxxxxxxx ...
+```
+
+### Command reference
+
+| Command | Behavior |
+|---------|----------|
+| `/carousel` | Start session (active session → cancel first; expired → auto-reset with notice) |
+| `/done` | Finish the current collection step (images / texts) |
+| `/carousel_ok` | Upload ordered PNGs to `carousel/<custom_id>/`, create content item (`content_type="carousel"`, ordered `media_keys`, status `READY_FOR_REVIEW` — the same awaiting-schedule state `/promote` produces), clear session |
+| `/carousel_edit <n> \| <text>` | Replace slide n title (and body after `\|`), re-render **that slide only** (documented choice: per-slide layout is independent), re-send the slide |
+| `/carousel_theme <template>` | Validate + re-render the whole deck, re-send preview |
+| `/carousel_cancel` | Clear session + temp files |
+
+### Error messages (Persian, mapped from typed errors)
+
+- `CAROUSEL_PLAN_CONFIG_INVALID` → «ورودی کاروسل ناقص است» + recovery hint
+- `CAROUSEL_PLAN_GENERATION_FAILED` → «تولید متن… خطای موقتی» + retry hint
+- `CAROUSEL_CHARACTER_ASSETS_UNAVAILABLE` → «تصویر شخصیت پیدا نشد» + asset dir hint
+- `CAROUSEL_TEXT_OVERFLOW` → «متن اسلاید N جا نمی‌شود» + retry hint
+- After any build failure the session recovers to the mode's collection state
+  (images preserved) so the user can fix and rebuild.
+
+### Regression guarantees
+
+- Photos/texts with **no** active carousel session follow the pre-M18D intake
+  and `/plan` paths unchanged (covered by dedicated regression tests).
+- Session state is dict-only and defensive: non-dict/corrupted state is
+  treated as "no session", never a crash.
+
+### Deferred
+
+- publish automation (existing scheduler publishes carousels from
+  `media_keys` once an item is approved)
+- reel cover generation (M18E)
