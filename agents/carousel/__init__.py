@@ -43,6 +43,15 @@ from agents.carousel.deck_renderer import (
     parse_carousel_deck,
     prepare_carousel_content_item,
 )
+from agents.carousel.planner import (
+    CAROUSEL_PLAN_CONFIG_INVALID,
+    CAROUSEL_PLAN_GENERATION_FAILED,
+    CarouselPlanResult,
+    CarouselPlanError,
+    CarouselPlanConfigError,
+    CarouselPlanGenerationError,
+    CarouselPlanner,
+)
 
 __all__ = [
     "CANVAS_WIDTH",
@@ -84,4 +93,11 @@ __all__ = [
     "CarouselDeckRenderer",
     "parse_carousel_deck",
     "prepare_carousel_content_item",
+    "CAROUSEL_PLAN_CONFIG_INVALID",
+    "CAROUSEL_PLAN_GENERATION_FAILED",
+    "CarouselPlanResult",
+    "CarouselPlanError",
+    "CarouselPlanConfigError",
+    "CarouselPlanGenerationError",
+    "CarouselPlanner",
 ]
