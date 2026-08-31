@@ -281,6 +281,44 @@ Content Safety V2)
 - caption 2-4 short paragraphs + gentle CTA; 5-10 relevant hashtags
   (Persian + English mix)
 
+### Planner modes (M18C-UPDATE)
+
+`plan(mode=...)` supports three operational modes:
+
+| Mode | LLM? | Required inputs | Behavior |
+|------|------|-----------------|----------|
+| `ai_planned` (default) | yes | `topic` | M18C: the LLM writes everything |
+| `text_overlay` | **no** | `image_paths` + `slide_texts` (same length, > 0) | User images + user texts zipped in exact order; first image -> cover; other slides -> image_text (keeps the user's image visible) |
+| `image_deck` | yes | `image_paths` + `topic` | The LLM writes exactly `len(image_paths)` slides; generated text is zipped with the images in order |
+
+Per-slide `slide_texts` entries: `{"title": "...", "body": "..." (optional),
+"eyebrow": "..." (optional)}`. `text_overlay` returns empty caption/hashtags
+(no LLM copy) and `provider_used=None`.
+
+### Character presence (ai_planned, M18C-UPDATE)
+
+Pass a `character_asset_provider` to `plan(...)` to enforce that every
+content slide (except cta) shows a character visual:
+
+```python
+from agents.carousel import CarouselPlanner, LocalCharacterAssetProvider
+
+provider = LocalCharacterAssetProvider(directory="content/assets/characters")
+result = CarouselPlanner().plan(topic="...", mode="ai_planned",
+                                character_asset_provider=provider)
+```
+
+- `CharacterAssetProvider.get_asset(character_hint, scene_hint, slide_type,
+  template) -> path | None` is the abstraction (must be soft: missing asset
+  -> None, never raises)
+- `LocalCharacterAssetProvider` resolves from a local directory:
+  `<hint>_<scene>_*` -> `<hint>_hero.*` -> first `<hint>_*` -> None
+  (`world` hint -> `world_*` files)
+- Fallback chain per slide: user image -> provider asset -> last successful
+  image; `CAROUSEL_CHARACTER_ASSETS_UNAVAILABLE` is raised only when no
+  content slide can get any image at all
+- Without a provider, `ai_planned` behaves exactly as M18C
+
 ### Planner behavior
 
 - uses the existing `LLMRouter` (`smart_generate`, task
@@ -299,9 +337,12 @@ Content Safety V2)
 ### Planner error codes
 
 - `CAROUSEL_PLAN_CONFIG_INVALID` — bad inputs (topic, slide_count 3-10,
-  template, goal, language, missing image)
+  template, goal, language, missing image, invalid mode, mismatched
+  image_paths/slide_texts lengths)
 - `CAROUSEL_PLAN_GENERATION_FAILED` — LLM output unparseable/invalid after
   one repair retry, or no provider available
+- `CAROUSEL_CHARACTER_ASSETS_UNAVAILABLE` — ai_planned with a provider: no
+  content slide could get a character visual
 
 ## Intentionally deferred (post-M18C)
 

@@ -4,6 +4,7 @@ import os
 import pytest
 
 from agents.carousel import (
+    CAROUSEL_CHARACTER_ASSETS_UNAVAILABLE,
     CAROUSEL_PLAN_CONFIG_INVALID,
     CAROUSEL_PLAN_GENERATION_FAILED,
     CarouselPlanConfigError,
@@ -283,3 +284,245 @@ def test_L_caption_and_hashtags_extracted():
     router2 = FakeRouter([json.dumps(raw, ensure_ascii=False)])
     result2 = make_planner(router2).plan("موضوع", slide_count=3)
     assert result2.hashtags == ["#ok", "#two"]
+
+
+# === M18C-UPDATE: three operational modes + character assets ===
+
+class FakeCharacterProvider:
+    """CharacterAssetProvider stand-in: returns canned assets in order."""
+
+    def __init__(self, assets):
+        self.assets = list(assets)
+        self.calls = []
+
+    def get_asset(self, character_hint, scene_hint, slide_type, template):
+        self.calls.append({
+            "hint": character_hint,
+            "scene": scene_hint,
+            "type": slide_type,
+            "template": template,
+        })
+        if not self.assets:
+            return None
+        return self.assets.pop(0)
+
+
+def make_image_files(tmp_path, n):
+    paths = []
+    for i in range(n):
+        p = tmp_path / f"img_{i}.jpg"
+        p.write_bytes(b"JPEGDATA" + str(i).encode())
+        paths.append(str(p))
+    return paths
+
+
+def text_overlay_texts(n, with_body=True):
+    texts = [{"title": "عنوان اسلاید یک", "eyebrow": "هویت"}]
+    for i in range(1, n):
+        t = {"title": f"عنوان اسلاید {i + 1}"}
+        if with_body:
+            t["body"] = f"بدنه‌ی اسلاید {i + 1}"
+        texts.append(t)
+    return texts
+
+
+# --- text_overlay (no LLM) ---
+
+def test_mode_text_overlay_builds_deck_without_llm(tmp_path):
+    images = make_image_files(tmp_path, 3)
+    texts = text_overlay_texts(3)
+    router = FakeRouter([])  # must never be called
+    result = make_planner(router).plan(
+        mode="text_overlay", image_paths=images, slide_texts=texts
+    )
+    # No LLM call at all
+    assert router.calls == []
+    assert result.provider_used is None
+    # First image -> cover, zipped in exact order
+    assert result.deck.slides[0].slide_type == "cover"
+    assert result.deck.slides[0].image_path == images[0]
+    assert [s.image_path for s in result.deck.slides] == images
+    # Non-cover with body -> image_text
+    assert result.deck.slides[1].slide_type == "image_text"
+    # Deck validates end-to-end
+    parse_carousel_deck({
+        "title": result.deck.title,
+        "template": result.deck.template,
+        "slides": [
+            {"slide_type": s.slide_type, "title": s.title, "body": s.body,
+             "bullets": s.bullets, "image_path": s.image_path, "eyebrow": s.eyebrow,
+             "footer": s.footer, "template": s.template, "accent": s.accent,
+             "slide_number": s.slide_number}
+            for s in result.deck.slides
+        ],
+    })
+
+
+def test_mode_text_overlay_no_body_keeps_image_as_image_text(tmp_path):
+    """A title-only slide stays image_text (title_body requires a body in
+    the M18A schema and would drop the user's image)."""
+    images = make_image_files(tmp_path, 3)
+    texts = text_overlay_texts(3, with_body=False)
+    result = make_planner(FakeRouter([])).plan(
+        mode="text_overlay", image_paths=images, slide_texts=texts
+    )
+    assert result.deck.slides[1].slide_type == "image_text"
+    assert result.deck.slides[1].body == ""
+    assert [s.image_path for s in result.deck.slides] == images
+
+
+def test_mode_text_overlay_mismatched_lengths_raises(tmp_path):
+    images = make_image_files(tmp_path, 3)
+    texts = text_overlay_texts(2)  # 2 texts for 3 images
+    with pytest.raises(CarouselPlanConfigError) as exc_info:
+        make_planner(FakeRouter([])).plan(
+            mode="text_overlay", image_paths=images, slide_texts=texts
+        )
+    assert exc_info.value.code == CAROUSEL_PLAN_CONFIG_INVALID
+
+
+def test_mode_text_overlay_requires_both_inputs(tmp_path):
+    images = make_image_files(tmp_path, 2)
+    texts = text_overlay_texts(2)
+    # missing image_paths
+    with pytest.raises(CarouselPlanConfigError):
+        make_planner(FakeRouter([])).plan(mode="text_overlay", slide_texts=texts)
+    # missing slide_texts
+    with pytest.raises(CarouselPlanConfigError):
+        make_planner(FakeRouter([])).plan(mode="text_overlay", image_paths=images)
+    # empty image_paths
+    with pytest.raises(CarouselPlanConfigError):
+        make_planner(FakeRouter([])).plan(
+            mode="text_overlay", image_paths=[], slide_texts=[]
+        )
+
+
+def test_mode_invalid_raises_config_invalid():
+    with pytest.raises(CarouselPlanConfigError) as exc_info:
+        make_planner(FakeRouter([valid_deck_json(3)])).plan("موضوع", mode="dance")
+    assert exc_info.value.code == CAROUSEL_PLAN_CONFIG_INVALID
+
+
+# --- image_deck (LLM fills text, images zipped in order) ---
+
+def test_mode_image_deck_forces_slide_count_to_match_images(tmp_path):
+    images = make_image_files(tmp_path, 4)
+    router = FakeRouter([valid_deck_json(4)])
+    result = make_planner(router).plan(
+        mode="image_deck", topic="موضوع", image_paths=images
+    )
+    # LLM told to write exactly 4 slides
+    assert "تعداد دقیق اسلایدها: 4" in router.calls[0]["prompt"]
+    assert len(result.deck.slides) == 4
+    # Images zipped onto the generated slides, in order
+    assert [s.image_path for s in result.deck.slides] == images
+    # Deck still validated
+    parse_carousel_deck({
+        "title": result.deck.title,
+        "template": result.deck.template,
+        "slides": [
+            {"slide_type": s.slide_type, "title": s.title, "body": s.body,
+             "bullets": s.bullets, "image_path": s.image_path, "eyebrow": s.eyebrow,
+             "footer": s.footer, "template": s.template, "accent": s.accent,
+             "slide_number": s.slide_number}
+            for s in result.deck.slides
+        ],
+    })
+
+
+def test_mode_image_deck_requires_topic_and_images(tmp_path):
+    images = make_image_files(tmp_path, 3)
+    with pytest.raises(CarouselPlanConfigError):
+        make_planner(FakeRouter([])).plan(mode="image_deck", topic="   ", image_paths=images)
+    with pytest.raises(CarouselPlanConfigError):
+        make_planner(FakeRouter([])).plan(mode="image_deck", topic="موضوع")
+
+
+# --- ai_planned with character presence ---
+
+def test_mode_ai_planned_character_provider_assigns_images(tmp_path):
+    router = FakeRouter([valid_deck_json(3)])  # cover, quote, cta
+    provider = FakeCharacterProvider(["/assets/elina_hero.png"])
+    result = make_planner(router).plan(
+        "موضوع", slide_count=3, character_asset_provider=provider
+    )
+    # Every content slide (cover, quote) got a character visual; cta did not
+    assert result.deck.slides[0].image_path == "/assets/elina_hero.png"
+    # quote reuses the last successful image (only one asset available)
+    assert result.deck.slides[1].image_path == "/assets/elina_hero.png"
+    assert result.deck.slides[2].image_path is None  # cta
+    # Provider was queried with the elina hint
+    assert all(c["hint"] == "elina" for c in provider.calls)
+    # cta was never queried
+    assert all(c["type"] != "cta" for c in provider.calls)
+
+
+def test_mode_ai_planned_distinct_assets_per_slide():
+    router = FakeRouter([valid_deck_json(3)])  # cover, quote, cta
+    provider = FakeCharacterProvider(["/assets/elina_a.png", "/assets/elina_b.png"])
+    result = make_planner(router).plan(
+        "موضوع", slide_count=3, character_asset_provider=provider
+    )
+    assert result.deck.slides[0].image_path == "/assets/elina_a.png"
+    assert result.deck.slides[1].image_path == "/assets/elina_b.png"
+    assert result.deck.slides[2].image_path is None
+
+
+def test_mode_ai_planned_falls_back_to_previous_image():
+    router = FakeRouter([valid_deck_json(3)])  # cover, quote, cta
+    # First slide gets a real asset; the next returns None -> reuse previous
+    provider = FakeCharacterProvider(["/assets/elina_hero.png"])
+    result = make_planner(router).plan(
+        "موضوع", slide_count=3, character_asset_provider=provider
+    )
+    assert result.deck.slides[0].image_path == "/assets/elina_hero.png"
+    assert result.deck.slides[1].image_path == "/assets/elina_hero.png"  # fallback
+
+
+def test_mode_ai_planned_all_assets_missing_raises():
+    from agents.carousel import CarouselCharacterAssetsError
+    router = FakeRouter([valid_deck_json(3)])
+    provider = FakeCharacterProvider([])  # nothing available
+    with pytest.raises(CarouselCharacterAssetsError) as exc_info:
+        make_planner(router).plan(
+            "موضوع", slide_count=3, character_asset_provider=provider
+        )
+    assert exc_info.value.code == CAROUSEL_CHARACTER_ASSETS_UNAVAILABLE
+
+
+def test_mode_ai_planned_no_provider_keeps_legacy_behavior():
+    """Without a provider, ai_planned does not enforce character presence."""
+    router = FakeRouter([valid_deck_json(3)])
+    result = make_planner(router).plan("موضوع", slide_count=3)
+    # No image_path was provided -> slides have no image (legacy behavior)
+    assert result.deck.slides[0].image_path is None
+
+
+# --- LocalCharacterAssetProvider ---
+
+def test_local_character_asset_provider(tmp_path):
+    from agents.carousel import LocalCharacterAssetProvider
+    (tmp_path / "elina_hero.png").write_bytes(b"PNG")
+    (tmp_path / "elina_smiling.png").write_bytes(b"PNG")
+    (tmp_path / "elli_default.png").write_bytes(b"PNG")
+    (tmp_path / "world_market.png").write_bytes(b"PNG")
+    (tmp_path / "notes.txt").write_bytes(b"not-an-image")
+
+    provider = LocalCharacterAssetProvider(directory=str(tmp_path))
+    # elina hero (default asset)
+    hit = provider.get_asset("elina", "", "cover", "psychological_dark")
+    assert hit and hit.endswith("elina_hero.png")
+    # elina with scene hint matching a filename
+    hit = provider.get_asset("elli", "default", "cover", "psychological_dark")
+    assert hit and hit.endswith("elli_default.png")
+    # world hint resolves a world_ file
+    hit = provider.get_asset("world", "", "cover", "psychological_dark")
+    assert hit and hit.endswith("world_market.png")
+    # never raises for a missing asset -> None
+    assert provider.get_asset("nobody", "", "cover", "x") is None
+
+
+def test_local_character_asset_provider_missing_dir_never_raises():
+    from agents.carousel import LocalCharacterAssetProvider
+    provider = LocalCharacterAssetProvider(directory="/nonexistent/dir/xyz")
+    assert provider.get_asset("elina", "", "cover", "x") is None

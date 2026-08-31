@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 from agents.carousel.brand_theme import TEMPLATES
+from agents.carousel.character_assets import CharacterAssetProvider
 from agents.carousel.deck_renderer import (
     CarouselDeck,
     parse_carousel_deck,
@@ -41,8 +42,12 @@ logger = logging.getLogger(__name__)
 # Typed planner error codes
 CAROUSEL_PLAN_CONFIG_INVALID = "CAROUSEL_PLAN_CONFIG_INVALID"
 CAROUSEL_PLAN_GENERATION_FAILED = "CAROUSEL_PLAN_GENERATION_FAILED"
+CAROUSEL_CHARACTER_ASSETS_UNAVAILABLE = "CAROUSEL_CHARACTER_ASSETS_UNAVAILABLE"
 
 SUPPORTED_GOALS = ("save_and_share", "follow", "reflect")
+SUPPORTED_MODES = ("ai_planned", "text_overlay", "image_deck")
+# Character hint used when enforcing character presence (ElinaOS universe)
+_CHARACTER_HINT = "elina"
 MIN_SLIDES = 3
 MAX_SLIDES = 10
 MAX_TOPIC_CHARS = 300
@@ -77,6 +82,10 @@ class CarouselPlanConfigError(CarouselPlanError):
 
 class CarouselPlanGenerationError(CarouselPlanError):
     code = CAROUSEL_PLAN_GENERATION_FAILED
+
+
+class CarouselCharacterAssetsError(CarouselPlanError):
+    code = CAROUSEL_CHARACTER_ASSETS_UNAVAILABLE
 
 
 @dataclass
@@ -144,18 +153,67 @@ class CarouselPlanner:
 
     def plan(
         self,
-        topic: str,
+        topic: str = "",
         slide_count: int = 6,
         template: str = DEFAULT_TEMPLATE,
         image_path: Optional[str] = None,
         image_description: Optional[str] = None,
         goal: str = "save_and_share",
         language: str = "fa",
+        mode: str = "ai_planned",
+        image_paths: Optional[List[str]] = None,
+        slide_texts: Optional[List[Dict[str, str]]] = None,
+        character_asset_provider: Optional[CharacterAssetProvider] = None,
     ) -> CarouselPlanResult:
         """
-        Generate a validated CarouselDeck (plus caption/hashtags) for the
-        given topic. See module docstring for the editorial contract.
+        Generate a validated CarouselDeck (plus caption/hashtags).
+
+        Modes:
+        - "ai_planned" (default, M18C): topic -> LLM writes everything.
+          When character_asset_provider is given, every content slide
+          (except cta) must end up with a character visual (soft fallback:
+          reuse the last successful image; CAROUSEL_CHARACTER_ASSETS_
+          UNAVAILABLE only when nothing can be assigned at all).
+        - "text_overlay" (M18C-UPDATE): user images + user texts, zipped in
+          order; NO LLM call. Requires image_paths + slide_texts (same
+          length, > 0). First image -> cover.
+        - "image_deck" (M18C-UPDATE): user images + topic; the LLM writes
+          exactly len(image_paths) slides, zipped with the images in order.
+
+        See the module docstring for the editorial contract.
         """
+        if mode not in SUPPORTED_MODES:
+            raise CarouselPlanConfigError(
+                f"mode '{mode}' is not supported (use one of {list(SUPPORTED_MODES)})"
+            )
+        if not isinstance(template, str) or template not in TEMPLATES:
+            raise CarouselPlanConfigError(
+                f"template '{template}' is not supported (use one of {sorted(TEMPLATES)})"
+            )
+        if language != "fa":
+            raise CarouselPlanConfigError(
+                f"language '{language}' is not supported (public text is Persian-only)"
+            )
+
+        if mode == "text_overlay":
+            return self._plan_text_overlay(image_paths, slide_texts, template)
+        if mode == "image_deck":
+            return self._plan_image_deck(
+                topic, template, goal, language, image_paths, image_description
+            )
+        return self._plan_ai_planned(
+            topic, slide_count, template, image_path, image_description, goal,
+            language, character_asset_provider,
+        )
+
+    # ------------------------------------------------------------------
+    # MODE 3 (M18C + character presence): ai_planned
+    # ------------------------------------------------------------------
+
+    def _plan_ai_planned(
+        self, topic, slide_count, template, image_path, image_description,
+        goal, language, character_asset_provider,
+    ) -> CarouselPlanResult:
         self._validate_inputs(topic, slide_count, template, goal, language, image_path)
 
         # B. Optional image understanding (soft: never fails the plan)
@@ -163,12 +221,148 @@ class CarouselPlanner:
         if not description and image_path:
             description = self._describe_image(image_path)
 
-        # C + D. LLM call with a single repair retry
         system_prompt = self._build_system_prompt()
         user_prompt = self._build_user_prompt(
             topic.strip(), slide_count, goal, description, image_path is not None
         )
+        data, provider = self._generate_deck_data(user_prompt, system_prompt, language, slide_count)
 
+        # E. Deck assembly + final validation (same gate the deck renderer uses)
+        deck = self._assemble_deck(data, template, image_path)
+
+        # Character visual enforcement (only when a provider is supplied)
+        if character_asset_provider is not None:
+            self._enforce_character_presence(deck, template, character_asset_provider)
+
+        return CarouselPlanResult(
+            deck=deck,
+            caption=(data.get("caption") or "").strip(),
+            hashtags=[h for h in (data.get("hashtags") or []) if isinstance(h, str) and h.strip()],
+            image_description=description,
+            provider_used=provider,
+        )
+
+    # ------------------------------------------------------------------
+    # MODE 2 (M18C-UPDATE): image_deck — user images, LLM writes the text
+    # ------------------------------------------------------------------
+
+    def _plan_image_deck(
+        self, topic, template, goal, language, image_paths, image_description
+    ) -> CarouselPlanResult:
+        if not isinstance(topic, str) or not topic.strip():
+            raise CarouselPlanConfigError("image_deck mode requires a non-empty topic")
+        if len(topic.strip()) > MAX_TOPIC_CHARS:
+            raise CarouselPlanConfigError(
+                f"topic is {len(topic.strip())} chars; maximum is {MAX_TOPIC_CHARS}"
+            )
+        if goal not in SUPPORTED_GOALS:
+            raise CarouselPlanConfigError(
+                f"goal '{goal}' is not supported (use one of {list(SUPPORTED_GOALS)})"
+            )
+        paths = self._validate_image_paths(image_paths)
+        slide_count = len(paths)  # forced: one slide per provided image
+        if not (MIN_SLIDES <= slide_count <= MAX_SLIDES):
+            raise CarouselPlanConfigError(
+                f"image_deck needs {MIN_SLIDES}-{MAX_SLIDES} images "
+                f"(got {slide_count} image_paths)"
+            )
+
+        system_prompt = self._build_system_prompt()
+        user_prompt = self._build_user_prompt(
+            topic.strip(), slide_count, goal, image_description,
+            has_image=True, paired_images=True,
+        )
+        data, provider = self._generate_deck_data(user_prompt, system_prompt, language, slide_count)
+
+        deck = self._assemble_deck(data, template, None)
+        # Zip the generated text with the provided images, in order
+        for slide, path in zip(deck.slides, paths):
+            slide.image_path = path
+        self._final_validate_deck(deck)
+
+        return CarouselPlanResult(
+            deck=deck,
+            caption=(data.get("caption") or "").strip(),
+            hashtags=[h for h in (data.get("hashtags") or []) if isinstance(h, str) and h.strip()],
+            image_description=image_description,
+            provider_used=provider,
+        )
+
+    # ------------------------------------------------------------------
+    # MODE 1 (M18C-UPDATE): text_overlay — user images + user texts, no LLM
+    # ------------------------------------------------------------------
+
+    def _plan_text_overlay(
+        self, image_paths, slide_texts, template
+    ) -> CarouselPlanResult:
+        paths = self._validate_image_paths(image_paths)
+        if not isinstance(slide_texts, list) or len(slide_texts) != len(paths):
+            raise CarouselPlanConfigError(
+                f"text_overlay requires slide_texts with exactly one entry per image "
+                f"({len(paths)} images, got "
+                f"{len(slide_texts) if isinstance(slide_texts, list) else 'no list'})"
+            )
+
+        slides = []
+        for i, (img, text) in enumerate(zip(paths, slide_texts)):
+            if not isinstance(text, dict):
+                raise CarouselPlanConfigError(f"slide_texts[{i}] must be a dictionary")
+            title = text.get("title")
+            if not isinstance(title, str) or not title.strip():
+                raise CarouselPlanConfigError(
+                    f"slide_texts[{i}] requires a non-empty title"
+                )
+            body = (text.get("body") or "").strip()
+            eyebrow = (text.get("eyebrow") or "").strip()
+            if i == 0:
+                raw_slide = {
+                    "slide_type": "cover",
+                    "title": title.strip(),
+                    "eyebrow": eyebrow,
+                    "image_path": img,
+                }
+            else:
+                # Non-cover slides always carry their paired image, so they
+                # use image_text (the M18A title_body type requires a body
+                # and would silently drop the user's image).
+                raw_slide = {
+                    "slide_type": "image_text",
+                    "title": title.strip(),
+                    "body": body,
+                    "eyebrow": eyebrow,
+                    "image_path": img,
+                }
+            try:
+                slides.append(parse_carousel_slide(raw_slide))
+            except CarouselConfigError as exc:
+                raise CarouselPlanConfigError(f"slide_texts[{i}]: {exc.detail}") from exc
+
+        deck = CarouselDeck(title=slides[0].title, template=template, slides=slides)
+        self._final_validate_deck(deck)
+        return CarouselPlanResult(
+            deck=deck,
+            caption="",
+            hashtags=[],
+            image_description=None,
+            provider_used=None,  # no LLM involved
+        )
+
+    # ------------------------------------------------------------------
+    # Shared helpers
+    # ------------------------------------------------------------------
+
+    def _validate_image_paths(self, image_paths) -> List[str]:
+        if not isinstance(image_paths, list) or not image_paths:
+            raise CarouselPlanConfigError("image_paths must be a non-empty list of paths")
+        for p in image_paths:
+            if not isinstance(p, str) or not os.path.exists(p):
+                raise CarouselPlanConfigError(f"image_path does not exist: {p!r}")
+        return image_paths
+
+    def _generate_deck_data(
+        self, user_prompt: str, system_prompt: str, language: str, slide_count: int
+    ) -> Tuple[Dict[str, Any], str]:
+        """C + D. LLM call with a single repair retry -> validated data dict."""
         result = self._llm_call(user_prompt, system_prompt, language)
         raw = result.get("response", "")
         provider = result.get("provider", "")
@@ -198,16 +392,52 @@ class CarouselPlanner:
                 raise CarouselPlanGenerationError(
                     f"deck generation failed after repair attempt: {error}"
                 )
+        return data, provider
 
-        # E. Deck assembly + final validation (same gate the deck renderer uses)
-        deck = self._assemble_deck(data, template, image_path)
-        return CarouselPlanResult(
-            deck=deck,
-            caption=(data.get("caption") or "").strip(),
-            hashtags=[h for h in (data.get("hashtags") or []) if isinstance(h, str) and h.strip()],
-            image_description=description,
-            provider_used=provider,
-        )
+    def _enforce_character_presence(
+        self, deck: CarouselDeck, template: str, provider: CharacterAssetProvider
+    ) -> None:
+        """
+        ai_planned rule: every content slide (except cta) must have a
+        character visual.
+
+        Soft fallback chain per slide: user image -> provider asset ->
+        last successful image. Raises CAROUSEL_CHARACTER_ASSETS_UNAVAILABLE
+        only when NO content slide ends up with an image.
+        """
+        last_image: Optional[str] = None
+        for slide in deck.slides:
+            if slide.image_path:
+                last_image = slide.image_path
+
+        for slide in deck.slides:
+            if slide.slide_type == "cta":
+                continue
+            if slide.image_path:
+                last_image = slide.image_path
+                continue
+            asset = None
+            try:
+                asset = provider.get_asset(
+                    _CHARACTER_HINT, slide.title, slide.slide_type, template
+                )
+            except Exception as exc:
+                # Providers must be soft; guard anyway so a buggy provider
+                # cannot kill the plan.
+                logger.warning(
+                    "Character asset provider raised (treating as missing): %s", exc
+                )
+            if asset:
+                slide.image_path = asset
+                last_image = asset
+            elif last_image:
+                slide.image_path = last_image  # soft fallback: reuse previous
+
+        if not any(s.image_path for s in deck.slides if s.slide_type != "cta"):
+            raise CarouselCharacterAssetsError(
+                "no character assets available for content slides "
+                "(provider returned nothing and no fallback image exists)"
+            )
 
     # ------------------------------------------------------------------
     # Input validation (A)
@@ -297,13 +527,27 @@ class CarouselPlanner:
         goal: str,
         image_description: Optional[str],
         has_image: bool,
+        paired_images: bool = False,
     ) -> str:
         parts = [
             f"موضوع کاروسل: {topic}",
             f"تعداد دقیق اسلایدها: {slide_count} (اول cover، آخر cta)",
             _GOAL_INSTRUCTIONS[goal],
         ]
-        if image_description:
+        if paired_images:
+            # image_deck mode: every slide will be paired (in order) with a
+            # user-provided image; image_text slides use a placeholder path.
+            parts.append(
+                "برای این کاروسل به تعداد دقیقِ اسلایدها، تصویر از طرف کاربر "
+                "و به همان ترتیب جفت می‌شود. برای هر اسلاید بعد از cover که "
+                "متن آن باید روی تصویر دیده شود، slide_type=image_text را "
+                "استفاده کن و image_path را دقیقاً مقدار pending بگذار "
+                "(سیستم تصویر واقعی را جایگزین می‌کند). برای اسلایدهای بدون "
+                "تصویر از title_body یا quote استفاده کن."
+            )
+            if image_description:
+                parts.append(f"توضیح کلی تصاویر: {image_description}")
+        elif image_description:
             parts.append(
                 "تصویر منبع برای اسلاید کاور موجود است. توضیح تصویر: "
                 f"{image_description}\n"
@@ -409,10 +653,13 @@ class CarouselPlanner:
             template=template,
             slides=slides,
         )
-        # Final gate: the same validation the deck renderer applies.
+        self._final_validate_deck(deck)
+        return deck
+
+    def _final_validate_deck(self, deck: CarouselDeck) -> None:
+        """Final gate: the same validation the deck renderer applies, plus
+        a full parse-path pass so nothing partially valid escapes silently."""
         _validate_deck_instance(deck)
-        # Full parse-path validation (child slides + deck rules) on the
-        # assembled deck, so nothing partially valid escapes silently.
         parse_carousel_deck({
             "title": deck.title,
             "template": deck.template,
@@ -429,10 +676,9 @@ class CarouselPlanner:
                     "accent": s.accent,
                     "slide_number": s.slide_number,
                 }
-                for s in slides
+                for s in deck.slides
             ],
         })
-        return deck
 
     # ------------------------------------------------------------------
     # Soft image description (B)

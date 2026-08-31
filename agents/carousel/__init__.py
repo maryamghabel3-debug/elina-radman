@@ -46,11 +46,17 @@ from agents.carousel.deck_renderer import (
 from agents.carousel.planner import (
     CAROUSEL_PLAN_CONFIG_INVALID,
     CAROUSEL_PLAN_GENERATION_FAILED,
+    CAROUSEL_CHARACTER_ASSETS_UNAVAILABLE,
     CarouselPlanResult,
     CarouselPlanError,
     CarouselPlanConfigError,
     CarouselPlanGenerationError,
+    CarouselCharacterAssetsError,
     CarouselPlanner,
+)
+from agents.carousel.character_assets import (
+    CharacterAssetProvider,
+    LocalCharacterAssetProvider,
 )
 
 __all__ = [
@@ -95,9 +101,13 @@ __all__ = [
     "prepare_carousel_content_item",
     "CAROUSEL_PLAN_CONFIG_INVALID",
     "CAROUSEL_PLAN_GENERATION_FAILED",
+    "CAROUSEL_CHARACTER_ASSETS_UNAVAILABLE",
     "CarouselPlanResult",
     "CarouselPlanError",
     "CarouselPlanConfigError",
     "CarouselPlanGenerationError",
+    "CarouselCharacterAssetsError",
     "CarouselPlanner",
+    "CharacterAssetProvider",
+    "LocalCharacterAssetProvider",
 ]
