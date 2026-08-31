@@ -1,4 +1,4 @@
-# Carousel Studio — MVP (M18A + M18B)
+# Carousel Studio — MVP (M18A + M18B + M18C)
 
 Deterministic static carousel studio for ElinaOS. Takes an optional image
 plus structured Persian text and produces branded 1080x1350 PNG slides
@@ -9,6 +9,8 @@ dependencies.
   protection)
 - **M18B**: ordered multi-slide decks, deck-level validation, deterministic
   file naming, optional storage upload, content-item preparation
+- **M18C**: AI planner — topic (+ optional image) → complete validated
+  Persian deck JSON (written by Elina's voice rules, via LLMRouter)
 
 ## Capabilities (M18A)
 
@@ -228,10 +230,82 @@ Slide-level errors from M18A remain: `CAROUSEL_SLIDE_CONFIG_INVALID`,
 Generated slides are written to caller-provided paths (tests use temp
 directories; nothing is written inside the repository).
 
-## Intentionally deferred (post-M18B)
+## AI planner (M18C)
 
-- AI carousel text planning
-- Telegram commands
+`CarouselPlanner` writes the Persian carousel content for a topic (and an
+optional image) and returns a fully validated deck:
+
+```python
+from agents.carousel import CarouselPlanner
+
+result = CarouselPlanner().plan(
+    topic="چرا بعضی آدم‌ها وقتی به آن‌ها نزدیک می‌شوی عقب می‌کشند؟",
+    slide_count=6,
+    template="psychological_dark",
+    image_path="/path/to/source.jpg",     # optional
+    image_description="...",              # optional, skips vision call
+    goal="save_and_share",                # save_and_share | follow | reflect
+    language="fa",                        # Persian-only
+)
+# result: CarouselPlanResult(deck, caption, hashtags, image_description, provider_used)
+```
+
+### Planner JSON contract
+
+```json
+{
+  "deck_title": "...",
+  "slides": [
+    {"slide_type": "cover", "title": "...", "eyebrow": "..."},
+    {"slide_type": "title_body", "title": "...", "body": "..."},
+    {"slide_type": "bullet_list", "title": "...", "bullets": ["..."]},
+    {"slide_type": "quote", "title": "..."},
+    {"slide_type": "cta", "title": "..."}
+  ],
+  "caption": "2-4 short Persian paragraphs + gentle CTA",
+  "hashtags": ["#فارسی", "#english", "..."]
+}
+```
+
+### Editorial rules encoded in the prompt (Brand Book / Voice & Tone /
+Content Safety V2)
+
+- all public text Persian; hybrid voice: «تو» for emotion, impersonal for
+  analysis; intimate, calm, psychologically deep — not preachy, not
+  clickbait, not generic-motivational
+- cover first, exactly one cta last (enforced structurally, not just
+  prompted); quote text in «...»; no emoji in titles
+- per-type text limits from the M18A schema; bullets 2-5 short items
+- forbidden phrases list enforced; clinical terms only with precise
+  context; no medical/clinical claims, no diagnosis language
+- caption 2-4 short paragraphs + gentle CTA; 5-10 relevant hashtags
+  (Persian + English mix)
+
+### Planner behavior
+
+- uses the existing `LLMRouter` (`smart_generate`, task
+  `creative_writing`, `language="fa"` — CJK-contamination rejection
+  included); no new dependencies
+- image understanding is **soft**: `image_description` used directly when
+  given; otherwise a best-effort Gemini description when `GEMINI_API_KEY`
+  is set; ANY failure logs and continues without image context
+- JSON parsing strips markdown fences; if parsing or deck validation fails,
+  ONE repair retry quotes the exact error; then
+  `CAROUSEL_PLAN_GENERATION_FAILED`
+- the assembled deck passes the same validation the deck renderer uses — a
+  partially valid deck is never returned silently
+- the cover (and any image_text slide) receives the source `image_path`
+
+### Planner error codes
+
+- `CAROUSEL_PLAN_CONFIG_INVALID` — bad inputs (topic, slide_count 3-10,
+  template, goal, language, missing image)
+- `CAROUSEL_PLAN_GENERATION_FAILED` — LLM output unparseable/invalid after
+  one repair retry, or no provider available
+
+## Intentionally deferred (post-M18C)
+
+- Telegram commands for carousel generation (M18D)
+- Reel cover generation (M18E)
 - carousel publishing automation (scheduler already supports it once an
   item exists)
-- Reel cover generation
