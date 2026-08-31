@@ -29,6 +29,20 @@ from agents.carousel.schema import (
 )
 from agents.carousel.brand_theme import PALETTE, TEMPLATES, TemplateTheme, get_template, hex_to_rgb, palette_rgb
 from agents.carousel.slide_renderer import CarouselSlideRenderer
+from agents.carousel.deck_renderer import (
+    CAROUSEL_DECK_INVALID,
+    CAROUSEL_DECK_EMPTY,
+    CAROUSEL_DECK_RENDER_FAILED,
+    MIN_DECK_SLIDES,
+    MAX_DECK_SLIDES,
+    CarouselDeck,
+    CarouselDeckError,
+    CarouselDeckEmptyError,
+    CarouselDeckRenderError,
+    CarouselDeckRenderer,
+    parse_carousel_deck,
+    prepare_carousel_content_item,
+)
 
 __all__ = [
     "CANVAS_WIDTH",
@@ -58,4 +72,16 @@ __all__ = [
     "hex_to_rgb",
     "palette_rgb",
     "CarouselSlideRenderer",
+    "CAROUSEL_DECK_INVALID",
+    "CAROUSEL_DECK_EMPTY",
+    "CAROUSEL_DECK_RENDER_FAILED",
+    "MIN_DECK_SLIDES",
+    "MAX_DECK_SLIDES",
+    "CarouselDeck",
+    "CarouselDeckError",
+    "CarouselDeckEmptyError",
+    "CarouselDeckRenderError",
+    "CarouselDeckRenderer",
+    "parse_carousel_deck",
+    "prepare_carousel_content_item",
 ]

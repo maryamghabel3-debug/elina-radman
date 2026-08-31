@@ -14,6 +14,7 @@ CANVAS_HEIGHT = 1350
 
 SUPPORTED_SLIDE_TYPES = ("cover", "title_body", "quote", "bullet_list", "image_text", "cta")
 SUPPORTED_TEMPLATES = ("psychological_dark", "midnight_editorial", "warm_cream", "minimal_photo")
+DEFAULT_TEMPLATE = "psychological_dark"
 
 # Typed error codes
 CAROUSEL_SLIDE_CONFIG_INVALID = "CAROUSEL_SLIDE_CONFIG_INVALID"
@@ -68,7 +69,11 @@ MAX_BULLETS = 5
 
 @dataclass
 class CarouselSlide:
-    """One static branded carousel slide (M18A)."""
+    """One static branded carousel slide (M18A).
+
+    template=None means "inherit from the parent deck" (M18B); standalone
+    rendering falls back to DEFAULT_TEMPLATE.
+    """
 
     slide_type: str
     title: str = ""
@@ -77,7 +82,7 @@ class CarouselSlide:
     image_path: Optional[str] = None
     eyebrow: str = ""
     footer: str = ""
-    template: str = "psychological_dark"
+    template: Optional[str] = None
     accent: str = "antique_gold"
     slide_number: Optional[int] = None
 
@@ -106,11 +111,12 @@ def parse_carousel_slide(raw: Dict[str, Any]) -> CarouselSlide:
             f"slide_type '{slide_type}' is not supported (use one of {list(SUPPORTED_SLIDE_TYPES)})"
         )
 
-    template = raw.get("template", "psychological_dark")
-    if template not in SUPPORTED_TEMPLATES:
-        raise CarouselConfigError(
-            f"template '{template}' is not supported (use one of {list(SUPPORTED_TEMPLATES)})"
-        )
+    template = raw.get("template")
+    if template is not None:
+        if not isinstance(template, str) or template not in SUPPORTED_TEMPLATES:
+            raise CarouselConfigError(
+                f"template '{template}' is not supported (use one of {list(SUPPORTED_TEMPLATES)})"
+            )
 
     accent = raw.get("accent", "antique_gold")
     # Imported lazily to avoid a circular import at module load

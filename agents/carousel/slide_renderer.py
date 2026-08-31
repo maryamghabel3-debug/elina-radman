@@ -27,6 +27,7 @@ from agents.carousel.brand_theme import TemplateTheme, get_template, hex_to_rgb,
 from agents.carousel.schema import (
     CANVAS_HEIGHT,
     CANVAS_WIDTH,
+    DEFAULT_TEMPLATE,
     CarouselConfigError,
     CarouselFontError,
     CarouselImageError,
@@ -154,7 +155,9 @@ class CarouselSlideRenderer:
         """Build the slide as an in-memory RGBA image (used by render/tests)."""
         if not isinstance(slide, CarouselSlide):
             raise CarouselConfigError("build_slide expects a parsed CarouselSlide")
-        theme = get_template(slide.template)
+        # template=None means "no explicit choice": inherit (deck) or fall
+        # back to the default template when rendering a standalone slide.
+        theme = get_template(slide.template or DEFAULT_TEMPLATE)
         W, H = self.canvas_size
         M = max(24, round(W * MARGIN_FRAC))
 
