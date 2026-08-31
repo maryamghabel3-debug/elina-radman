@@ -1377,3 +1377,254 @@ def test_render_content_without_subtitles_unchanged(monkeypatch):
     assert FakeSubtitleRenderer.renders == []
     assert assembler.calls[0]["subtitle_overlays"] is None
     assert assembler.calls[0]["recipe"].subtitles is None
+
+# === New Auto Voice Subtitles (M17) Tests ===
+
+class FakeTimingVoiceGenerator:
+    """VoiceGenerator stand-in that records which method was called and
+    returns configurable word boundaries from generate_with_timing."""
+    calls = []          # method names invoked
+    boundaries = []     # used by generate_with_timing
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    async def generate(self, text, voice="dilara", rate="+0%", output_path=None):
+        FakeTimingVoiceGenerator.calls.append("generate")
+        with open(output_path, "wb") as f:
+            f.write(b"FAKE-TTS-AUDIO")
+        return output_path
+
+    async def generate_with_timing(self, text, voice="dilara", rate="+0%", output_path=None):
+        FakeTimingVoiceGenerator.calls.append("generate_with_timing")
+        with open(output_path, "wb") as f:
+            f.write(b"FAKE-TTS-AUDIO")
+        from agents.audio.voice_generator import VoiceResult
+        return VoiceResult(path=output_path, word_boundaries=list(FakeTimingVoiceGenerator.boundaries))
+
+
+VOICE_TEXT_4W = "سلام دنیا، این آزمایش"  # 4 words -> cues: "سلام دنیا،" / "این آزمایش"
+
+
+def _mock_concat(monkeypatch):
+    import agents.editing.orchestrator as orch_mod
+
+    class MockConcatenator:
+        def concat_segments(self, segments, output_path, **kwargs):
+            with open(output_path, "wb") as f:
+                f.write(b"0" * 20000)
+            return output_path
+
+    monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
+
+
+def test_M17_A_manual_subtitles_override_auto(monkeypatch):
+    """Test A: manual plan subtitles win; auto derivation (and timing capture)
+    does not run."""
+    _mock_concat(monkeypatch)
+    FakeTimingVoiceGenerator.calls = []
+    FakeTimingVoiceGenerator.boundaries = []
+
+    db = FakeDB()
+    assembler = FakeAssembler()
+    o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=assembler)
+
+    manual_subs = [{"text": "زیرنویس دستی", "start_sec": 0.0, "end_sec": 2.0}]
+    with patch("agents.audio.voice_generator.VoiceGenerator", FakeTimingVoiceGenerator), \
+         patch("agents.editing.subtitle_renderer.SubtitleRenderer", FakeSubtitleRenderer):
+        result = o.render_content(
+            "ELN-RAW-TEST",
+            actor="tester",
+            plan_voice={"text": VOICE_TEXT_4W, "auto_subtitles": True},
+            plan_subtitles=manual_subs,
+        )
+
+    assert result["ok"] is True
+    # Timing was NOT captured (manual wins) and manual subtitles were used as-is
+    assert "generate_with_timing" not in FakeTimingVoiceGenerator.calls
+    assert "generate" in FakeTimingVoiceGenerator.calls
+    recipe = assembler.calls[0]["recipe"]
+    assert [s.text for s in recipe.subtitles] == ["زیرنویس دستی"]
+    assert len(assembler.calls[0]["subtitle_overlays"]) == 1
+    assert assembler.calls[0]["subtitle_overlays"][0]["path"].endswith("subtitle_000.png")
+
+
+def test_M17_B_auto_subtitles_from_mocked_timing(monkeypatch):
+    """Test B: auto_subtitles=true generates cues from mocked word-boundary
+    timing metadata."""
+    _mock_concat(monkeypatch)
+    FakeTimingVoiceGenerator.calls = []
+    FakeTimingVoiceGenerator.boundaries = [
+        {"start_sec": 0.0, "end_sec": 0.4, "text": "سلام"},
+        {"start_sec": 0.4, "end_sec": 0.9, "text": "دنیا،"},
+        {"start_sec": 1.3, "end_sec": 2.0, "text": "این"},
+        {"start_sec": 2.0, "end_sec": 2.8, "text": "آزمایش"},
+    ]
+
+    FakeSubtitleRenderer.renders = []
+    db = FakeDB()
+    storage = FakeStorage()
+    assembler = FakeAssembler()
+    o = EditOrchestrator(db=db, storage=storage, typography=FakeTypography(), assembler=assembler)
+
+    with patch("agents.audio.voice_generator.VoiceGenerator", FakeTimingVoiceGenerator), \
+         patch("agents.editing.subtitle_renderer.SubtitleRenderer", FakeSubtitleRenderer):
+        result = o.render_content(
+            "ELN-RAW-TEST",
+            actor="tester",
+            plan_voice={"text": VOICE_TEXT_4W, "auto_subtitles": True},
+        )
+
+    assert result["ok"] is True
+    assert "generate_with_timing" in FakeTimingVoiceGenerator.calls
+    # Two cues derived from the boundaries
+    recipe = assembler.calls[0]["recipe"]
+    assert [s.text for s in recipe.subtitles] == ["سلام دنیا،", "این آزمایش"]
+    assert (recipe.subtitles[0].start_sec, recipe.subtitles[0].end_sec) == (0.0, 0.9)
+    assert (recipe.subtitles[1].start_sec, recipe.subtitles[1].end_sec) == (1.3, 2.8)
+    overlays = assembler.calls[0]["subtitle_overlays"]
+    assert len(overlays) == 2
+    assert overlays[0]["path"].endswith("subtitle_000.png")
+    assert overlays[1]["path"].endswith("subtitle_001.png")
+    # Voice upload still happens (M15 behavior intact)
+    assert any(u[1].startswith("voice/ELN-RAW-TEST/") for u in storage.uploads)
+
+
+def test_M17_C_proportional_fallback_when_no_timing(monkeypatch):
+    """Test C: timing metadata unavailable (empty boundaries) -> proportional
+    fallback over the estimated duration; render still succeeds."""
+    _mock_concat(monkeypatch)
+    FakeTimingVoiceGenerator.calls = []
+    FakeTimingVoiceGenerator.boundaries = []  # no word boundaries
+
+    FakeSubtitleRenderer.renders = []
+    db = FakeDB()
+    assembler = FakeAssembler()
+    o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=assembler)
+
+    with patch("agents.audio.voice_generator.VoiceGenerator", FakeTimingVoiceGenerator), \
+         patch("agents.editing.subtitle_renderer.SubtitleRenderer", FakeSubtitleRenderer):
+        result = o.render_content(
+            "ELN-RAW-TEST",
+            actor="tester",
+            plan_voice={"text": VOICE_TEXT_4W, "auto_subtitles": True},
+        )
+
+    assert result["ok"] is True
+    recipe = assembler.calls[0]["recipe"]
+    # Fake audio file has no probeable duration -> estimate 4 words * 0.45 = 1.8s
+    assert len(recipe.subtitles) == 2
+    assert (recipe.subtitles[0].start_sec, recipe.subtitles[0].end_sec) == (0.0, 0.9)
+    assert (recipe.subtitles[1].start_sec, recipe.subtitles[1].end_sec) == (0.9, 1.8)
+
+
+def test_M17_D_voice_start_sec_offsets_cues(monkeypatch):
+    """Test D: voice.start_sec shifts every generated cue by the offset."""
+    _mock_concat(monkeypatch)
+    FakeTimingVoiceGenerator.calls = []
+    FakeTimingVoiceGenerator.boundaries = [
+        {"start_sec": 0.0, "end_sec": 0.4, "text": "سلام"},
+        {"start_sec": 0.4, "end_sec": 0.9, "text": "دنیا،"},
+        {"start_sec": 1.3, "end_sec": 2.0, "text": "این"},
+        {"start_sec": 2.0, "end_sec": 2.8, "text": "آزمایش"},
+    ]
+
+    FakeSubtitleRenderer.renders = []
+    db = FakeDB()
+    assembler = FakeAssembler()
+    o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=assembler)
+
+    with patch("agents.audio.voice_generator.VoiceGenerator", FakeTimingVoiceGenerator), \
+         patch("agents.editing.subtitle_renderer.SubtitleRenderer", FakeSubtitleRenderer):
+        result = o.render_content(
+            "ELN-RAW-TEST",
+            actor="tester",
+            plan_voice={"text": VOICE_TEXT_4W, "auto_subtitles": True, "start_sec": 1.5},
+        )
+
+    assert result["ok"] is True
+    recipe = assembler.calls[0]["recipe"]
+    assert (recipe.subtitles[0].start_sec, recipe.subtitles[0].end_sec) == (1.5, 2.4)
+    assert (recipe.subtitles[1].start_sec, recipe.subtitles[1].end_sec) == (2.8, 4.3)
+    # Offset also carried into the recipe audio config (M15 behavior)
+    assert recipe.audio.voice_start_sec == 1.5
+
+
+def test_M17_H_voice_style_position_applied_to_cues(monkeypatch):
+    """Test H: subtitle_style/subtitle_position from the voice config are
+    applied to the generated cues (and their overlay positions)."""
+    _mock_concat(monkeypatch)
+    FakeTimingVoiceGenerator.calls = []
+    FakeTimingVoiceGenerator.boundaries = []
+
+    FakeSubtitleRenderer.renders = []
+    db = FakeDB()
+    assembler = FakeAssembler()
+    o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=assembler)
+
+    with patch("agents.audio.voice_generator.VoiceGenerator", FakeTimingVoiceGenerator), \
+         patch("agents.editing.subtitle_renderer.SubtitleRenderer", FakeSubtitleRenderer):
+        result = o.render_content(
+            "ELN-RAW-TEST",
+            actor="tester",
+            plan_voice={
+                "text": VOICE_TEXT_4W,
+                "auto_subtitles": True,
+                "subtitle_style": "whisper",
+                "subtitle_position": "center",
+            },
+        )
+
+    assert result["ok"] is True
+    recipe = assembler.calls[0]["recipe"]
+    assert all(s.style == "whisper" for s in recipe.subtitles)
+    assert all(s.position == "center" for s in recipe.subtitles)
+    # center position -> y expression (H-h)/2 in the overlay definitions
+    assert all(o2["y"] == "(H-h)/2" for o2 in assembler.calls[0]["subtitle_overlays"])
+
+
+def test_M17_F_voice_without_auto_unchanged(monkeypatch):
+    """Test F: voice without auto_subtitles keeps existing behavior:
+    plain generate, no subtitles, no timing capture."""
+    _mock_concat(monkeypatch)
+    FakeTimingVoiceGenerator.calls = []
+    FakeTimingVoiceGenerator.boundaries = []
+
+    db = FakeDB()
+    assembler = FakeAssembler()
+    o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=assembler)
+
+    with patch("agents.audio.voice_generator.VoiceGenerator", FakeTimingVoiceGenerator), \
+         patch("agents.editing.subtitle_renderer.SubtitleRenderer", FakeSubtitleRenderer):
+        result = o.render_content(
+            "ELN-RAW-TEST",
+            actor="tester",
+            plan_voice={"text": VOICE_TEXT_4W, "gain_db": -3},
+        )
+
+    assert result["ok"] is True
+    assert FakeTimingVoiceGenerator.calls == ["generate"]
+    assert assembler.calls[0]["subtitle_overlays"] is None
+    assert assembler.calls[0]["recipe"].subtitles is None
+    assert assembler.calls[0]["recipe"].audio.voice_gain_db == -3
+
+
+def test_M17_invalid_auto_config_is_typed(monkeypatch):
+    """Invalid auto-subtitle config fails the job with
+    VOICE_SUBTITLE_SYNC_CONFIG_INVALID before any voice generation."""
+    _mock_concat(monkeypatch)
+    FakeTimingVoiceGenerator.calls = []
+
+    db = FakeDB()
+    assembler = FakeAssembler()
+    o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=assembler)
+
+    for bad in ({"text": VOICE_TEXT_4W, "auto_subtitles": "yes"},
+                {"text": VOICE_TEXT_4W, "subtitle_style": "glow"}):
+        FakeTimingVoiceGenerator.calls = []
+        result = o.render_content("ELN-RAW-TEST", actor="tester", plan_voice=bad)
+        assert result["ok"] is False
+        assert "VOICE_SUBTITLE_SYNC_CONFIG_INVALID" in result["error"]
+        assert FakeTimingVoiceGenerator.calls == []  # no generation attempted
+    statuses = [s[0] for s in db.status_updates]
+    assert "EDIT_FAILED" in statuses

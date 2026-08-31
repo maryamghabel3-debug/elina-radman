@@ -242,22 +242,47 @@ class EditOrchestrator:
                 # storage, and feed the local path to the assembly engine the
                 # same way a downloaded voice asset is consumed.
                 voice_path = None
+                voice_vresult = None  # M17: VoiceResult when timing was requested
+                voice_auto_cfg = None
+                voice_start_offset = 0.0
+                voice_text = ""
                 if plan_voice is not None:
                     if not isinstance(plan_voice, dict) or not (plan_voice.get("text") or "").strip():
                         raise ValueError("VOICE_INVALID_PLAN_ENTRY: plan voice requires non-empty 'text'")
 
                     from agents.audio.voice_generator import VoiceGenerator, VoiceGenerationError
+                    from agents.editing.subtitle_sync import parse_voice_auto_subtitle_config
+
+                    # Typed validation of the auto-subtitle config. Bad config
+                    # is a terminal error; later timing gaps stay soft.
+                    voice_auto_cfg = parse_voice_auto_subtitle_config(plan_voice)
 
                     voice_path = str(tmp / "voice_tts.mp3")
+                    voice_text = (plan_voice.get("text") or "").strip()
+                    # Timing is only captured when auto subtitles will actually
+                    # be used (manual subtitles win, so no wasted timing work).
+                    want_timing = voice_auto_cfg["enabled"] and not plan_subtitles
                     try:
-                        asyncio.run(
-                            VoiceGenerator().generate(
-                                text=(plan_voice.get("text") or "").strip(),
-                                voice=plan_voice.get("voice") or "dilara",
-                                rate=plan_voice.get("rate") or "+0%",
-                                output_path=voice_path,
+                        generator = VoiceGenerator()
+                        if want_timing:
+                            # M17: capture word-boundary timing for auto subtitles
+                            voice_vresult = asyncio.run(
+                                generator.generate_with_timing(
+                                    text=voice_text,
+                                    voice=plan_voice.get("voice") or "dilara",
+                                    rate=plan_voice.get("rate") or "+0%",
+                                    output_path=voice_path,
+                                )
                             )
-                        )
+                        else:
+                            asyncio.run(
+                                generator.generate(
+                                    text=voice_text,
+                                    voice=plan_voice.get("voice") or "dilara",
+                                    rate=plan_voice.get("rate") or "+0%",
+                                    output_path=voice_path,
+                                )
+                            )
                     except VoiceGenerationError as exc:
                         # Fail the job with the typed error. Terminal codes
                         # (VOICE_TEXT_TOO_LONG, VOICE_UNSUPPORTED, ...) are
@@ -291,6 +316,7 @@ class EditOrchestrator:
                         if voice_start < 0:
                             raise ValueError("VOICE_INVALID_PLAN_ENTRY: voice start_sec cannot be negative")
                         recipe.audio.voice_start_sec = voice_start
+                        voice_start_offset = voice_start
                 elif recipe.input_media.voice_key:
                     # Download voice track if present
                     voice_path = str(tmp / "voice.mp3")
@@ -483,25 +509,24 @@ class EditOrchestrator:
                 # existing temporary-directory lifecycle cleans them up after
                 # FFmpeg completes.
                 subtitle_overlays = None
-                if plan_subtitles:
-                    from agents.editing.subtitle_renderer import (
-                        SubtitleRenderer,
-                        overlay_position,
-                        parse_subtitle_entries,
-                    )
 
-                    # Raises SUBTITLE_CONFIG_INVALID on any invalid entry
-                    entries = parse_subtitle_entries(plan_subtitles)
-                    recipe.subtitles = entries
+                from agents.editing.subtitle_renderer import (
+                    SubtitleRenderer,
+                    overlay_position,
+                    parse_subtitle_entries,
+                )
 
-                    # Raises SUBTITLE_FONT_NOT_FOUND when no font is resolvable
+                def _render_subtitle_entries(entries):
+                    """Render SubtitleEntry PNGs into the job temp dir and
+                    return overlay definitions. Raises SUBTITLE_FONT_NOT_FOUND
+                    when no font is resolvable."""
                     renderer = SubtitleRenderer()
-                    subtitle_overlays = []
+                    overlays = []
                     for i, entry in enumerate(entries):
                         png_path = str(tmp / f"subtitle_{i:03d}.png")
                         renderer.render(entry, png_path)
                         x_expr, y_expr = overlay_position(entry)
-                        subtitle_overlays.append({
+                        overlays.append({
                             "path": png_path,
                             "start_sec": entry.start_sec,
                             "end_sec": entry.end_sec,
@@ -510,6 +535,40 @@ class EditOrchestrator:
                             "fade_in_sec": entry.fade_in_sec,
                             "fade_out_sec": entry.fade_out_sec,
                         })
+                    return overlays
+
+                if plan_subtitles:
+                    # Manual subtitles win: used exactly as-is.
+                    # Raises SUBTITLE_CONFIG_INVALID on any invalid entry
+                    entries = parse_subtitle_entries(plan_subtitles)
+                    recipe.subtitles = entries
+                    subtitle_overlays = _render_subtitle_entries(entries)
+                elif (
+                    voice_auto_cfg is not None
+                    and voice_auto_cfg["enabled"]
+                    and voice_vresult is not None
+                ):
+                    # M17: derive subtitles automatically from the generated
+                    # narration. Timing gaps use a SOFT proportional fallback
+                    # (logged, never fatal); only config/font errors are fatal.
+                    from agents.editing.media_assembly import _get_audio_duration
+                    from agents.editing.subtitle_sync import build_auto_subtitle_entries
+
+                    entries = build_auto_subtitle_entries(
+                        text=voice_text,
+                        word_boundaries=voice_vresult.word_boundaries,
+                        audio_duration_sec=_get_audio_duration(voice_path),
+                        start_offset_sec=voice_start_offset,
+                        style=voice_auto_cfg["style"],
+                        position=voice_auto_cfg["position"],
+                    )
+                    if entries:
+                        recipe.subtitles = entries
+                        subtitle_overlays = _render_subtitle_entries(entries)
+                    else:
+                        logger.warning(
+                            "Auto subtitles: no cues derived from narration; rendering without subtitles"
+                        )
 
                 # Assemble video
                 self.assembler.run_assembly(

@@ -736,3 +736,69 @@ def test_process_job_forwards_plan_subtitles():
 
     assert len(mock_orchestrator_calls) == 1
     assert mock_orchestrator_calls[0]["plan_subtitles"] == subs_plan
+
+
+def test_process_job_forwards_voice_auto_subtitle_config():
+    """Test G: plan_data voice with auto-subtitle fields is forwarded intact
+    (the whole voice dict passes through; old jobs without the fields stay
+    compatible)."""
+    voice_plan = {
+        "text": "بعضی لبخندها انتخاب ما نیستند.",
+        "voice": "dilara",
+        "auto_subtitles": True,
+        "subtitle_style": "whisper",
+        "subtitle_position": "center",
+        "start_sec": 1.5,
+    }
+    mock_job = {
+        "id": "job-autosub",
+        "content_id": "ELN-BUNDLE-123",
+        "plan_data": {
+            "target_id": "ELN-BUNDLE-123",
+            "shots": [{"index": 1, "start": 0.0, "end": 2.5}],
+            "voice": voice_plan,
+        },
+        "owner_chat_id": "12345",
+    }
+
+    mock_db = MagicMock()
+    mock_db.get_content_by_custom_id.return_value = {
+        "id": "item-123",
+        "custom_id": "ELN-BUNDLE-123",
+        "media_keys": ["path/1.mp4"]
+    }
+
+    mock_orchestrator_calls = []
+    class MockOrchestrator:
+        def render_content(self, **kwargs):
+            mock_orchestrator_calls.append(kwargs)
+            return {"ok": True, "output_key": "edited/final.mp4"}
+
+    with patch("scripts.render_worker.ElinaDB", lambda: mock_db):
+        with patch("agents.editing.orchestrator.EditOrchestrator", lambda: MockOrchestrator()):
+            with patch("scripts.render_worker.RenderJobManager") as MockJobManager:
+                instance = MockJobManager.return_value
+                instance.mark_completed.return_value = {}
+                instance.mark_failed.return_value = {}
+                with patch("urllib.request.urlopen"):
+                    process_job(mock_job)
+
+    assert len(mock_orchestrator_calls) == 1
+    # Full voice dict forwarded (including the M17 auto-subtitle fields)
+    assert mock_orchestrator_calls[0]["plan_voice"] == voice_plan
+    # Old-style jobs (no voice at all) still pass None
+    mock_job2 = {
+        "id": "job-old",
+        "content_id": "ELN-BUNDLE-123",
+        "plan_data": {"target_id": "ELN-BUNDLE-123", "shots": [{"index": 1}]},
+        "owner_chat_id": "12345",
+    }
+    mock_orchestrator_calls.clear()
+    with patch("scripts.render_worker.ElinaDB", lambda: mock_db):
+        with patch("agents.editing.orchestrator.EditOrchestrator", lambda: MockOrchestrator()):
+            with patch("scripts.render_worker.RenderJobManager") as MockJobManager:
+                MockJobManager.return_value.mark_completed.return_value = {}
+                MockJobManager.return_value.mark_failed.return_value = {}
+                with patch("urllib.request.urlopen"):
+                    process_job(mock_job2)
+    assert mock_orchestrator_calls[0]["plan_voice"] is None

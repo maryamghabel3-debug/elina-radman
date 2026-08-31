@@ -229,6 +229,7 @@ def process_job(job) -> bool:
                 or "VOICE_INVALID_PLAN_ENTRY" in err_msg
                 or "SUBTITLE_CONFIG_INVALID" in err_msg
                 or "SUBTITLE_FONT_NOT_FOUND" in err_msg
+                or "VOICE_SUBTITLE_SYNC_CONFIG_INVALID" in err_msg
             )
             if is_terminal:
                 return False
