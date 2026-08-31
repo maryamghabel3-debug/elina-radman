@@ -204,3 +204,112 @@ async def test_generate_without_output_path_creates_temp_mp3():
     finally:
         if os.path.exists(path):
             os.unlink(path)
+
+
+# === M17: generate_with_timing (word-boundary capture) ===
+
+def _async_chunk_iter(chunks):
+    async def _gen():
+        for c in chunks:
+            yield c
+    return _gen()
+
+
+def _boundary_chunks():
+    return [
+        {"Type": "WordBoundary", "Offset": 0, "Duration": 4_000_000, "Text": "سلام"},
+        {"Type": "Audio", "Data": b"ID3FAKEAUDIO"},
+        {"Type": "WordBoundary", "Offset": 4_000_000, "Duration": 5_000_000, "Text": "دنیا"},
+        {"Type": "Audio", "Data": b"MORE"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_generate_with_timing_collects_word_boundaries(tmp_path):
+    """WordBoundary events (100ns ticks) are converted to seconds and
+    returned alongside the audio path; audio bytes are written to file."""
+    out = str(tmp_path / "voice.mp3")
+    with patch("agents.audio.voice_generator.edge_tts") as fake_edge:
+        comm = MagicMock()
+        comm.stream = MagicMock(return_value=_async_chunk_iter(_boundary_chunks()))
+        fake_edge.Communicate.return_value = comm
+
+        result = await VoiceGenerator(**GEN_KWARGS).generate_with_timing("سلام دنیا.", output_path=out)
+
+    assert result.path == out
+    assert os.path.getsize(out) > 0
+    assert open(out, "rb").read() == b"ID3FAKEAUDIOMORE"
+    assert result.word_boundaries == [
+        {"start_sec": 0.0, "end_sec": 0.4, "text": "سلام"},
+        {"start_sec": 0.4, "end_sec": 0.9, "text": "دنیا"},
+    ]
+    # Word-boundary metadata explicitly requested (default is SentenceBoundary)
+    fake_edge.Communicate.assert_called_once_with(
+        "سلام دنیا.", "fa-IR-DilaraNeural", rate="+0%", boundary="WordBoundary"
+    )
+
+
+@pytest.mark.asyncio
+async def test_generate_with_timing_retries_then_succeeds(tmp_path):
+    """A transient stream failure is retried; the second attempt succeeds."""
+    out = str(tmp_path / "voice.mp3")
+    calls = {"n": 0}
+
+    def flaky_stream():
+        def _make():
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return _raise_stream()
+            return _async_chunk_iter(_boundary_chunks())
+        return _make
+
+    async def _raise_stream():
+        raise RuntimeError("transient network glitch")
+        yield  # pragma: no cover
+
+    with patch("agents.audio.voice_generator.edge_tts") as fake_edge:
+        comm = MagicMock()
+        comm.stream = flaky_stream()
+        fake_edge.Communicate.return_value = comm
+
+        result = await VoiceGenerator(**GEN_KWARGS).generate_with_timing("سلام دنیا.", output_path=out)
+
+    assert result.path == out
+    assert fake_edge.Communicate.call_count == 2
+    assert len(result.word_boundaries) == 2
+
+
+@pytest.mark.asyncio
+async def test_generate_with_timing_validation_errors(tmp_path):
+    """Same typed validation as generate(): empty text / unknown voice."""
+    with patch("agents.audio.voice_generator.edge_tts") as fake_edge:
+        with pytest.raises(VoiceGenerationError) as exc_info:
+            await VoiceGenerator(**GEN_KWARGS).generate_with_timing("   ")
+        assert exc_info.value.code == VOICE_TEXT_EMPTY
+        with pytest.raises(VoiceGenerationError) as exc_info:
+            await VoiceGenerator(**GEN_KWARGS).generate_with_timing("سلام.", voice="sara")
+        assert exc_info.value.code == VOICE_UNSUPPORTED
+    fake_edge.Communicate.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_generate_with_timing_supports_v7_lowercase_chunks(tmp_path):
+    """edge-tts 7.x yields lowercase keys (type/data/offset/duration/text)."""
+    out = str(tmp_path / "voice.mp3")
+    chunks_v7 = [
+        {"type": "WordBoundary", "offset": 0, "duration": 3_000_000, "text": "سلام"},
+        {"type": "audio", "data": b"V7AUDIO"},
+        {"type": "WordBoundary", "offset": 3_000_000, "duration": 4_000_000, "text": "دنیا"},
+    ]
+    with patch("agents.audio.voice_generator.edge_tts") as fake_edge:
+        comm = MagicMock()
+        comm.stream = MagicMock(return_value=_async_chunk_iter(chunks_v7))
+        fake_edge.Communicate.return_value = comm
+
+        result = await VoiceGenerator(**GEN_KWARGS).generate_with_timing("سلام دنیا.", output_path=out)
+
+    assert open(out, "rb").read() == b"V7AUDIO"
+    assert result.word_boundaries == [
+        {"start_sec": 0.0, "end_sec": 0.3, "text": "سلام"},
+        {"start_sec": 0.3, "end_sec": 0.7, "text": "دنیا"},
+    ]
