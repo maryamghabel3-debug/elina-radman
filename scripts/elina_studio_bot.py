@@ -13,7 +13,7 @@ from functools import wraps
 sys.stdout.reconfigure(line_buffering=True)
 
 from dotenv import load_dotenv
-from telegram import Update
+from telegram import Update, InputMediaPhoto
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -23,6 +23,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 from agents.studio.approval import ApprovalManager
 from agents.editing.persian_edit_interpreter import PersianEditInterpreter, format_plan_preview_fa
 from agents.studio.bundle_ids import normalize_bundle_custom_id
+import agents.studio.carousel_session as carousel_session
 
 logging.basicConfig(
     level=logging.INFO,
@@ -562,6 +563,247 @@ async def cmd_plan_ok(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+# ---------------------------------------------------------------------------
+# M18D — Telegram Carousel Studio (owner-only conversational flow)
+# All state-machine logic lives in agents/studio/carousel_session.py.
+# ---------------------------------------------------------------------------
+
+def _chat_data(context) -> Dict:
+    if context.chat_data is None:
+        context.chat_data = {}
+    return context.chat_data
+
+
+def _get_carousel_session(context) -> Optional[Dict]:
+    """Return the live (non-expired) carousel session, clearing an expired
+    one in place. Never returns an expired session. Defensive against
+    non-dict chat_data (pre-M18D mocks/tests) — treated as no session."""
+    chat_data = _chat_data(context)
+    session = carousel_session.get_session(chat_data)
+    if session and carousel_session.session_expired(session):
+        carousel_session.cleanup(session)
+        if isinstance(chat_data, dict):
+            chat_data["carousel_session"] = None
+        return None
+    return session
+
+
+async def _send_carousel_preview(update: Update, session: Dict) -> None:
+    """Send the rendered slides as an ordered media group (2-10 slides)."""
+    paths = session.get("slide_paths") or []
+    media = []
+    for p in paths:
+        with open(p, "rb") as f:
+            media.append(InputMediaPhoto(media=f))
+    await update.message.reply_media_group(media=media)
+
+
+async def _run_carousel_build(update: Update, session: Dict) -> None:
+    """Run planner + renderer (blocking) in an executor, then show preview
+    or the Persian error message (session is already recovered on failure)."""
+    msg = await update.message.reply_text("⏳ در حال ساخت کاروسل...")
+
+    def run():
+        return carousel_session.build_deck(session)
+
+    try:
+        loop = asyncio.get_running_loop()
+        error = await loop.run_in_executor(None, run)
+    except Exception as exc:
+        logger.exception("Carousel build crashed")
+        await msg.edit_text(f"❌ خطای سیستمی: {type(exc).__name__}: {str(exc)[:200]}")
+        return
+    if error:
+        await msg.edit_text(error)
+        return
+    await msg.edit_text(carousel_session.build_preview_message(session))
+    await _send_carousel_preview(update, session)
+
+
+async def _download_message_image(message, dest_dir: str) -> Optional[str]:
+    """Download a photo/document image message to dest_dir. Returns a local
+    path or None."""
+    file_obj = None
+    ext = ".jpg"
+    if message.photo:
+        file_obj = await message.photo[-1].get_file()
+        ext = ".jpg"
+    elif message.document:
+        file_obj = await message.document.get_file()
+        if message.document.file_name:
+            ext = Path(message.document.file_name).suffix or ".bin"
+        else:
+            ext = ".bin"
+    if not file_obj:
+        return None
+    import tempfile
+    fd, local_path = tempfile.mkstemp(suffix=ext, dir=dest_dir)
+    os.close(fd)
+    await file_obj.download_to_drive(local_path)
+    return local_path
+
+
+@record_update_decorator
+async def cmd_carousel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_owner(update):
+        await update.message.reply_text("⛔ دسترسی فقط برای مالک است.")
+        return
+    chat_data = _chat_data(context)
+    try:
+        reply = carousel_session.start_session(chat_data)
+    except carousel_session.CarouselSessionActiveError as exc:
+        await update.message.reply_text(exc.message_fa)
+        return
+    await update.message.reply_text(reply)
+
+
+@record_update_decorator
+async def cmd_carousel_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_owner(update):
+        await update.message.reply_text("⛔ دسترسی فقط برای مالک است.")
+        return
+    chat_data = _chat_data(context)
+    session = chat_data.get("carousel_session")
+    if session:
+        carousel_session.cleanup(session)
+        chat_data["carousel_session"] = None
+        await update.message.reply_text("✅ جلسه کاروسل لغو و فایل‌های موقت پاک شد.")
+    else:
+        await update.message.reply_text("جلسه کاروسلی فعال نیست.")
+
+
+@record_update_decorator
+async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_owner(update):
+        await update.message.reply_text("⛔ دسترسی فقط برای مالک است.")
+        return
+    session = _get_carousel_session(context)
+    if not session:
+        await update.message.reply_text("جلسه کاروسلی فعال نیست. /carousel را بزن.")
+        return
+    state = session["state"]
+    if state == carousel_session.COLLECT_IMAGES:
+        await update.message.reply_text(carousel_session.finish_images(session))
+        return
+    if state == carousel_session.COLLECT_TEXTS:
+        error = carousel_session.finish_texts(session)
+        if error:
+            await update.message.reply_text(error)
+            return
+        await _run_carousel_build(update, session)
+        return
+    await update.message.reply_text("این دستور در این مرحله کاربرد ندارد.")
+
+
+@record_update_decorator
+async def cmd_carousel_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_owner(update):
+        await update.message.reply_text("⛔ دسترسی فقط برای مالک است.")
+        return
+    session = _get_carousel_session(context)
+    if not session or session["state"] != carousel_session.PREVIEW:
+        await update.message.reply_text("اول کاروسل را بساز (پیش‌نمایش) تا بتوانی ویرایش کنی.")
+        return
+
+    raw = (update.message.text or "").strip()
+    raw = re.sub(r"^/carousel_edit(@\S+)?\s*", "", raw)
+    index_part, sep, new_text = raw.partition("|")
+    index_str = index_part.strip().translate(carousel_session.PERSIAN_DIGITS)
+    if sep:
+        new_text = new_text.strip()
+    else:
+        # no '|' -> the whole remainder is the new title
+        index_str, _, whole = raw.partition(" ")
+        index_str = index_str.strip().translate(carousel_session.PERSIAN_DIGITS)
+        new_text = whole.strip()
+    if not index_str.isdigit():
+        await update.message.reply_text("استفاده: /carousel_edit <شماره> | <متن جدید>")
+        return
+    index = int(index_str)
+
+    def run():
+        return carousel_session.edit_slide(session, index, new_text)
+
+    try:
+        loop = asyncio.get_running_loop()
+        error, path = await loop.run_in_executor(None, run)
+    except Exception as exc:
+        logger.exception("Carousel edit failed")
+        await update.message.reply_text(f"❌ خطا در ویرایش: {type(exc).__name__}: {str(exc)[:200]}")
+        return
+    if error:
+        await update.message.reply_text(error)
+        return
+    await update.message.reply_photo(open(path, "rb"), caption=f"✅ اسلاید {index} به‌روز شد.")
+
+
+@record_update_decorator
+async def cmd_carousel_theme(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_owner(update):
+        await update.message.reply_text("⛔ دسترسی فقط برای مالک است.")
+        return
+    session = _get_carousel_session(context)
+    if not session or session["state"] != carousel_session.PREVIEW:
+        await update.message.reply_text("اول کاروسل را بساز (پیش‌نمایش) تا بتوانی قالب را عوض کنی.")
+        return
+    if not context.args:
+        from agents.carousel.brand_theme import TEMPLATES
+        await update.message.reply_text(
+            f"استفاده: /carousel_theme <قالب>\nقالب‌ها: {', '.join(sorted(TEMPLATES))}"
+        )
+        return
+    template_name = context.args[0].strip()
+
+    def run():
+        return carousel_session.change_theme(session, template_name)
+
+    try:
+        loop = asyncio.get_running_loop()
+        error = await loop.run_in_executor(None, run)
+    except Exception as exc:
+        logger.exception("Carousel theme change failed")
+        await update.message.reply_text(f"❌ خطا در تغییر قالب: {type(exc).__name__}: {str(exc)[:200]}")
+        return
+    if error:
+        await update.message.reply_text(error)
+        return
+    await update.message.reply_text(f"✅ قالب {template_name} اعمال و کاروسل دوباره رندر شد.")
+    await _send_carousel_preview(update, session)
+
+
+@record_update_decorator
+async def cmd_carousel_ok(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_owner(update):
+        await update.message.reply_text("⛔ دسترسی فقط برای مالک است.")
+        return
+    chat_data = _chat_data(context)
+    session = chat_data.get("carousel_session")
+    if not session or session["state"] != carousel_session.PREVIEW:
+        await update.message.reply_text("هنوز کاروسلی برای تأیید ساخته نشده است.")
+        return
+
+    msg = await update.message.reply_text("⏳ در حال ذخیره کاروسل...")
+
+    def run():
+        from agents.db.supabase_client import ElinaDB
+        from agents.storage.supabase_storage import ElinaStorage
+        return carousel_session.finalize(session, ElinaStorage(), ElinaDB())
+
+    try:
+        loop = asyncio.get_running_loop()
+        error, info = await loop.run_in_executor(None, run)
+    except Exception as exc:
+        logger.exception("Carousel finalize crashed")
+        await msg.edit_text(f"❌ خطای سیستمی: {type(exc).__name__}: {str(exc)[:200]}")
+        return
+    if error:
+        await msg.edit_text(error)
+        return
+    carousel_session.cleanup(session)
+    chat_data["carousel_session"] = None
+    await msg.edit_text(carousel_session.confirm_message(info))
+
+
 @record_update_decorator
 async def handle_studio_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update):
@@ -582,6 +824,41 @@ async def handle_studio_media(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
 
         if is_plain_text:
+            # M18D: active carousel session intercepts plain text (mode
+            # selection / slide texts / topic). Without a session the code
+            # below is exactly the pre-M18D behavior.
+            session = _get_carousel_session(context)
+            if session:
+                state = session["state"]
+                text = message.text or ""
+                if state == carousel_session.MODE_SELECT:
+                    await message.reply_text(carousel_session.select_mode(session, text))
+                    return
+                if state == carousel_session.COLLECT_TEXTS:
+                    carousel_session.add_text(session, text)
+                    await message.reply_text(
+                        f"✅ متن {len(session['texts'])} ثبت شد.\n"
+                        "برای بدنه: عنوان | بدنه\n"
+                        "وقتی تمام شد /done بزن."
+                    )
+                    return
+                if state == carousel_session.COLLECT_TOPIC:
+                    error = carousel_session.set_topic(session, text)
+                    if error:
+                        await message.reply_text(error)
+                        return
+                    await _run_carousel_build(update, session)
+                    return
+                if state in (carousel_session.PREVIEW, carousel_session.BUILDING):
+                    await message.reply_text(
+                        "کاروسل در حال آماده‌سازی/پیش‌نمایش است.\n"
+                        "برای ادامه:\n/carousel_ok — تأیید و ذخیره\n"
+                        "/carousel_edit <شماره> | <متن جدید>\n"
+                        "/carousel_theme <قالب>\n/carousel_cancel — انصراف"
+                    )
+                    return
+                # any other state: fall through to normal handling
+
             plan_mode = False
             if context.chat_data and context.chat_data.get("plan_mode"):
                 plan_mode = True
@@ -617,6 +894,46 @@ async def handle_studio_media(update: Update, context: ContextTypes.DEFAULT_TYPE
                     "برای برنامه‌ریزی ادیت اول /plan ELN-BUNDLE-... را بزن."
                 )
                 await message.reply_text(reply)
+            return
+
+        # M18D: collect carousel images while a session is in COLLECT_IMAGES.
+        # Without an active session the intake path below is unchanged.
+        carousel_session_active = _get_carousel_session(context)
+        if (
+            carousel_session_active
+            and carousel_session_active["state"] == carousel_session.COLLECT_IMAGES
+            and (message.photo or message.document or message.video or message.audio or message.voice)
+        ):
+            if message.photo or message.document:
+                try:
+                    import tempfile
+                    with tempfile.TemporaryDirectory() as tmpdir:
+                        local_path = await _download_message_image(message, tmpdir)
+                        if not local_path:
+                            await message.reply_text("❌ عکس دریافت نشد؛ دوباره بفرست.")
+                            return
+                        error = carousel_session.add_image(
+                            carousel_session_active, local_path
+                        )
+                        if error:
+                            await message.reply_text(error)
+                        else:
+                            n = len(carousel_session_active["images"])
+                            await message.reply_text(
+                                f"✅ عکس {n} ثبت شد.\n"
+                                f"حداقل {carousel_session.MIN_IMAGES}، "
+                                f"حداکثر {carousel_session.MAX_IMAGES} عکس.\n"
+                                "وقتی تمام شد /done بزن."
+                            )
+                except Exception as e:
+                    logger.exception("Carousel image download failed")
+                    await message.reply_text(
+                        f"❌ خطا در دریافت عکس: {type(e).__name__}: {str(e)[:150]}"
+                    )
+            else:
+                await message.reply_text(
+                    "این مرحله فقط عکس می‌خواهد. ویدیو/صدا را بعد از ساخت کاروسل بفرست."
+                )
             return
 
         file_obj = None
@@ -722,6 +1039,12 @@ def main():
     app.add_handler(CommandHandler("plan", cmd_plan))
     app.add_handler(CommandHandler("plan_cancel", cmd_plan_cancel))
     app.add_handler(CommandHandler("plan_ok", cmd_plan_ok))
+    app.add_handler(CommandHandler("carousel", cmd_carousel))
+    app.add_handler(CommandHandler("carousel_cancel", cmd_carousel_cancel))
+    app.add_handler(CommandHandler("carousel_ok", cmd_carousel_ok))
+    app.add_handler(CommandHandler("carousel_edit", cmd_carousel_edit))
+    app.add_handler(CommandHandler("carousel_theme", cmd_carousel_theme))
+    app.add_handler(CommandHandler("done", cmd_done))
 
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_studio_media))
 
