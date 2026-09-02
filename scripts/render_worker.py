@@ -2,15 +2,18 @@ import os
 import sys
 import json
 import logging
+import threading
+import time
 import urllib.request
 from pathlib import Path
+from typing import Any, Callable, Dict, Optional
 from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 load_dotenv(PROJECT_ROOT / ".env")
 
-from agents.rendering.job_manager import RenderJobManager
+from agents.rendering.job_manager import RenderJobManager, is_terminal_error_message
 from agents.db.supabase_client import ElinaDB
 from agents.studio.bundle_ids import normalize_bundle_custom_id
 
@@ -251,21 +254,165 @@ def process_job(job) -> bool:
         raise exc
 
 
+class RenderJobTimeout(Exception):
+    """Raised when a job exceeds the per-job timeout (RENDER_JOB_TIMEOUT_SECONDS)."""
+
+
+def run_with_timeout(func: Callable[[], Any], timeout_seconds: float) -> Any:
+    """
+    Run func() with a hard timeout, test-friendly (thread-based, works on any
+    platform; unlike signal.alarm it is trivial to mock and does not depend on
+    the main thread).
+
+    On timeout, raises RenderJobTimeout. The worker thread is a daemon thread:
+    pure Python cannot force-kill it, but it cannot block the run summary or
+    the next job, and the process exits cleanly at the end of the run.
+    """
+    box: Dict[str, Any] = {}
+
+    def target():
+        try:
+            box["value"] = func()
+        except BaseException as exc:  # re-raised on the main thread
+            box["error"] = exc
+
+    worker = threading.Thread(target=target, daemon=True)
+    worker.start()
+    worker.join(timeout_seconds)
+    if worker.is_alive():
+        raise RenderJobTimeout(f"job exceeded {timeout_seconds}s timeout")
+    if "error" in box:
+        raise box["error"]
+    return box.get("value")
+
+
+def run_render_run(
+    mgr: RenderJobManager,
+    max_jobs: int = 5,
+    max_run_seconds: float = 1500,
+    job_timeout_seconds: float = 900,
+    stale_minutes: int = 30,
+    clock: Optional[Callable[[], float]] = None,
+    process: Callable[[dict], bool] = None,
+) -> Dict[str, Any]:
+    """
+    One worker run: stale IN_PROGRESS recovery, then a claim/process loop.
+
+    Stops when the queue is empty, max_jobs is reached, or the run time
+    budget (max_run_seconds) is exceeded. Returns a run summary dict; the
+    caller maps it to the exit-code policy (all processed -> 0, any
+    infrastructure error -> 1).
+    """
+    clock = clock or time.monotonic
+    process = process or process_job
+    run_start = clock()
+    summary: Dict[str, Any] = {
+        "claimed": 0, "completed": 0, "failed_terminal": 0,
+        "failed_retryable": 0, "timeouts": 0,
+    }
+    infra_error = False
+
+    # --- Stale IN_PROGRESS recovery (guarded conditional updates) ---
+    try:
+        stale = mgr.recover_stale_jobs(stale_minutes)
+    except Exception as exc:
+        logger.exception("Stale job recovery failed (infrastructure error)")
+        return {**summary, "infra_error": True, "recovery_error": str(exc)}
+    for job in stale.get("abandoned", []):
+        chat_id = job.get("owner_chat_id")
+        if chat_id:
+            send_telegram_message(
+                chat_id,
+                f"⚠️ رندر {job.get('content_id')} به دلیل قطعی رانر ناتمام ماند و دیگر تکرار نمی‌شود:\n"
+                "RENDER_STALE_ABANDONED",
+            )
+    logger.info(
+        "Stale recovery: %d recovered to QUEUED, %d abandoned as FAILED",
+        len(stale.get("recovered", [])), len(stale.get("abandoned", [])),
+    )
+
+    # --- Claim/process loop ---
+    while summary["claimed"] < int(max_jobs):
+        if clock() - run_start >= float(max_run_seconds):
+            logger.warning(
+                "Run time budget (%ss) reached; stopping before claiming more jobs",
+                max_run_seconds,
+            )
+            break
+        try:
+            job = mgr.get_next_queued_job()
+        except Exception as exc:
+            logger.exception("Job claim failed (infrastructure error)")
+            infra_error = True
+            break
+        if job is None:
+            break
+        summary["claimed"] += 1
+        try:
+            success = run_with_timeout(lambda: process(job), job_timeout_seconds)
+            if success:
+                summary["completed"] += 1
+            else:
+                # Expected terminal failure: process_job already marked it
+                # FAILED and sent the Persian notification.
+                summary["failed_terminal"] += 1
+        except RenderJobTimeout:
+            logger.error("Job %s timed out after %ss", job.get("id"), job_timeout_seconds)
+            # Retryable while attempts remain (mark_failed decides).
+            try:
+                mgr.mark_failed(
+                    job["id"],
+                    "RENDER_TIMEOUT: job exceeded RENDER_JOB_TIMEOUT_SECONDS",
+                )
+            except Exception as exc:
+                logger.error("Failed to mark timed-out job %s: %s", job.get("id"), exc)
+            if job.get("owner_chat_id"):
+                send_telegram_message(
+                    job["owner_chat_id"],
+                    "❌ رندر ناموفق بود:\nRENDER_TIMEOUT (زمان مجاز رندر تمام شد)",
+                )
+            summary["timeouts"] += 1
+        except Exception as exc:
+            # Unexpected infrastructure/content error: process_job already
+            # marked the job (terminal vs requeued) and notified the owner
+            # before re-raising.
+            logger.exception("Job %s failed with an unexpected error", job.get("id"))
+            infra_error = True
+            if is_terminal_error_message(str(exc)):
+                summary["failed_terminal"] += 1
+            else:
+                summary["failed_retryable"] += 1
+
+    logger.info(
+        "Run summary: claimed=%d completed=%d failed_terminal=%d "
+        "failed_retryable=%d timeouts=%d infra_error=%s",
+        summary["claimed"], summary["completed"], summary["failed_terminal"],
+        summary["failed_retryable"], summary["timeouts"], infra_error,
+    )
+    return {**summary, "infra_error": infra_error}
+
+
 def main():
+    max_jobs = int(os.environ.get("RENDER_WORKER_MAX_JOBS_PER_RUN", "5"))
+    max_run_seconds = float(os.environ.get("RENDER_WORKER_MAX_RUN_SECONDS", "1500"))
+    job_timeout_seconds = float(os.environ.get("RENDER_JOB_TIMEOUT_SECONDS", "900"))
+    stale_minutes = int(os.environ.get("RENDER_STALE_JOB_MINUTES", "30"))
+
     mgr = RenderJobManager()
-    job = mgr.get_next_queued_job()
-    if not job:
+    summary = run_render_run(
+        mgr,
+        max_jobs=max_jobs,
+        max_run_seconds=max_run_seconds,
+        job_timeout_seconds=job_timeout_seconds,
+        stale_minutes=stale_minutes,
+    )
+    if not summary["claimed"] and not summary["infra_error"]:
         logger.info("No queued render jobs found.")
         return
-
-    try:
-        success = process_job(job)
-        if not success:
-            logger.info("Job failed with terminal/expected error (exit 0)")
-            sys.exit(0)
-    except Exception as exc:
-        logger.exception("Render worker job execution failed with unexpected infrastructure error (exit 1)")
-        sys.exit(1)
+    # Exit-code policy (preserved per run):
+    #   0 = all claimed jobs processed (including expected terminal failures)
+    #   1 = any infrastructure error (DB/network/unexpected exception)
+    sys.exit(1 if summary["infra_error"] else 0)
 
 
 if __name__ == "__main__":
