@@ -312,9 +312,12 @@ def test_render_content_resolves_plan_sfx_queries(monkeypatch):
         ),
     })
 
-    with patch("agents.audio.sfx_fetcher.SFXFetcher") as MockFetcher:
+    with patch("agents.audio.sfx_fetcher.SFXFetcher") as MockFetcher, \
+         patch("agents.audio.asset_pinner.AssetPinner") as MockPinner:
         instance = MockFetcher.return_value
         instance.fetch_best_match.return_value = fetched_sound
+        # M20A: simulate "no pinned asset" so the Freesound path is exercised
+        MockPinner.return_value.get_pinned_sfx.return_value = None
 
         db = FakeDB()
         assembler = FakeAssembler()
@@ -381,9 +384,12 @@ def test_render_content_plan_sfx_fetch_failed(monkeypatch):
 
     monkeypatch.setattr(orch_mod, "VideoConcatenator", lambda: MockConcatenator())
 
-    with patch("agents.audio.sfx_fetcher.SFXFetcher") as MockFetcher:
+    with patch("agents.audio.sfx_fetcher.SFXFetcher") as MockFetcher, \
+         patch("agents.audio.asset_pinner.AssetPinner") as MockPinner:
         instance = MockFetcher.return_value
         instance.fetch_best_match.return_value = None
+        # M20A: simulate "no pinned asset" so the Freesound path is exercised
+        MockPinner.return_value.get_pinned_sfx.return_value = None
 
         db = FakeDB()
         o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=FakeAssembler())
