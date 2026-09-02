@@ -58,6 +58,12 @@ from agents.carousel.character_assets import (
     CharacterAssetProvider,
     LocalCharacterAssetProvider,
 )
+from agents.carousel.reel_cover import (
+    REEL_COVER_SIZE,
+    REEL_COVER_TITLE_MAX,
+    ReelCoverRenderer,
+    extract_first_frame,
+)
 
 __all__ = [
     "CANVAS_WIDTH",
@@ -110,4 +116,8 @@ __all__ = [
     "CarouselPlanner",
     "CharacterAssetProvider",
     "LocalCharacterAssetProvider",
+    "REEL_COVER_SIZE",
+    "REEL_COVER_TITLE_MAX",
+    "ReelCoverRenderer",
+    "extract_first_frame",
 ]
