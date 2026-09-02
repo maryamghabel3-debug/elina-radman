@@ -260,46 +260,78 @@ class EditOrchestrator:
 
                     voice_path = str(tmp / "voice_tts.mp3")
                     voice_text = (plan_voice.get("text") or "").strip()
+                    voice_name = plan_voice.get("voice") or "dilara"
+                    voice_rate = plan_voice.get("rate") or "+0%"
                     # Timing is only captured when auto subtitles will actually
                     # be used (manual subtitles win, so no wasted timing work).
                     want_timing = voice_auto_cfg["enabled"] and not plan_subtitles
-                    try:
-                        generator = VoiceGenerator()
-                        if want_timing:
-                            # M17: capture word-boundary timing for auto subtitles
-                            voice_vresult = asyncio.run(
-                                generator.generate_with_timing(
-                                    text=voice_text,
-                                    voice=plan_voice.get("voice") or "dilara",
-                                    rate=plan_voice.get("rate") or "+0%",
-                                    output_path=voice_path,
-                                )
-                            )
-                        else:
-                            asyncio.run(
-                                generator.generate(
-                                    text=voice_text,
-                                    voice=plan_voice.get("voice") or "dilara",
-                                    rate=plan_voice.get("rate") or "+0%",
-                                    output_path=voice_path,
-                                )
-                            )
-                    except VoiceGenerationError as exc:
-                        # Fail the job with the typed error. Terminal codes
-                        # (VOICE_TEXT_TOO_LONG, VOICE_UNSUPPORTED, ...) are
-                        # registered in RenderJobManager; VOICE_GENERATION_FAILED
-                        # stays retryable for transient network issues.
-                        raise RuntimeError(f"{exc.code}: {exc.detail}") from exc
 
-                    # Persist the generated narration (same key pattern as the
-                    # edited video output).
-                    if job_id:
-                        voice_key = f"voice/{custom_id}/{job_id}.mp3"
+                    # M20B: deterministic voice pinning — reuse the pinned
+                    # voice for this content_id + text + voice + rate; TTS
+                    # only runs on a pin miss.
+                    from agents.audio.asset_pinner import AssetPinner
+                    voice_pinner = AssetPinner(self.storage)
+                    pinned_voice_path = voice_pinner.get_pinned_voice(
+                        custom_id, voice_text, voice_name, voice_rate
+                    )
+                    if pinned_voice_path is not None:
+                        # Re-render: reuse the pinned file and SKIP TTS. Word
+                        # boundaries are unavailable, so auto subtitles (if
+                        # requested) use the soft proportional fallback over
+                        # the pinned file's duration.
+                        shutil.copyfile(pinned_voice_path, voice_path)
+                        logger.info("Reusing pinned voice for content %s", custom_id)
                     else:
-                        import datetime
-                        voice_ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S%f")[:-3]
-                        voice_key = f"voice/{custom_id}/render-{voice_ts}.mp3"
-                    self.storage.upload_file(voice_path, voice_key, content_type="audio/mpeg")
+                        try:
+                            generator = VoiceGenerator()
+                            if want_timing:
+                                # M17: capture word-boundary timing for auto subtitles
+                                voice_vresult = asyncio.run(
+                                    generator.generate_with_timing(
+                                        text=voice_text,
+                                        voice=voice_name,
+                                        rate=voice_rate,
+                                        output_path=voice_path,
+                                    )
+                                )
+                            else:
+                                asyncio.run(
+                                    generator.generate(
+                                        text=voice_text,
+                                        voice=voice_name,
+                                        rate=voice_rate,
+                                        output_path=voice_path,
+                                    )
+                                )
+                        except VoiceGenerationError as exc:
+                            # Fail the job with the typed error. Terminal codes
+                            # (VOICE_TEXT_TOO_LONG, VOICE_UNSUPPORTED, ...) are
+                            # registered in RenderJobManager; VOICE_GENERATION_FAILED
+                            # stays retryable for transient network issues.
+                            raise RuntimeError(f"{exc.code}: {exc.detail}") from exc
+                        # Pin the freshly generated voice for future re-renders
+                        # (soft: failures are logged, never fatal).
+                        voice_pinner.pin_voice(
+                            custom_id, voice_text, voice_name, voice_rate, voice_path
+                        )
+
+                    # Persist / record the narration.
+                    if pinned_voice_path is not None:
+                        # Reuse: the file already lives at its deterministic
+                        # pin key — no redundant upload.
+                        voice_key = voice_pinner.build_voice_key(
+                            custom_id, voice_text, voice_name, voice_rate
+                        )
+                    else:
+                        # Fresh generation: existing naming (job_id or
+                        # timestamp) preserved unchanged.
+                        if job_id:
+                            voice_key = f"voice/{custom_id}/{job_id}.mp3"
+                        else:
+                            import datetime
+                            voice_ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S%f")[:-3]
+                            voice_key = f"voice/{custom_id}/render-{voice_ts}.mp3"
+                        self.storage.upload_file(voice_path, voice_key, content_type="audio/mpeg")
                     recipe.input_media.voice_key = voice_key
 
                     # Carry gain/start into the recipe audio config so the
@@ -567,17 +599,19 @@ class EditOrchestrator:
                 elif (
                     voice_auto_cfg is not None
                     and voice_auto_cfg["enabled"]
-                    and voice_vresult is not None
+                    and voice_text
                 ):
-                    # M17: derive subtitles automatically from the generated
-                    # narration. Timing gaps use a SOFT proportional fallback
+                    # M17: derive subtitles automatically from the narration.
+                    # With a pinned voice (M20B) there are no word-boundary
+                    # events, so word_boundaries is None and the soft
+                    # proportional fallback over the file duration is used
                     # (logged, never fatal); only config/font errors are fatal.
                     from agents.editing.media_assembly import _get_audio_duration
                     from agents.editing.subtitle_sync import build_auto_subtitle_entries
 
                     entries = build_auto_subtitle_entries(
                         text=voice_text,
-                        word_boundaries=voice_vresult.word_boundaries,
+                        word_boundaries=voice_vresult.word_boundaries if voice_vresult is not None else None,
                         audio_duration_sec=_get_audio_duration(voice_path),
                         start_offset_sec=voice_start_offset,
                         style=voice_auto_cfg["style"],

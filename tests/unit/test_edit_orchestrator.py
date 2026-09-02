@@ -1088,6 +1088,26 @@ class FakeVoiceGenerator:
         return output_path
 
 
+class NoPinPinner:
+    """AssetPinner stand-in for pre-M20B tests: nothing is pinned, so the
+    Freesound/TTS paths are exercised exactly as before."""
+
+    def __init__(self, storage):
+        pass
+
+    def get_pinned_sfx(self, *args, **kwargs):
+        return None
+
+    def pin_sfx(self, *args, **kwargs):
+        return "assets/sfx/pinned.mp3"
+
+    def get_pinned_voice(self, *args, **kwargs):
+        return None
+
+    def pin_voice(self, *args, **kwargs):
+        return "voice/pinned.mp3"
+
+
 def test_render_content_plan_voice_generates_and_wires_assembly(monkeypatch):
     """Test G: plan_data with voice field -> orchestrator calls VoiceGenerator,
     uploads the file to voice/{custom_id}/{job_id}.mp3, and passes the local
@@ -1114,7 +1134,8 @@ def test_render_content_plan_voice_generates_and_wires_assembly(monkeypatch):
     assembler = FakeAssembler()
     o = EditOrchestrator(db=db, storage=storage, typography=FakeTypography(), assembler=assembler)
 
-    with patch("agents.audio.voice_generator.VoiceGenerator", FakeVoiceGenerator):
+    with patch("agents.audio.voice_generator.VoiceGenerator", FakeVoiceGenerator), \
+         patch("agents.audio.asset_pinner.AssetPinner", NoPinPinner):
         result = o.render_content(
             "ELN-VOICE-G",
             actor="tester",
@@ -1211,7 +1232,8 @@ def test_render_content_plan_voice_generation_failure_is_typed(monkeypatch):
     db = FakeDB()
     o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=FakeAssembler())
 
-    with patch("agents.audio.voice_generator.VoiceGenerator", FailingVoiceGenerator):
+    with patch("agents.audio.voice_generator.VoiceGenerator", FailingVoiceGenerator), \
+         patch("agents.audio.asset_pinner.AssetPinner", NoPinPinner):
         result = o.render_content(
             "ELN-RAW-TEST",
             actor="tester",
@@ -1437,7 +1459,8 @@ def test_M17_A_manual_subtitles_override_auto(monkeypatch):
 
     manual_subs = [{"text": "زیرنویس دستی", "start_sec": 0.0, "end_sec": 2.0}]
     with patch("agents.audio.voice_generator.VoiceGenerator", FakeTimingVoiceGenerator), \
-         patch("agents.editing.subtitle_renderer.SubtitleRenderer", FakeSubtitleRenderer):
+         patch("agents.editing.subtitle_renderer.SubtitleRenderer", FakeSubtitleRenderer), \
+         patch("agents.audio.asset_pinner.AssetPinner", NoPinPinner):
         result = o.render_content(
             "ELN-RAW-TEST",
             actor="tester",
@@ -1474,7 +1497,8 @@ def test_M17_B_auto_subtitles_from_mocked_timing(monkeypatch):
     o = EditOrchestrator(db=db, storage=storage, typography=FakeTypography(), assembler=assembler)
 
     with patch("agents.audio.voice_generator.VoiceGenerator", FakeTimingVoiceGenerator), \
-         patch("agents.editing.subtitle_renderer.SubtitleRenderer", FakeSubtitleRenderer):
+         patch("agents.editing.subtitle_renderer.SubtitleRenderer", FakeSubtitleRenderer), \
+         patch("agents.audio.asset_pinner.AssetPinner", NoPinPinner):
         result = o.render_content(
             "ELN-RAW-TEST",
             actor="tester",
@@ -1509,7 +1533,8 @@ def test_M17_C_proportional_fallback_when_no_timing(monkeypatch):
     o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=assembler)
 
     with patch("agents.audio.voice_generator.VoiceGenerator", FakeTimingVoiceGenerator), \
-         patch("agents.editing.subtitle_renderer.SubtitleRenderer", FakeSubtitleRenderer):
+         patch("agents.editing.subtitle_renderer.SubtitleRenderer", FakeSubtitleRenderer), \
+         patch("agents.audio.asset_pinner.AssetPinner", NoPinPinner):
         result = o.render_content(
             "ELN-RAW-TEST",
             actor="tester",
@@ -1541,7 +1566,8 @@ def test_M17_D_voice_start_sec_offsets_cues(monkeypatch):
     o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=assembler)
 
     with patch("agents.audio.voice_generator.VoiceGenerator", FakeTimingVoiceGenerator), \
-         patch("agents.editing.subtitle_renderer.SubtitleRenderer", FakeSubtitleRenderer):
+         patch("agents.editing.subtitle_renderer.SubtitleRenderer", FakeSubtitleRenderer), \
+         patch("agents.audio.asset_pinner.AssetPinner", NoPinPinner):
         result = o.render_content(
             "ELN-RAW-TEST",
             actor="tester",
@@ -1569,7 +1595,8 @@ def test_M17_H_voice_style_position_applied_to_cues(monkeypatch):
     o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=assembler)
 
     with patch("agents.audio.voice_generator.VoiceGenerator", FakeTimingVoiceGenerator), \
-         patch("agents.editing.subtitle_renderer.SubtitleRenderer", FakeSubtitleRenderer):
+         patch("agents.editing.subtitle_renderer.SubtitleRenderer", FakeSubtitleRenderer), \
+         patch("agents.audio.asset_pinner.AssetPinner", NoPinPinner):
         result = o.render_content(
             "ELN-RAW-TEST",
             actor="tester",
@@ -1601,7 +1628,8 @@ def test_M17_F_voice_without_auto_unchanged(monkeypatch):
     o = EditOrchestrator(db=db, storage=FakeStorage(), typography=FakeTypography(), assembler=assembler)
 
     with patch("agents.audio.voice_generator.VoiceGenerator", FakeTimingVoiceGenerator), \
-         patch("agents.editing.subtitle_renderer.SubtitleRenderer", FakeSubtitleRenderer):
+         patch("agents.editing.subtitle_renderer.SubtitleRenderer", FakeSubtitleRenderer), \
+         patch("agents.audio.asset_pinner.AssetPinner", NoPinPinner):
         result = o.render_content(
             "ELN-RAW-TEST",
             actor="tester",
