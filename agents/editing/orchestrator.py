@@ -1,5 +1,6 @@
 import asyncio
 import os
+import shutil
 import tempfile
 import logging
 import subprocess
@@ -382,6 +383,10 @@ class EditOrchestrator:
                         fetcher = SFXFetcher()
                     except ValueError as exc:
                         raise RuntimeError(f"SFX_PROVIDER_NOT_CONFIGURED: {exc}")
+                    # M20A: deterministic SFX pinning — reuse the pinned asset
+                    # for this content_id + query; only hit Freesound on a miss.
+                    from agents.audio.asset_pinner import AssetPinner
+                    pinner = AssetPinner(self.storage)
 
                     for sfx_idx, sfx in enumerate(plan_sfx):
                         if not isinstance(sfx, dict):
@@ -391,20 +396,36 @@ class EditOrchestrator:
                             raise RuntimeError("SFX_INVALID_PLAN_ENTRY: empty query")
 
                         local_path = str(tmp / f"plan_sfx_{sfx_idx}.mp3")
-                        try:
-                            fetched = fetcher.fetch_best_match(query, local_path)
-                        except Exception as exc:
-                            raise RuntimeError(f"SFX_FETCH_FAILED: {exc}") from exc
-                        if fetched is None:
-                            raise RuntimeError(f"SFX_FETCH_FAILED: no match for '{query}'")
+                        fetched = None
+                        pinned_path = pinner.get_pinned_sfx(custom_id, query)
+                        if pinned_path is not None:
+                            # Re-render: reuse the pinned file and SKIP the
+                            # Freesound search entirely (deterministic reuse).
+                            shutil.copyfile(pinned_path, local_path)
+                            sfx_path = local_path
+                            logger.info(
+                                "Reusing pinned SFX for query %r (content %s)",
+                                query, custom_id,
+                            )
+                        else:
+                            try:
+                                fetched = fetcher.fetch_best_match(query, local_path)
+                            except Exception as exc:
+                                raise RuntimeError(f"SFX_FETCH_FAILED: {exc}") from exc
+                            if fetched is None:
+                                raise RuntimeError(f"SFX_FETCH_FAILED: no match for '{query}'")
+                            # Pin the freshly resolved asset for future re-renders
+                            # (soft: failures are logged, never fatal).
+                            pinner.pin_sfx(custom_id, query, fetched.local_path)
+                            sfx_path = fetched.local_path
 
                         sfx_items.append({
-                            "path": fetched.local_path,
+                            "path": sfx_path,
                             "start_sec": float(sfx.get("start_sec", sfx.get("start", 0.0))),
                             "gain_db": int(sfx.get("gain_db", sfx.get("gain", 0))),
                             "fade_in_sec": float(sfx.get("fade_in_sec", sfx.get("fade_in", 0.0))),
                             "fade_out_sec": float(sfx.get("fade_out_sec", sfx.get("fade_out", 0.0))),
-                            "attribution": getattr(fetched.metadata, "attribution", None),
+                            "attribution": getattr(fetched.metadata, "attribution", None) if fetched else None,
                             "anchor": sfx.get("anchor"),
                             "offset_sec": sfx.get("offset_sec", sfx.get("offset", 0.0)),
                             "normalize_loudness": sfx.get("normalize_loudness", True),

@@ -164,11 +164,14 @@ async def test_1_full_plan_execution_happy_path(monkeypatch):
          patch("agents.editing.orchestrator.ElinaDB", lambda: db), \
          patch("agents.editing.orchestrator.ElinaStorage", lambda: storage), \
          patch("agents.editing.orchestrator.VideoConcatenator", lambda: MockConcatenator()), \
-         patch("agents.audio.sfx_fetcher.SFXFetcher") as MockFetcher:
+         patch("agents.audio.sfx_fetcher.SFXFetcher") as MockFetcher, \
+         patch("agents.audio.asset_pinner.AssetPinner") as MockPinner:
         
         # Configure MockFetcher
         fetcher_instance = MockFetcher.return_value
         fetcher_instance.fetch_best_match.return_value = fetched_sound
+        # M20A: simulate "no pinned asset" so the Freesound path is exercised
+        MockPinner.return_value.get_pinned_sfx.return_value = None
 
         orchestrator = orch_mod.EditOrchestrator(db=db, storage=storage, typography=FakeTypography(), assembler=assembler)
         
