@@ -989,3 +989,192 @@ def test_Q_invalid_composition_values_rejected():
     assert parse_carousel_slide(dict(base, text_scale=1.3)).text_scale == 1.3
     assert parse_carousel_slide(dict(base, text_scale=1)).text_scale == 1.0
     assert parse_carousel_slide(dict(base, text_style="blend")).text_style == "blend"
+
+
+# === R. M26: reduced font defaults + inline styling ===
+
+def test_R_new_title_default_smaller_than_old():
+    from agents.carousel.slide_renderer import _COMP_TITLE_FACTOR
+    from agents.carousel.brand_theme import get_template
+    theme = get_template("psychological_dark")
+    old_title = int(theme.title_size * 0.78)      # M25 default (81)
+    new_title = int(theme.title_size * _COMP_TITLE_FACTOR)
+    assert new_title < old_title
+    # "about 25% smaller"
+    assert old_title - new_title >= old_title * 0.20
+
+
+def test_R_new_body_default_60_65_percent_of_title():
+    from agents.carousel.slide_renderer import _COMP_TITLE_FACTOR, _COMP_BODY_RATIO
+    from agents.carousel.brand_theme import get_template
+    theme = get_template("psychological_dark")
+    old_body = int(theme.body_size * 1.18)        # M25 default (54)
+    new_title = int(theme.title_size * _COMP_TITLE_FACTOR)
+    new_body = int(round(new_title * _COMP_BODY_RATIO))
+    assert new_body < old_body
+    assert 0.60 <= new_body / new_title <= 0.65
+
+
+def test_R_cover_defaults_reduced():
+    from agents.carousel.slide_renderer import _COVER_TITLE_FACTOR, _COVER_BODY_FACTOR
+    from agents.carousel.brand_theme import get_template
+    theme = get_template("psychological_dark")
+    assert int(round(theme.title_size * _COVER_TITLE_FACTOR)) < theme.title_size
+    assert int(round(theme.body_size * _COVER_BODY_FACTOR)) < theme.body_size
+
+
+def test_R_text_scale_still_applies_on_new_defaults(tmp_path):
+    """text_scale multiplies the NEW starting defaults (behavior
+    unchanged), measured by the rendered title's top edge in a bottom
+    zone."""
+    import numpy as np
+    src = make_colored_source(str(tmp_path / "s.png"), (1080, 1350), (30, 120, 220))
+    renderer = make_renderer()
+
+    def first_bright_row(img):
+        a = np.array(img.convert("L"))
+        rows = np.where((a > 200).sum(axis=1) > 2)[0]
+        assert len(rows) > 0
+        return int(rows.min())
+
+    def render_scale(scale):
+        out = str(tmp_path / f"r_scale_{scale}.png")
+        renderer.render({"slide_type": "image_text", "image_path": src,
+                         "title": "تست", "image_layout": "full_bleed_caption",
+                         "text_zone": "bottom", "text_scale": scale}, out)
+        return Image.open(out)
+
+    assert first_bright_row(render_scale(1.3)) < first_bright_row(render_scale(0.7))
+
+
+def test_R_overflow_protection_still_works(tmp_path):
+    """Tiny canvas + maximum-length text still raises the typed overflow
+    error (minimums untouched)."""
+    renderer = CarouselSlideRenderer(
+        engine=TypographyEngine(font_path=TEST_FONT_PATH, render_mode="fallback"),
+        canvas_size=(100, 200),
+    )
+    with pytest.raises(CarouselTextOverflowError) as exc_info:
+        renderer.render({"slide_type": "quote", "title": "کلمه " * 35 + "کلمه"},
+                        str(tmp_path / "x.png"))
+    assert exc_info.value.code == CAROUSEL_TEXT_OVERFLOW
+
+
+def test_R_unmarked_text_takes_plain_path(tmp_path):
+    """No markup -> plain TextFit (byte-identical legacy path)."""
+    renderer = make_renderer()
+    probe = Image.new("RGBA", (8, 8))
+    draw = ImageDraw.Draw(probe)
+    fit = renderer._fit_text(draw, "متن ساده بدون markup", 900, 300, 80, 40, 3)
+    assert fit.plain is True
+    assert fit.rich_lines is None
+    # plain render matches _fit_block + _draw_block exactly
+    font, lines, size = renderer._fit_block(draw, "متن ساده بدون markup", 900, 300, 80, 40, 3)
+    assert fit.lines == lines
+    assert fit.size == size
+    assert fit.font.size == font.size
+
+
+# --- inline styling rendering ---
+
+def _render_styled(tmp_path, title, extra=None, body=""):
+    src = make_colored_source(str(tmp_path / "src.png"), (1080, 1350), (30, 120, 220))
+    renderer = make_renderer()
+    out = str(tmp_path / "styled.png")
+    slide = {"slide_type": "image_text", "image_path": src, "title": title,
+             "image_layout": "full_bleed_caption", "text_zone": "bottom"}
+    if body:
+        slide["body"] = body
+    slide.update(extra or {})
+    renderer.render(slide, out)
+    return Image.open(out)
+
+
+def _pixels_near(img, box, target, tol=45):
+    """Count pixels in `box` within `tol` (per channel) of `target`."""
+    r, g, b = target
+    n = 0
+    for px in img.crop(box).getdata():
+        if abs(px[0] - r) <= tol and abs(px[1] - g) <= tol and abs(px[2] - b) <= tol:
+            n += 1
+    return n
+
+
+@pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
+def test_R_styled_segment_renders_with_color(tmp_path):
+    """A [word|color=#B89B65] segment renders in that color; the rest of
+    the title keeps the default (bone_white) color."""
+    img = _render_styled(tmp_path, "وقتی [خوب‌بودن|color=#B89B65] راه")
+    # Title zone (bottom): scan the whole lower band for both colors
+    box = (60, 950, 1020, 1240)
+    # bone_white (233, 227, 218) for the unstyled parts...
+    assert _pixels_near(img, box, (233, 227, 218), tol=40) > 15
+    # ...and the antique_gold accent (184, 155, 101) for the styled word
+    assert _pixels_near(img, box, (184, 155, 101), tol=40) > 15
+
+
+@pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
+def test_R_styled_segment_renders_with_size(tmp_path):
+    """A [word|size=1.6] segment uses the scaled font size (measured via
+    the rich layout's effective sizes)."""
+    from agents.carousel.inline_styles import parse_inline_styles
+    renderer = make_renderer()
+    probe = Image.new("RGBA", (8, 8))
+    draw = ImageDraw.Draw(probe)
+    fit = renderer._fit_text(draw, "تست [تست|size=1.6] تست", 900, 400, 80, 40, 3)
+    assert fit.plain is False
+    eff_sizes = {u[2] for line in fit.rich_lines for u in line}
+    assert fit.size in eff_sizes
+    assert round(fit.size * 1.6) in eff_sizes
+    # ...and it renders without error
+    out = str(tmp_path / "styled_size.png")
+    src = make_colored_source(str(tmp_path / "s.png"), (1080, 1350), (30, 120, 220))
+    renderer.render({"slide_type": "image_text", "image_path": src,
+                     "title": "تست [تست|size=1.6] تست",
+                     "image_layout": "full_bleed_caption",
+                     "text_zone": "bottom"}, out)
+    assert Image.open(out).size == (1080, 1350)
+
+
+@pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
+def test_R_styled_body_segment_renders(tmp_path):
+    """Markup in the BODY works too (color override on a body phrase)."""
+    img = _render_styled(tmp_path, "عنوان ساده",
+                         body="بخشی که از [بخش زنده‌ترِ تو|color=#B89B65] محافظت می‌کند")
+    box = (60, 900, 1020, 1240)
+    assert _pixels_near(img, box, (184, 155, 101), tol=40) > 15
+
+
+@pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
+def test_R_malformed_markup_renders_plain(tmp_path):
+    """Malformed markup: the whole text renders as plain (no crash, no
+    partial styling)."""
+    img = _render_styled(tmp_path, "متن [بدون بستن|color=#B89B65 ادامه")
+    box = (60, 950, 1020, 1240)
+    # Plain title color only — no accent-colored pixels
+    assert _pixels_near(img, box, (233, 227, 218), tol=40) > 15
+    assert _pixels_near(img, box, (184, 155, 101), tol=40) < 5
+
+
+@pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
+def test_R_rtl_styled_flow_right_to_left(tmp_path):
+    """Styled segments flow right-to-left: in a centered line, the FIRST
+    styled segment sits to the RIGHT of the second one."""
+    renderer = make_renderer()
+    probe = Image.new("RGBA", (8, 8))
+    draw = ImageDraw.Draw(probe)
+    fit = renderer._fit_text(
+        draw, "الف [ب|color=#FF0000] ج [د|color=#00FF00] ه", 900, 400, 80, 40, 3)
+    assert fit.plain is False
+    line = fit.rich_lines[0]
+    # Logical order preserved in the unit list (flow is drawn RTL)
+    texts = [u[0] for u in line]
+    assert texts.index("ب") < texts.index("د")
+    # Drawn right-to-left: the first styled unit ends at the right edge
+    x_cursor = 900  # right edge used by the draw call below
+    positions = {}
+    for text, color, eff, w in line:
+        x_cursor -= w
+        positions[text] = x_cursor
+    # RTL: later logical units are further LEFT (smaller x)
+    assert positions["ب"] > positions["د"]
