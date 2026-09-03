@@ -325,6 +325,8 @@ class CarouselPlanner:
                     "title": title.strip(),
                     "eyebrow": eyebrow,
                     "image_path": img,
+                    # M25: smart text placement for the cover too
+                    "text_zone": "auto",
                 }
             else:
                 # Non-cover slides always carry their paired image, so they
@@ -339,6 +341,8 @@ class CarouselPlanner:
                     "eyebrow": eyebrow,
                     "image_path": img,
                     "image_layout": "auto",
+                    # M25: smart text placement (3x3 grid auto-detect)
+                    "text_zone": "auto",
                 }
             try:
                 slides.append(parse_carousel_slide(raw_slide))
@@ -680,6 +684,10 @@ class CarouselPlanner:
                     "image_path": s.image_path,
                     "image_layout": s.image_layout,
                     "text_zone": s.text_zone,
+                    "title_zone": s.title_zone,
+                    "body_zone": s.body_zone,
+                    "text_style": s.text_style,
+                    "text_scale": s.text_scale,
                     "eyebrow": s.eyebrow,
                     "footer": s.footer,
                     "template": s.template,

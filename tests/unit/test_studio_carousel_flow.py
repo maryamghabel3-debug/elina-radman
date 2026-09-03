@@ -751,3 +751,107 @@ def test_M_carousel_layout_invalid_name_preserves_state(tmp_path):
     assert collect["pending_image_layout"] == "full_bleed_caption"
     cs.cleanup(session)
     cs.cleanup(collect)
+
+
+# === M25 — composition tokens (zone/title_zone/body_zone/style/size) ===
+
+def test_m25_edit_zone_persian_alias(tmp_path):
+    cs = import_cs()
+    session = make_preview_session(tmp_path, n_slides=4)
+    deck = session["deck"]
+    err, path = cs.edit_slide(session, 2, "zone=بالا-راست")
+    assert err is None and path is not None
+    assert deck.slides[1].text_zone == "top_right"
+    assert session["_renderer"].slide_renderer.render.call_count == 1
+    cs.cleanup(session)
+
+
+def test_m25_edit_split_zones(tmp_path):
+    cs = import_cs()
+    session = make_preview_session(tmp_path, n_slides=4)
+    deck = session["deck"]
+    assert cs.edit_slide(session, 2, "title_zone=بالا")[0] is None
+    assert cs.edit_slide(session, 2, "body_zone=پایین")[0] is None
+    assert deck.slides[1].title_zone == "top"
+    assert deck.slides[1].body_zone == "bottom"
+    cs.cleanup(session)
+
+
+def test_m25_edit_style_and_size(tmp_path):
+    cs = import_cs()
+    session = make_preview_session(tmp_path, n_slides=4)
+    deck = session["deck"]
+    assert cs.edit_slide(session, 2, "style=blend")[0] is None
+    assert deck.slides[1].text_style == "blend"
+    assert cs.edit_slide(session, 2, "size=0.85")[0] is None
+    assert deck.slides[1].text_scale == 0.85
+    # Invalid values: Persian error, field unchanged, state preserved
+    err, _ = cs.edit_slide(session, 2, "style=glow")
+    assert "❌" in err and deck.slides[1].text_style == "blend"
+    err2, _ = cs.edit_slide(session, 2, "size=5")
+    assert "❌" in err2 and deck.slides[1].text_scale == 0.85
+    err3, _ = cs.edit_slide(session, 2, "zone=هرجا")
+    assert "❌" in err3 and deck.slides[1].text_zone is None
+    assert session["state"] == cs.PREVIEW
+    cs.cleanup(session)
+
+
+def test_m25_layout_command_style_size_zone(tmp_path):
+    """/carousel_layout style|size|zone forms apply to all photo slides
+    (cover + image_text), or one slide with a number."""
+    cs = import_cs()
+    session = make_preview_session(tmp_path, n_slides=4)  # cover + 2 img + cta
+    deck = session["deck"]
+    reply = cs.apply_layout(session, "style blend")
+    assert "✅" in reply
+    for i in (0, 1, 2):
+        assert deck.slides[i].text_style == "blend"
+    assert deck.slides[3].text_style is None  # cta untouched
+    assert session["_renderer"].slide_renderer.render.call_count == 3
+
+    reply2 = cs.apply_layout(session, "zone bottom_right 2")
+    assert "✅" in reply2
+    assert deck.slides[1].text_zone == "bottom_right"
+    assert deck.slides[0].text_zone is None  # only slide 2
+
+    reply3 = cs.apply_layout(session, "size 0.8")
+    assert "✅" in reply3
+    for i in (0, 1, 2):
+        assert deck.slides[i].text_scale == 0.8
+    assert deck.slides[3].text_scale is None
+
+    # Persian zone alias + per-slide number
+    reply4 = cs.apply_layout(session, "zone پایین-راست 3")
+    assert "✅" in reply4
+    assert deck.slides[2].text_zone == "bottom_right"
+    assert deck.slides[1].text_zone == "bottom_right"
+    cs.cleanup(session)
+
+
+def test_m25_layout_command_invalid_preserves_state(tmp_path):
+    cs = import_cs()
+    session = make_preview_session(tmp_path, n_slides=4)
+    deck = session["deck"]
+    before = [(s.text_style, s.text_scale, s.text_zone) for s in deck.slides]
+    for raw in ("zone هرجا", "style glow", "size 9", "size abc", "mystery full"):
+        reply = cs.apply_layout(session, raw)
+        assert "❌" in reply, raw
+    assert [(s.text_style, s.text_scale, s.text_zone) for s in deck.slides] == before
+    assert session["state"] == cs.PREVIEW
+    assert session["_renderer"].slide_renderer.render.call_count == 0
+    cs.cleanup(session)
+
+
+@pytest.mark.asyncio
+async def test_m25_bot_carousel_edit_zone_token(tmp_path):
+    bot = import_bot()
+    cs = import_cs()
+    update, context = make_mock_update(is_owner=True)
+    session = make_preview_session(tmp_path, n_slides=4)
+    context.chat_data["carousel_session"] = session
+    update.message.text = "/carousel_edit ۲ | zone=بالا"
+    with patch.object(bot, "OWNER_CHAT_ID", OWNER):
+        await bot.cmd_carousel_edit(update, context)
+    assert session["deck"].slides[1].text_zone == "top"
+    update.message.reply_photo.assert_called_once()
+    cs.cleanup(session)
