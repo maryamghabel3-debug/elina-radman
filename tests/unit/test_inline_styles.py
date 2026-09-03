@@ -8,6 +8,7 @@ from agents.carousel.inline_styles import (
     TextSegment,
     has_inline_styles,
     parse_inline_styles,
+    split_pipes_outside_brackets,
 )
 
 pytestmark = pytest.mark.unit
@@ -139,3 +140,77 @@ def test_has_inline_styles():
     assert has_inline_styles("[x|size=1.1]") is True
     # Malformed markup is NOT an inline style (falls back to plain)
     assert has_inline_styles("[x|bad=1]") is False
+
+
+# --- M27A: split_pipes_outside_brackets (title|body separator vs markup) ---
+#
+# The carousel text input uses '|' to separate title from body, while M26
+# inline markup uses '|' INSIDE [...] brackets. The helper splits only on
+# pipes OUTSIDE brackets. Parts keep their surrounding whitespace (the
+# caller strips / rejoins), so assertions compare .strip() where noted.
+
+def test_split_pipes_plain_unchanged():
+    # "عنوان | بدنه" -> two parts (regression: plain behavior unchanged)
+    parts = split_pipes_outside_brackets("عنوان | بدنه")
+    assert [p.strip() for p in parts] == ["عنوان", "بدنه"]
+
+
+def test_split_pipes_no_pipe_single_part():
+    assert split_pipes_outside_brackets("عنوان ساده") == ["عنوان ساده"]
+
+
+def test_split_pipes_multiple_pipes():
+    parts = split_pipes_outside_brackets("ع | ب | دو")
+    assert [p.strip() for p in parts] == ["ع", "ب", "دو"]
+
+
+def test_split_pipes_title_with_markup_and_body():
+    parts = split_pipes_outside_brackets("وقتی [خوب‌بودن|color=#B89B65] بود | بدنه")
+    assert len(parts) == 2
+    # The pipe inside the brackets is NOT a split point
+    assert parts[0].strip() == "وقتی [خوب‌بودن|color=#B89B65] بود"
+    assert parts[1].strip() == "بدنه"
+
+
+def test_split_pipes_body_with_markup():
+    parts = split_pipes_outside_brackets("عنوان | بدنه [زنده|size=1.2] است")
+    assert len(parts) == 2
+    assert parts[0].strip() == "عنوان"
+    assert parts[1].strip() == "بدنه [زنده|size=1.2] است"
+
+
+def test_split_pipes_both_with_markup():
+    parts = split_pipes_outside_brackets("عنوان [a|c1] و [b|c2] | بدنه [c|c3]")
+    assert len(parts) == 2
+    assert parts[0].strip() == "عنوان [a|c1] و [b|c2]"
+    assert parts[1].strip() == "بدنه [c|c3]"
+
+
+def test_split_pipes_multiple_outside_pipes():
+    # Only the pipes OUTSIDE brackets split; body keeps its own pipes
+    parts = split_pipes_outside_brackets("عنوان [a|c1] | بدنه | بیشتر")
+    assert len(parts) == 3
+    assert parts[0].strip() == "عنوان [a|c1]"
+    assert parts[1].strip() == "بدنه"
+    assert parts[2].strip() == "بیشتر"
+
+
+def test_split_pipes_nested_brackets():
+    parts = split_pipes_outside_brackets("[a [b|c] d|e | f] | آخر")
+    assert len(parts) == 2
+    assert parts[0].strip() == "[a [b|c] d|e | f]"
+    assert parts[1].strip() == "آخر"
+
+
+def test_split_pipes_malformed_no_crash():
+    # Unclosed '[' -> fall back to a plain split on every '|' (no crash)
+    parts = split_pipes_outside_brackets("عنوان [بدون بستن | بدنه")
+    assert [p.strip() for p in parts] == ["عنوان [بدون بستن", "بدنه"]
+    # Stray ']' -> fall back to a plain split (no crash)
+    parts2 = split_pipes_outside_brackets("عنوان ] بدن | ب")
+    assert [p.strip() for p in parts2] == ["عنوان ] بدن", "ب"]
+
+
+def test_split_pipes_empty_and_none():
+    assert split_pipes_outside_brackets("") == [""]
+    assert split_pipes_outside_brackets(None) == [""]
