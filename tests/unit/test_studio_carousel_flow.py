@@ -855,3 +855,136 @@ async def test_m25_bot_carousel_edit_zone_token(tmp_path):
     assert session["deck"].slides[1].text_zone == "top"
     update.message.reply_photo.assert_called_once()
     cs.cleanup(session)
+
+
+# === M27A — title/body split must ignore pipes inside inline markup ===
+#
+# M26 markup uses '|' inside [...] brackets; the "title | body" input
+# convention also uses '|'. The session must split only on pipes OUTSIDE
+# brackets so marked-up text is not corrupted.
+
+def test_M27A_parse_title_with_markup_and_body():
+    cs = import_cs()
+    r = cs.parse_slide_text("عنوان [خوب|color=#B89B65] | بدنه")
+    assert r == {"title": "عنوان [خوب|color=#B89B65]", "body": "بدنه"}
+
+
+def test_M27A_parse_body_with_markup():
+    cs = import_cs()
+    r = cs.parse_slide_text("عنوان ساده | بدنه [زنده|size=1.2] است")
+    assert r == {"title": "عنوان ساده", "body": "بدنه [زنده|size=1.2] است"}
+
+
+def test_M27A_parse_both_with_markup():
+    cs = import_cs()
+    r = cs.parse_slide_text("عنوان [a|c1] و [b|c2] | بدنه [c|c3]")
+    assert r["title"] == "عنوان [a|c1] و [b|c2]"
+    assert r["body"] == "بدنه [c|c3]"
+
+
+def test_M27A_parse_plain_unchanged_regression():
+    cs = import_cs()
+    # Existing plain behavior is unchanged (first outside-pipe splits)
+    assert cs.parse_slide_text("عنوان | بدنه") == {"title": "عنوان", "body": "بدنه"}
+    assert cs.parse_slide_text("فقط عنوان") == {"title": "فقط عنوان", "body": ""}
+    assert cs.parse_slide_text("ع | ب | دو") == {"title": "ع", "body": "ب | دو"}
+
+
+def test_M27A_parse_malformed_brackets_no_crash():
+    cs = import_cs()
+    # Unclosed bracket -> falls back to a plain split; no crash
+    r = cs.parse_slide_text("عنوان [بدون بستن | بدنه")
+    assert r["title"] == "عنوان [بدون بستن"
+    assert r["body"] == "بدنه"
+    # Stray closing bracket -> plain split; no crash
+    r2 = cs.parse_slide_text("عنوان ] بدن | ب")
+    assert r2["title"] == "عنوان ] بدن"
+    assert r2["body"] == "ب"
+
+
+def test_M27A_edit_title_body_with_markup(tmp_path):
+    cs = import_cs()
+    session = make_preview_session(tmp_path, n_slides=4)  # cover + 2 img + cta
+    deck = session["deck"]
+    err, path = cs.edit_slide(session, 3, "وقتی [کلمه|color=#B89B65] بود | بدنه جدید")
+    assert err is None
+    # Markup kept intact in the title, body split correctly
+    assert deck.slides[2].title == "وقتی [کلمه|color=#B89B65] بود"
+    assert deck.slides[2].body == "بدنه جدید"
+    cs.cleanup(session)
+
+
+def test_M27A_edit_title_only_markup_no_body(tmp_path):
+    cs = import_cs()
+    session = make_preview_session(tmp_path, n_slides=4)
+    deck = session["deck"]
+    err, path = cs.edit_slide(session, 3, "عنوان [خوب|color=#B89B65] بود")
+    assert err is None
+    assert deck.slides[2].title == "عنوان [خوب|color=#B89B65] بود"
+    cs.cleanup(session)
+
+
+def test_M27A_edit_body_with_markup(tmp_path):
+    cs = import_cs()
+    session = make_preview_session(tmp_path, n_slides=4)
+    deck = session["deck"]
+    err, path = cs.edit_slide(session, 3, "عنوان ساده | بدنه [زنده|size=1.2] است")
+    assert err is None
+    assert deck.slides[2].title == "عنوان ساده"
+    assert deck.slides[2].body == "بدنه [زنده|size=1.2] است"
+    cs.cleanup(session)
+
+
+def test_M27A_edit_zone_token_still_works_regression(tmp_path):
+    cs = import_cs()
+    session = make_preview_session(tmp_path, n_slides=4)
+    deck = session["deck"]
+    # zone= token is detected before title|body parsing and still works
+    err, path = cs.edit_slide(session, 3, "zone=top")
+    assert err is None
+    assert deck.slides[2].text_zone == "top"
+    cs.cleanup(session)
+
+
+def test_M27A_edit_malformed_brackets_no_crash(tmp_path):
+    cs = import_cs()
+    session = make_preview_session(tmp_path, n_slides=4)
+    deck = session["deck"]
+    # Unclosed bracket -> plain split; no crash, sane title/body
+    err, path = cs.edit_slide(session, 3, "عنوان [بدون بستن | بدنه")
+    assert err is None
+    assert deck.slides[2].title == "عنوان [بدون بستن"
+    assert deck.slides[2].body == "بدنه"
+    cs.cleanup(session)
+
+
+@pytest.mark.asyncio
+async def test_M27A_bot_edit_markup_title_body(tmp_path):
+    bot = import_bot()
+    cs = import_cs()
+    update, context = make_mock_update(is_owner=True)
+    session = make_preview_session(tmp_path, n_slides=4)
+    context.chat_data["carousel_session"] = session
+    update.message.text = "/carousel_edit ۳ | وقتی [کلمه|color=#B89B65] بود | بدنه جدید"
+    with patch.object(bot, "OWNER_CHAT_ID", OWNER):
+        await bot.cmd_carousel_edit(update, context)
+    # Slide 3 (slides[2]) updated with intact markup + split body
+    assert session["deck"].slides[2].title == "وقتی [کلمه|color=#B89B65] بود"
+    assert session["deck"].slides[2].body == "بدنه جدید"
+    update.message.reply_photo.assert_called_once()
+    cs.cleanup(session)
+
+
+@pytest.mark.asyncio
+async def test_M27A_bot_edit_zone_token_regression(tmp_path):
+    bot = import_bot()
+    cs = import_cs()
+    update, context = make_mock_update(is_owner=True)
+    session = make_preview_session(tmp_path, n_slides=4)
+    context.chat_data["carousel_session"] = session
+    update.message.text = "/carousel_edit ۳ | zone=top"
+    with patch.object(bot, "OWNER_CHAT_ID", OWNER):
+        await bot.cmd_carousel_edit(update, context)
+    assert session["deck"].slides[2].text_zone == "top"
+    update.message.reply_photo.assert_called_once()
+    cs.cleanup(session)

@@ -38,6 +38,7 @@ from agents.carousel.planner import (
     CarouselPlanConfigError,
     CarouselPlanGenerationError,
 )
+from agents.carousel.inline_styles import split_pipes_outside_brackets
 from agents.carousel.schema import (
     SUPPORTED_TEXT_ZONES,
     CarouselError,
@@ -314,13 +315,20 @@ def finish_images(session: Dict[str, Any]) -> Optional[str]:
 
 
 def parse_slide_text(raw: str) -> Dict[str, str]:
-    """Parse 'title' or 'title | body' (split on the FIRST |)."""
-    title, _, body = (raw or "").partition("|")
-    title = title.strip()
+    """Parse 'title' or 'title | body'.
+
+    Splits on the FIRST '|' that is OUTSIDE inline markup brackets (M27A),
+    so M26 markup like "[کلمه|color=#B89B65]" keeps its internal pipe. The
+    body keeps everything after that first split (including further pipes),
+    matching the previous plain behavior.
+    """
+    parts = split_pipes_outside_brackets(raw or "")
+    title = parts[0].strip()
     if not title:
         # No usable title before '|': treat the whole message as the title.
         return {"title": (raw or "").strip(), "body": ""}
-    return {"title": title, "body": body.strip()}
+    body = "|".join(parts[1:]).strip() if len(parts) > 1 else ""
+    return {"title": title, "body": body}
 
 
 def add_text(session: Dict[str, Any], raw: str) -> Dict[str, str]:
@@ -670,11 +678,13 @@ def edit_slide(
 
         return _revalidate_and_rerender(session, slide, index, _rollback_scale)
 
-    title, sep, body = text.partition("|")
-    title = title.strip()
+    # Split title/body on the FIRST '|' OUTSIDE inline markup brackets
+    # (M27A), so marked-up titles/bodies keep their internal pipes.
+    parts = split_pipes_outside_brackets(text)
+    title = parts[0].strip()
     if not title:
         return "❌ متن جدید اسلاید خالی است.", None
-    body = body.strip() if sep else None
+    body = "|".join(parts[1:]).strip() if len(parts) > 1 else None
 
     old_title, old_body = slide.title, slide.body
     slide.title = title

@@ -151,3 +151,52 @@ def has_inline_styles(text: str) -> bool:
         seg.color is not None or seg.size_multiplier != 1.0
         for seg in parse_inline_styles(text)
     )
+
+
+def split_pipes_outside_brackets(text: str) -> List[str]:
+    """Split `text` on '|' characters OUTSIDE square brackets (M27A).
+
+    M26 inline markup ([word|color=#B89B65]) contains '|' inside brackets,
+    while the carousel text input also uses '|' to separate parts (e.g.
+    "title | body"). A naive split corrupts marked-up text, so only pipes
+    OUTSIDE balanced [...] brackets are split points:
+
+    - "عنوان | بدنه"
+        -> ["عنوان", "بدنه"]  (unchanged plain behavior)
+    - "وقتی [خوب‌بودن|color=#B89B65] بود | بدنه"
+        -> ["وقتی [خوب‌بودن|color=#B89B65] بود", "بدنه"]
+
+    Malformed brackets (an unclosed '[' or a stray ']') fall back to a
+    plain split on every '|', so bad markup never breaks the parse — the
+    inline parser then treats the text as plain (M26 fallback).
+    """
+    text = text or ""
+    well_formed = True
+    depth = 0
+    for ch in text:
+        if ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+            if depth < 0:
+                well_formed = False
+                break
+    if depth != 0:
+        well_formed = False
+    if not well_formed:
+        return text.split("|")
+    parts: List[str] = []
+    current: List[str] = []
+    depth = 0
+    for ch in text:
+        if ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth = max(0, depth - 1)
+        if ch == "|" and depth == 0:
+            parts.append("".join(current))
+            current = []
+        else:
+            current.append(ch)
+    parts.append("".join(current))
+    return parts
