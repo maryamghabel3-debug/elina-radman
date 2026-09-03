@@ -525,8 +525,10 @@ def test_O_split_panel_explicit_uses_65_over_35(tmp_path):
 
 @pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
 def test_O_full_bleed_caption_covers_full_canvas(tmp_path):
-    """full_bleed_caption: the image spans the whole canvas and the bottom
-    35% is NOT an opaque background panel."""
+    """full_bleed_caption: the image spans the whole canvas and there is
+    NO opaque background panel anywhere. (M25: caption patches are local,
+    so clean margin points must show the source under the base gradient
+    only.)"""
     src = make_colored_source(str(tmp_path / "s.png"), (1600, 900), (30, 120, 220))
     renderer = make_renderer()
     out = str(tmp_path / "fb.png")
@@ -539,22 +541,25 @@ def test_O_full_bleed_caption_covers_full_canvas(tmp_path):
     }, out)
     img = Image.open(out)
     assert img.size == (CANVAS_WIDTH, CANVAS_HEIGHT)
-    # Top of the canvas: the (darkened) source, not the template background
-    r, g, b = img.getpixel((540, 60))[:3]
-    assert b >= 60 and g >= 30
-    # Bottom zone (text-free margin column): image color under the gradient
-    r2, g2, b2 = img.getpixel((45, 950))[:3]
-    assert b2 >= 50 and g2 >= 25
+    # Clean margin points (outside any caption patch) show the source:
+    # top-left, mid-left and bottom-left must be the darkened source color,
+    # never the flat template background.
+    for point in ((60, 60), (60, 675), (100, 1200)):
+        r, g, b = img.getpixel(point)[:3]
+        assert b >= 60 and g >= 30, f"{point} = {(r, g, b)}"
     # Definitely not an opaque 35% background panel
-    bottom = img.getpixel((45, 1200))[:3]
+    bottom = img.getpixel((100, 1200))[:3]
     assert bottom != palette_rgb("ink_black")
     assert bottom[2] >= 30
 
 
 @pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
 def test_O_full_bleed_caption_smaller_zone_without_body(tmp_path):
-    """Without a body the caption zone (bottom gradient) is smaller, so a
-    point inside it is less darkened than in the title+body render."""
+    """M25: the readability patch is sized to the text block. With a body,
+    the title auto-splits to a top cell (its patch reaches the top region);
+    title-only falls back to a single bottom zone whose patch never
+    reaches the top — so the same top point is less darkened without body.
+    """
     src = make_colored_source(str(tmp_path / "s.png"), (1600, 900), (30, 120, 220))
     renderer = make_renderer()
     base = {"slide_type": "image_text", "image_path": src, "title": "تست",
@@ -563,8 +568,8 @@ def test_O_full_bleed_caption_smaller_zone_without_body(tmp_path):
     renderer.render(dict(base, body="متن بدنه‌ای برای تست."), out_tb)
     out_t = str(tmp_path / "fb_t.png")
     renderer.render(base, out_t)
-    b_with_body = Image.open(out_tb).getpixel((45, 700))[2]
-    b_title_only = Image.open(out_t).getpixel((45, 700))[2]
+    b_with_body = Image.open(out_tb).getpixel((540, 200))[2]
+    b_title_only = Image.open(out_t).getpixel((540, 200))[2]
     assert b_title_only > b_with_body
 
 
@@ -796,9 +801,11 @@ def test_G_text_zone_none_triggers_auto_detection(tmp_path, monkeypatch):
 
 
 @pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
-def test_P_bottom_zone_unchanged_for_flat_source(tmp_path):
-    """Regression: a flat source auto-detects 'bottom' (tie-break), so the
-    default full-bleed render keeps the M22 bottom-aligned behavior."""
+def test_P_auto_split_on_flat_source(tmp_path):
+    """M25: a flat source — single-zone auto still resolves to 'bottom'
+    (tie-break), and the title+body auto-split lands the two least-busy
+    non-adjacent cells (title top_center, body bottom_right): white title
+    in the top region, gray body in the bottom-right, mid-left untouched."""
     import agents.carousel.slide_renderer as sr
     src = make_colored_source(str(tmp_path / "s.png"), (1080, 1350), (30, 120, 220))
     assert sr.find_best_text_zone(Image.open(src)) == "bottom"
@@ -809,6 +816,176 @@ def test_P_bottom_zone_unchanged_for_flat_source(tmp_path):
         "title": "تست", "body": "بدنه", "image_layout": "full_bleed_caption",
     }, out)
     img = Image.open(out)
-    # Bottom-aligned: text bright in the lower region, top free of text
-    assert img.crop((0, 900, 1080, 1220)).getextrema()[0][1] > 200
-    assert img.crop((0, 100, 1080, 400)).getextrema()[0][1] < 200
+    # Title (bone_white) bright in the top-center region
+    assert img.crop((100, 50, 980, 420)).getextrema()[0][1] > 200
+    # Body (dawn_gray) present in the bottom-right region
+    assert img.crop((450, 1000, 1050, 1240)).getextrema()[0][1] > 150
+    # Mid-left region: no text, no patch
+    assert img.crop((90, 500, 450, 800)).getextrema()[0][1] < 200
+
+
+# === Q. M25 text composition: split zones, side width, blend, scale ===
+
+def test_Q_split_zones_two_separate_patches(tmp_path):
+    """title_zone + body_zone: two separate local patches; the middle of
+    the canvas stays undarkened."""
+    src = make_colored_source(str(tmp_path / "s.png"), (1080, 1350), (30, 120, 220))
+    renderer = make_renderer()
+    out = str(tmp_path / "split.png")
+    renderer.render({
+        "slide_type": "image_text", "image_path": src,
+        "title": "عنوان تست", "body": "بدنه‌ی جدا در گوشه‌ی دیگر",
+        "image_layout": "full_bleed_caption",
+        "title_zone": "top_right", "body_zone": "bottom_left",
+    }, out)
+    img = Image.open(out)
+    # Title bright in the top-right block, body present in the bottom-left
+    assert img.crop((500, 100, 995, 400)).getextrema()[0][1] > 200
+    assert img.crop((85, 1000, 570, 1240)).getextrema()[0][1] > 150
+    # Middle stays undarkened: brighter than both patch areas
+    mid = img.getpixel((540, 675))[2]
+    top_patch = img.getpixel((750, 150))[2]
+    bot_patch = img.getpixel((300, 1100))[2]
+    assert mid > top_patch
+    assert mid > bot_patch
+
+
+def test_Q_side_zone_block_limited_to_45_width(tmp_path):
+    """Side zones limit the block to 45% width anchored to that side."""
+    src = make_colored_source(str(tmp_path / "s.png"), (1080, 1350), (30, 120, 220))
+    renderer = make_renderer()
+    out = str(tmp_path / "side.png")
+    renderer.render({
+        "slide_type": "image_text", "image_path": src,
+        "title": "عنوان", "image_layout": "full_bleed_caption",
+        "text_zone": "right",
+    }, out)
+    img = Image.open(out)
+    # Text bright only in the right 45% block
+    assert img.crop((550, 400, 995, 900)).getextrema()[0][1] > 200
+    # Left region: no text and NOT darkened by a patch either
+    assert img.crop((90, 400, 450, 900)).getextrema()[0][1] < 200
+
+
+def test_Q_blend_has_no_gradient_darkening(tmp_path):
+    """Blend style: no gradient patch — a point inside the gradient's
+    patch area (away from glyphs) stays undarkened."""
+    src = make_colored_source(str(tmp_path / "s.png"), (1080, 1350), (30, 120, 220))
+    renderer = make_renderer()
+    slide = {"slide_type": "image_text", "image_path": src, "title": "تست",
+             "image_layout": "full_bleed_caption", "text_zone": "bottom"}
+    out_g = str(tmp_path / "b_grad.png")
+    out_b = str(tmp_path / "b_blend.png")
+    renderer.render(dict(slide, text_style="gradient"), out_g)
+    renderer.render(dict(slide, text_style="blend"), out_b)
+    g = Image.open(out_g).getpixel((200, 1150))[2]
+    b = Image.open(out_b).getpixel((200, 1150))[2]
+    assert b > g
+
+
+def test_Q_blend_text_color_from_zone_luminance(tmp_path):
+    """Blend style samples the zone luminance: dark zone -> bone_white,
+    bright zone -> ink_black."""
+    renderer = make_renderer()
+    dark = make_colored_source(str(tmp_path / "dark.png"), (1080, 1350), (30, 120, 220))
+    out1 = str(tmp_path / "b_dark.png")
+    renderer.render({"slide_type": "image_text", "image_path": dark, "title": "تست",
+                     "image_layout": "full_bleed_caption", "text_zone": "bottom",
+                     "text_style": "blend"}, out1)
+    img1 = Image.open(out1)
+    # white glyphs in the title area
+    assert img1.crop((300, 1050, 780, 1200)).getextrema()[0][1] > 200
+    light = make_colored_source(str(tmp_path / "light.png"), (1080, 1350), (220, 220, 220))
+    out2 = str(tmp_path / "b_light.png")
+    renderer.render({"slide_type": "image_text", "image_path": light, "title": "تست",
+                     "image_layout": "full_bleed_caption", "text_zone": "bottom",
+                     "text_style": "blend"}, out2)
+    img2 = Image.open(out2)
+    # black glyphs in the title area
+    assert img2.crop((300, 1050, 780, 1200)).getextrema()[0][0] < 80
+
+
+def test_Q_text_scale_changes_title_height(tmp_path):
+    """text_scale: a larger scale yields a taller title block (its top
+    edge sits higher in the bottom zone)."""
+    import numpy as np
+    src = make_colored_source(str(tmp_path / "s.png"), (1080, 1350), (30, 120, 220))
+    renderer = make_renderer()
+
+    def first_bright_row(img):
+        a = np.array(img.convert("L"))
+        rows = np.where((a > 200).sum(axis=1) > 2)[0]
+        assert len(rows) > 0
+        return int(rows.min())
+
+    def render_scale(scale):
+        out = str(tmp_path / f"scale_{scale}.png")
+        renderer.render({"slide_type": "image_text", "image_path": src,
+                         "title": "تست", "image_layout": "full_bleed_caption",
+                         "text_zone": "bottom", "text_scale": scale}, out)
+        return Image.open(out)
+
+    assert first_bright_row(render_scale(1.3)) < first_bright_row(render_scale(0.7))
+
+
+def test_Q_cover_auto_calls_detector(tmp_path, monkeypatch):
+    """Cover parity: text_zone='auto' on a cover runs the detector and
+    places the text in the detected zone."""
+    import agents.carousel.slide_renderer as sr
+    src = make_colored_source(str(tmp_path / "s.png"), (1080, 1350), (30, 120, 220))
+    calls = []
+    monkeypatch.setattr(sr, "find_best_text_zone",
+                        lambda image, *a, **k: calls.append(image) or "top")
+    renderer = make_renderer()
+    out = str(tmp_path / "cover_auto.png")
+    renderer.render({"slide_type": "cover", "title": "کاور", "image_path": src,
+                     "text_zone": "auto"}, out)
+    assert len(calls) >= 1
+    img = Image.open(out)
+    # Title landed in the top region
+    assert img.crop((100, 50, 980, 450)).getextrema()[0][1] > 200
+
+
+def test_Q_cover_none_stays_legacy_byte_identical(tmp_path):
+    """Cover parity: text_zone=None (all defaults) is byte-identical to a
+    cover rendered without any composition fields."""
+    src = make_colored_source(str(tmp_path / "s.png"), (1080, 1350), (30, 120, 220))
+    renderer = make_renderer()
+    base = {"slide_type": "cover", "title": "کاور", "image_path": src,
+            "body": "بدنه‌ی کاور"}
+    out1 = str(tmp_path / "c1.png")
+    out2 = str(tmp_path / "c2.png")
+    renderer.render(base, out1)
+    renderer.render(dict(base, text_zone=None), out2)
+    assert open(out1, "rb").read() == open(out2, "rb").read()
+
+
+def test_Q_invalid_composition_values_rejected():
+    base = {"slide_type": "image_text", "title": "تست", "image_path": "x.jpg"}
+    # middle_center is detector-internal, not user-settable
+    with pytest.raises(CarouselConfigError):
+        parse_carousel_slide(dict(base, text_zone="middle_center"))
+    with pytest.raises(CarouselConfigError) as exc_info:
+        parse_carousel_slide(dict(base, text_zone="sideways"))
+    assert exc_info.value.code == CAROUSEL_SLIDE_CONFIG_INVALID
+    with pytest.raises(CarouselConfigError):
+        parse_carousel_slide(dict(base, title_zone="nowhere"))
+    with pytest.raises(CarouselConfigError):
+        parse_carousel_slide(dict(base, body_zone="nope"))
+    with pytest.raises(CarouselConfigError):
+        parse_carousel_slide(dict(base, text_style="glow"))
+    with pytest.raises(CarouselConfigError):
+        parse_carousel_slide(dict(base, text_scale=2.0))
+    with pytest.raises(CarouselConfigError):
+        parse_carousel_slide(dict(base, text_scale=0.5))
+    with pytest.raises(CarouselConfigError):
+        parse_carousel_slide(dict(base, text_scale="x"))
+    # Valid: all 10 addressable zones + auto, scale bounds, styles
+    for z in ("auto", "top", "middle", "bottom", "left", "right",
+              "top_left", "top_right", "bottom_left", "bottom_right",
+              "middle_left", "middle_right"):
+        assert parse_carousel_slide(dict(base, text_zone=z)).text_zone == z
+    assert parse_carousel_slide(dict(base, text_scale=0.7)).text_scale == 0.7
+    assert parse_carousel_slide(dict(base, text_scale=1.3)).text_scale == 1.3
+    assert parse_carousel_slide(dict(base, text_scale=1)).text_scale == 1.0
+    assert parse_carousel_slide(dict(base, text_style="blend")).text_style == "blend"

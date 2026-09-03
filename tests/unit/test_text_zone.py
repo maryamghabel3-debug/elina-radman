@@ -103,3 +103,88 @@ def test_G_invalid_zone_rejected():
         zone_is_acceptable(flat, "sideways")
     # The default threshold is a sane absolute value in (0, 1)
     assert 0.0 < DEFAULT_ZONE_ACCEPTABLE_THRESHOLD < 1.0
+
+
+# === M25 — 3x3 grid, merged regions, debug helpers ===
+
+from agents.carousel.text_zone import (
+    ZONES_3x3,
+    band_scores,
+    cell_scores,
+    zone_luminance,
+    zone_scores,
+)
+
+
+def test_grid_picks_corner_for_centered_character():
+    # A cross-shaped character through the center: no full row/column is
+    # calm, so a corner cell wins (deterministic tie-break: bottom_right).
+    img = make_image(noise_rects=[(W // 2 - 60, 0, W // 2 + 60, H),
+                                  (0, H // 2 - 60, W, H // 2 + 60)])
+    zone = find_best_text_zone(img, mode="grid")
+    assert zone in ("top_left", "top_right", "bottom_left", "bottom_right")
+    assert zone == "bottom_right"
+
+
+def test_grid_picks_band_when_full_row_calm():
+    # A busy bar through the MIDDLE row only: top and bottom rows are fully
+    # calm -> a calm row is returned (bottom wins the tie-break).
+    img = make_image(noise_rects=[(0, H // 2 - 80, W, H // 2 + 80)])
+    assert find_best_text_zone(img, mode="grid") == "bottom"
+
+
+def test_grid_picks_side_when_column_calm():
+    # A busy bar through the middle COLUMN: left and right columns are
+    # fully calm -> a side column is returned (left wins the tie-break).
+    img = make_image(noise_rects=[(W // 2 - 80, 0, W // 2 + 80, H)])
+    assert find_best_text_zone(img, mode="grid") in ("left", "right")
+    assert find_best_text_zone(img, mode="grid") == "left"
+
+
+def test_bands_mode_unchanged_legacy():
+    # mode="bands" keeps the exact M23 3-band behavior
+    assert find_best_text_zone(make_image(noise_rects=[(0, 700, W, H)]),
+                               mode="bands") == "top"
+    assert find_best_text_zone(make_image(fill=(40, 70, 110)),
+                               mode="bands") == "bottom"
+    assert find_best_text_zone(make_image(noise_rects=[(0, 0, W, 300)]),
+                               mode="bands") == "bottom"
+    with pytest.raises(ValueError):
+        find_best_text_zone(make_image(), mode="diag")
+
+
+def test_zone_scores_returns_all_regions():
+    img = make_image(noise_rects=[(0, 0, W, 300)])
+    s = zone_scores(img)
+    assert set(s) == set(ZONES_3x3) | {"top", "middle", "bottom", "left", "right"}
+    # Row/column scores = worst cell of the region
+    assert s["top"] == max(s["top_left"], s["top_center"], s["top_right"])
+    assert s["left"] == max(s["top_left"], s["middle_left"], s["bottom_left"])
+    # The full-width noise hits both top-row cells; the bottom-right cell
+    # stays perfectly flat
+    assert s["top_left"] > 0.0
+    assert s["top_right"] > 0.0
+    assert cell_scores(img)["bottom_right"] == 0.0
+    # band_scores (legacy 30/40/30) is a separate, stable statistic
+    bands = band_scores(img)
+    assert bands["top"] > bands["bottom"]
+
+
+def test_zone_is_acceptable_region_generic():
+    flat = make_image(fill=(90, 90, 90))
+    assert zone_is_acceptable(flat, "bottom_left") is True
+    assert zone_is_acceptable(flat, "right") is True
+    noisy_bottom = make_image(noise_rects=[(0, 700, W, H)])
+    assert zone_is_acceptable(noisy_bottom, "bottom") is False
+    assert zone_is_acceptable(noisy_bottom, "bottom_right") is False
+    assert zone_is_acceptable(noisy_bottom, "top") is True
+    assert zone_is_acceptable(noisy_bottom, "right") is False  # bottom_right noisy
+    with pytest.raises(ValueError):
+        zone_is_acceptable(flat, "sideways")
+
+
+def test_zone_luminance_dark_and_bright():
+    dark = make_image(fill=(20, 30, 60))
+    light = make_image(fill=(220, 220, 220))
+    assert zone_luminance(dark, "bottom") < 128
+    assert zone_luminance(light, "top_right") >= 128

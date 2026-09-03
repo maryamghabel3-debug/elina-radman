@@ -105,8 +105,11 @@ PREVIEW_COMMANDS_FA = (
     "/carousel_ok — تأیید و ذخیره\n"
     "/carousel_edit <شماره> | <متن جدید> — ویرایش یک اسلاید\n"
     "/carousel_edit <شماره> | layout=full — چیدمان (split|full|contain|auto)\n"
-    "/carousel_edit <شماره> | zone=top — جای متن (top|middle|bottom)\n"
-    "/carousel_layout <layout> [شماره] — چیدمان اسلایدهای تصویری\n"
+    "/carousel_edit <شماره> | zone=بالا-راست — جای متن (zone= | title_zone= | body_zone=)\n"
+    "/carousel_edit <شماره> | style=blend — استایل متن (gradient|blend)\n"
+    "/carousel_edit <شماره> | size=0.85 — اندازه‌ی متن (0.7 تا 1.3)\n"
+    "/carousel_layout <split|full|contain|auto> [شماره] — چیدمان اسلایدهای تصویری\n"
+    "/carousel_layout zone|style|size <مقدار> [شماره] — تنظیم متن همه‌ی اسلایدهای تصویری\n"
     "/carousel_theme <قالب> — تغییر قالب و رندر مجدد\n"
     "/carousel_cancel — انصراف"
 )
@@ -118,6 +121,40 @@ LAYOUT_ALIASES = {
     "contain": "contain_caption",
     "auto": "auto",
 }
+
+# Zone tokens accepted from Telegram (M25): English canonical names +
+# Persian short names and combos. Mapped to the schema values here (the
+# Telegram layer only — the schema accepts the canonical names + "auto").
+ZONE_ALIASES = {
+    "auto": "auto",
+    "top": "top", "middle": "middle", "bottom": "bottom",
+    "left": "left", "right": "right",
+    "top_left": "top_left", "top_right": "top_right",
+    "bottom_left": "bottom_left", "bottom_right": "bottom_right",
+    "middle_left": "middle_left", "middle_right": "middle_right",
+    "بالا": "top", "وسط": "middle", "پایین": "bottom",
+    "چپ": "left", "راست": "right",
+    "بالا-چپ": "top_left", "بالا-راست": "top_right",
+    "پایین-چپ": "bottom_left", "پایین-راست": "bottom_right",
+    "وسط-چپ": "middle_left", "وسط-راست": "middle_right",
+}
+
+# Slides that support caption composition (M25 zones/style/scale)
+_PHOTO_SLIDE_TYPES = ("cover", "image_text", "image_overlay")
+
+
+def normalize_zone_token(value: str) -> Optional[str]:
+    """Map an English or Persian zone token to its canonical value, or None
+    when the token is not a recognized zone (M25)."""
+    v = (value or "").strip()
+    if not v:
+        return None
+    if v in ZONE_ALIASES:
+        return ZONE_ALIASES[v]
+    low = v.lower()
+    if low in ZONE_ALIASES:
+        return ZONE_ALIASES[low]
+    return None
 
 
 class CarouselSessionActiveError(Exception):
@@ -492,6 +529,10 @@ def _revalidate_and_rerender(
             "image_path": slide.image_path,
             "image_layout": slide.image_layout,
             "text_zone": slide.text_zone,
+            "title_zone": slide.title_zone,
+            "body_zone": slide.body_zone,
+            "text_style": slide.text_style,
+            "text_scale": slide.text_scale,
             "eyebrow": slide.eyebrow,
             "footer": slide.footer,
             "template": slide.template,
@@ -529,11 +570,14 @@ def edit_slide(
     """
     Edit slide `index` (1-based).
 
-    Accepted forms (M23 extends title|body with layout/zone tokens;
-    mixing text + layout in one command is not supported):
+    Accepted forms (M23/M25 extend title|body with option tokens; one
+    token per command, mixing text + options is not supported):
     - "<title> | <body>" or "<title>" — replace title (and body)
     - "layout=split|full|contain|auto" — change the slide's image layout
-    - "zone=top|middle|bottom" — set the caption text zone
+    - "zone=<zone>" — set the caption text zone (English or Persian alias)
+    - "title_zone=<zone>" / "body_zone=<zone>" — split placement (M25)
+    - "style=gradient|blend" — caption style (M25)
+    - "size=0.7..1.3" — manual text size scale (M25)
 
     Re-renders ONLY that slide (documented choice: single-slide re-render is
     faster and the layout is per-slide independent).
@@ -563,19 +607,68 @@ def edit_slide(
 
         return _revalidate_and_rerender(session, slide, index, _rollback_layout)
 
+    if text.startswith("title_zone=") or text.startswith("body_zone="):
+        attr = "title_zone" if text.startswith("title_zone=") else "body_zone"
+        zone = normalize_zone_token(text.split("=", 1)[1])
+        if zone is None:
+            return (f"❌ نام {attr} نامعتبر است. گزینه‌ها: بالا | وسط | پایین | "
+                    "چپ | راست و ترکیب‌ها (مثل پایین-راست)"), None
+        if slide.slide_type not in _PHOTO_SLIDE_TYPES:
+            return "❌ zone فقط برای اسلایدهای تصویری (کاور/تصویر) کاربرد دارد.", None
+        old = getattr(slide, attr)
+        setattr(slide, attr, zone)
+
+        def _rollback_zone():
+            setattr(slide, attr, old)
+
+        return _revalidate_and_rerender(session, slide, index, _rollback_zone)
+
     if text.startswith("zone="):
-        value = text[len("zone="):].strip().lower()
-        if value not in SUPPORTED_TEXT_ZONES:
-            return "❌ نام zone نامعتبر است. گزینه‌ها: top | middle | bottom", None
-        if slide.slide_type not in ("image_text", "image_overlay"):
-            return "❌ zone فقط برای اسلایدهای تمام‌صفحه (تصویری) کاربرد دارد.", None
+        zone = normalize_zone_token(text[len("zone="):])
+        if zone is None:
+            return ("❌ نام zone نامعتبر است. گزینه‌ها: بالا | وسط | پایین | "
+                    "چپ | راست و ترکیب‌ها (مثل پایین-راست)"), None
+        if slide.slide_type not in _PHOTO_SLIDE_TYPES:
+            return "❌ zone فقط برای اسلایدهای تصویری (کاور/تصویر) کاربرد دارد.", None
         old_zone = slide.text_zone
-        slide.text_zone = value
+        slide.text_zone = zone
 
         def _rollback_zone():
             slide.text_zone = old_zone
 
         return _revalidate_and_rerender(session, slide, index, _rollback_zone)
+
+    if text.startswith("style="):
+        value = text[len("style="):].strip().lower()
+        if value not in ("gradient", "blend"):
+            return "❌ نام style نامعتبر است. گزینه‌ها: gradient | blend", None
+        if slide.slide_type not in _PHOTO_SLIDE_TYPES:
+            return "❌ style فقط برای اسلایدهای تصویری (کاور/تصویر) کاربرد دارد.", None
+        old_style = slide.text_style
+        slide.text_style = value
+
+        def _rollback_style():
+            slide.text_style = old_style
+
+        return _revalidate_and_rerender(session, slide, index, _rollback_style)
+
+    if text.startswith("size="):
+        value = text[len("size="):].strip().translate(PERSIAN_DIGITS)
+        try:
+            scale = float(value)
+        except ValueError:
+            return "❌ مقدار size نامعتبر است (مثلاً 0.85).", None
+        if not (0.7 <= scale <= 1.3):
+            return "❌ size باید بین 0.7 تا 1.3 باشد.", None
+        if slide.slide_type not in _PHOTO_SLIDE_TYPES:
+            return "❌ size فقط برای اسلایدهای تصویری (کاور/تصویر) کاربرد دارد.", None
+        old_scale = slide.text_scale
+        slide.text_scale = scale
+
+        def _rollback_scale():
+            slide.text_scale = old_scale
+
+        return _revalidate_and_rerender(session, slide, index, _rollback_scale)
 
     title, sep, body = text.partition("|")
     title = title.strip()
@@ -594,22 +687,35 @@ def edit_slide(
     return _revalidate_and_rerender(session, slide, index, _rollback_text)
 
 
+def _parse_slide_num(token: str) -> Tuple[Optional[int], Optional[str]]:
+    """(number, error) for an optional trailing slide-number token."""
+    num_text = (token or "").strip().translate(PERSIAN_DIGITS)
+    if not num_text.isdigit():
+        return None, "❌ شماره‌ی اسلاید نامعتبر است."
+    return int(num_text), None
+
+
 def apply_layout(
     session: Dict[str, Any],
     raw_text: str,
 ) -> str:
     """
-    Handle /carousel_layout <layout> [slide_number] (M23).
+    Handle /carousel_layout (M23 + M25). Forms:
 
-    - layout: split | full | contain | auto (mapped to the image_layout
-      values split_panel / full_bleed_caption / contain_caption / auto)
-    - slide_number given: apply to that slide only (PREVIEW)
-    - omitted: apply to ALL non-cover image slides in the draft
-    - valid during PREVIEW (re-renders the affected slides) or a COLLECT
-      state (stored in the session and applied to all image slides at
-      build time)
+    - "<layout> [slide_number]"
+        layout: split | full | contain | auto (mapped to the image_layout
+        values split_panel / full_bleed_caption / contain_caption / auto).
+        Applied to image_text slides: one slide, or all non-cover image
+        slides when omitted.
+    - "zone <zone> [slide_number]"     — caption text zone (M25)
+    - "style gradient|blend [number]"  — caption style (M25)
+    - "size 0.7..1.3 [number]"         — text size scale (M25)
 
-    Returns the Persian confirmation/error message.
+    zone/style/size apply to ALL photo slides (cover + image_text +
+    image_overlay), or one slide when a number is given. The plain layout
+    form is valid during a COLLECT state (stored, applied to all image
+    slides at build time); zone/style/size require the PREVIEW state.
+    Re-renders the affected slides. Returns the Persian message.
     """
     state = session.get("state")
     if state not in (COLLECT_IMAGES, COLLECT_TEXTS, COLLECT_TOPIC, PREVIEW):
@@ -617,30 +723,79 @@ def apply_layout(
 
     tokens = (raw_text or "").split()
     if not tokens:
-        return "فرمت: /carousel_layout <split|full|contain|auto> [شماره‌ی اسلاید]"
-    layout = LAYOUT_ALIASES.get(tokens[0].strip().lower())
-    if layout is None:
-        return "❌ نام layout نامعتبر است. گزینه‌ها: split | full | contain | auto"
+        return ("فرمت: /carousel_layout <split|full|contain|auto> [شماره] | "
+                "zone <zone> | style gradient|blend | size 0.7..1.3")
+
+    first = tokens[0].strip().lower()
+    deck: Optional[CarouselDeck] = session.get("deck")
+
+    # The plain layout form has no value token: "/carousel_layout full 3"
+    # -> layout=full, slide 3. The zone/style/size forms have a value:
+    # "/carousel_layout zone bottom_right 3" -> zone, value, slide 3.
+    num_token_index = 1
+    if first in LAYOUT_ALIASES:
+        attr, value, value_name = "image_layout", LAYOUT_ALIASES[first], first
+        targets_types = ("image_text",)
+        label = "چیدمان"
+    elif first == "zone":
+        if len(tokens) < 2:
+            return "فرمت: /carousel_layout zone <zone> [شماره]"
+        value = normalize_zone_token(tokens[1])
+        if value is None:
+            return ("❌ نام zone نامعتبر است. گزینه‌ها: بالا | وسط | پایین | "
+                    "چپ | راست و ترکیب‌ها (مثل پایین-راست)")
+        if deck is None:
+            return "این تنظیم بعد از ساخت (پیش‌نمایش) اعمال می‌شود."
+        attr, value_name, targets_types = "text_zone", tokens[1].strip(), _PHOTO_SLIDE_TYPES
+        label = "zone"
+        num_token_index = 2
+    elif first == "style":
+        if len(tokens) < 2:
+            return "فرمت: /carousel_layout style gradient|blend [شماره]"
+        value = tokens[1].strip().lower()
+        if value not in ("gradient", "blend"):
+            return "❌ نام style نامعتبر است. گزینه‌ها: gradient | blend"
+        if deck is None:
+            return "این تنظیم بعد از ساخت (پیش‌نمایش) اعمال می‌شود."
+        attr, value_name, targets_types = "text_style", value, _PHOTO_SLIDE_TYPES
+        label = "style"
+        num_token_index = 2
+    elif first == "size":
+        if len(tokens) < 2:
+            return "فرمت: /carousel_layout size 0.7..1.3 [شماره]"
+        try:
+            value = float(tokens[1].strip().translate(PERSIAN_DIGITS))
+        except ValueError:
+            return "❌ مقدار size نامعتبر است (مثلاً 0.85)."
+        if not (0.7 <= value <= 1.3):
+            return "❌ size باید بین 0.7 تا 1.3 باشد."
+        if deck is None:
+            return "این تنظیم بعد از ساخت (پیش‌نمایش) اعمال می‌شود."
+        attr, value_name, targets_types = "text_scale", value, _PHOTO_SLIDE_TYPES
+        label = "size"
+        num_token_index = 2
+    else:
+        return ("❌ نام layout نامعتبر است. گزینه‌ها: split | full | contain | auto | "
+                "zone | style | size")
 
     slide_num = None
-    if len(tokens) >= 2:
-        num_text = tokens[1].strip().translate(PERSIAN_DIGITS)
-        if not num_text.isdigit():
-            return "❌ شماره‌ی اسلاید نامعتبر است."
-        slide_num = int(num_text)
+    if len(tokens) > num_token_index:
+        slide_num, err = _parse_slide_num(tokens[num_token_index])
+        if err:
+            return err
 
-    deck: Optional[CarouselDeck] = session.get("deck")
     if deck is None:
-        # COLLECT state: no deck yet — remember it for build time
+        # COLLECT state: only the plain layout form is supported — remember
+        # it for build time (applied to all image slides).
         if slide_num is not None:
-            session["pending_image_layout"] = layout
+            session["pending_image_layout"] = value
             return (
                 "شماره‌ی اسلاید فقط بعد از ساخت (پیش‌نمایش) معنا دارد؛ "
-                f"چیدمان «{layout}» برای همه‌ی اسلایدهای تصویری ذخیره شد."
+                f"چیدمان «{value_name}» برای همه‌ی اسلایدهای تصویری ذخیره شد."
             )
-        session["pending_image_layout"] = layout
+        session["pending_image_layout"] = value
         return (
-            f"✅ چیدمان «{layout}» ذخیره شد؛ بعد از ساخت روی همه‌ی "
+            f"✅ چیدمان «{value_name}» ذخیره شد؛ بعد از ساخت روی همه‌ی "
             "اسلایدهای تصویری اعمال می‌شود."
         )
 
@@ -648,19 +803,20 @@ def apply_layout(
         if not (1 <= slide_num <= len(deck.slides)):
             return f"❌ شماره اسلاید نامعتبر است (۱ تا {len(deck.slides)})."
         slide = deck.slides[slide_num - 1]
-        if slide.slide_type != "image_text":
-            return "❌ چیدمان فقط برای اسلایدهای تصویری (image_text) کاربرد دارد."
+        if slide.slide_type not in targets_types:
+            return f"❌ {label} فقط برای اسلایدهای تصویری کاربرد دارد."
         targets = [slide_num]
     else:
-        targets = [i for i, s in enumerate(deck.slides, 1) if s.slide_type == "image_text"]
+        targets = [i for i, s in enumerate(deck.slides, 1)
+                   if s.slide_type in targets_types]
         if not targets:
-            return "اسلاید تصویری (image_text) برای اعمال چیدمان پیدا نشد."
+            return "اسلاید تصویری برای اعمال پیدا نشد."
 
     renderer = session.get("_renderer")
     failed = []
     for i in targets:
         s = deck.slides[i - 1]
-        s.image_layout = layout
+        setattr(s, attr, value)
         path = session["slide_paths"][i - 1]
         try:
             if renderer is not None and hasattr(renderer, "slide_renderer"):
@@ -675,8 +831,8 @@ def apply_layout(
         return f"❌ رندر مجدد اسلاید {' و '.join(str(n) for n in failed)} ناکام بود."
 
     if slide_num is not None:
-        return f"✅ چیدمان «{layout}» روی اسلاید {slide_num} اعمال شد."
-    return f"✅ چیدمان «{layout}» روی {len(targets)} اسلاید تصویری اعمال شد."
+        return f"✅ {label} «{value_name}» روی اسلاید {slide_num} اعمال شد."
+    return f"✅ {label} «{value_name}» روی {len(targets)} اسلاید تصویری اعمال شد."
 
 
 def change_theme(

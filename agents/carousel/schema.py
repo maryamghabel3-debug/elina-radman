@@ -17,6 +17,12 @@ CANVAS_HEIGHT = 1350
 SUPPORTED_SLIDE_TYPES = ("cover", "title_body", "quote", "bullet_list", "image_text", "image_overlay", "cta")
 # image_text layout variants (M22A); None means split_panel (legacy)
 SUPPORTED_IMAGE_LAYOUTS = ("split_panel", "full_bleed_caption", "contain_caption", "auto")
+# Caption text style (M25): "gradient" (default) or "blend" (no gradient,
+# soft dual shadow + image-sampled text color)
+SUPPORTED_TEXT_STYLES = ("gradient", "blend")
+# Manual text size adjustment (M25); default 1.0
+TEXT_SCALE_MIN = 0.7
+TEXT_SCALE_MAX = 1.3
 SUPPORTED_TEMPLATES = ("psychological_dark", "midnight_editorial", "warm_cream", "minimal_photo")
 DEFAULT_TEMPLATE = "psychological_dark"
 
@@ -88,9 +94,17 @@ class CarouselSlide:
     # image_text layout variant (M22A): split_panel (default/legacy),
     # full_bleed_caption, contain_caption, or auto (aspect-based)
     image_layout: Optional[str] = None
-    # Text zone for full-bleed slides (M23): None = auto-detect,
-    # "bottom" | "top" | "middle"
+    # Caption text zone for full-bleed slides (M23/M25): None = auto-detect,
+    # "auto", or any of the 3x3-grid rows/columns/corners (SUPPORTED_TEXT_ZONES)
     text_zone: Optional[str] = None
+    # Split placement (M25): per-part zones that override text_zone for
+    # their part (title / body)
+    title_zone: Optional[str] = None
+    body_zone: Optional[str] = None
+    # Caption style (M25): "gradient" (default) | "blend"
+    text_style: Optional[str] = None
+    # Manual text size scale (M25): 0.7-1.3, default 1.0
+    text_scale: Optional[float] = None
     eyebrow: str = ""
     footer: str = ""
     template: Optional[str] = None
@@ -156,16 +170,43 @@ def parse_carousel_slide(raw: Dict[str, Any]) -> CarouselSlide:
                 f"(use one of {list(SUPPORTED_IMAGE_LAYOUTS)})"
             )
 
-    # Text zone for full-bleed slides (M23). None -> auto-detect at render.
-    # Only meaningful for full-bleed layouts; other types ignore it
+    # Text zones for full-bleed slides (M23/M25). None -> auto-detect at
+    # render. title_zone/body_zone (M25) override text_zone per part. Only
+    # meaningful for full-bleed layouts/cover; other types ignore them
     # (forward compatible).
     text_zone = raw.get("text_zone")
-    if text_zone is not None:
-        if not isinstance(text_zone, str) or text_zone not in SUPPORTED_TEXT_ZONES:
+    for name, value in (("text_zone", text_zone),
+                        ("title_zone", raw.get("title_zone")),
+                        ("body_zone", raw.get("body_zone"))):
+        if value is not None:
+            if not isinstance(value, str) or value not in SUPPORTED_TEXT_ZONES:
+                raise CarouselConfigError(
+                    f"{name} '{value}' is not supported "
+                    f"(use one of {list(SUPPORTED_TEXT_ZONES)})"
+                )
+    title_zone = raw.get("title_zone")
+    body_zone = raw.get("body_zone")
+
+    # Caption style (M25): "gradient" (default) | "blend"
+    text_style = raw.get("text_style")
+    if text_style is not None:
+        if not isinstance(text_style, str) or text_style not in SUPPORTED_TEXT_STYLES:
             raise CarouselConfigError(
-                f"text_zone '{text_zone}' is not supported "
-                f"(use one of {list(SUPPORTED_TEXT_ZONES)})"
+                f"text_style '{text_style}' is not supported "
+                f"(use one of {list(SUPPORTED_TEXT_STYLES)})"
             )
+
+    # Manual text size scale (M25): 0.7-1.3, default 1.0
+    text_scale = raw.get("text_scale")
+    if text_scale is not None:
+        if isinstance(text_scale, bool) or not isinstance(text_scale, (int, float)):
+            raise CarouselConfigError("'text_scale' must be a number between 0.7 and 1.3")
+        if not (TEXT_SCALE_MIN <= float(text_scale) <= TEXT_SCALE_MAX):
+            raise CarouselConfigError(
+                f"text_scale {text_scale} is out of range "
+                f"({TEXT_SCALE_MIN}-{TEXT_SCALE_MAX})"
+            )
+        text_scale = float(text_scale)
 
     slide_number = raw.get("slide_number")
     if slide_number is not None:
@@ -230,6 +271,10 @@ def parse_carousel_slide(raw: Dict[str, Any]) -> CarouselSlide:
         image_path=image_path,
         image_layout=image_layout,
         text_zone=text_zone,
+        title_zone=title_zone,
+        body_zone=body_zone,
+        text_style=text_style,
+        text_scale=text_scale,
         eyebrow=eyebrow,
         footer=footer,
         template=template,

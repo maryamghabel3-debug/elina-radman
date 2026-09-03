@@ -25,7 +25,13 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from agents.editing.typography_engine import TypographyEngine
 from agents.editing.font_resolver import FontNotFoundError
 from agents.carousel.brand_theme import TemplateTheme, get_template, hex_to_rgb, palette_rgb
-from agents.carousel.text_zone import find_best_text_zone
+from agents.carousel.text_zone import (
+    ZONE_GRID_PRIORITY,
+    ZONES_3x3,
+    cell_scores,
+    find_best_text_zone,
+    zone_luminance,
+)
 from agents.carousel.schema import (
     CANVAS_HEIGHT,
     CANVAS_WIDTH,
@@ -117,6 +123,28 @@ def _middle_band_gradient(width: int, height: int, peak_alpha: float,
     return overlay
 
 
+def _local_gradient(width: int, height: int, direction: str, peak_alpha: float,
+                    color: Tuple[int, int, int] = (16, 16, 20)) -> Image.Image:
+    """A localized readability patch sized to a text block + padding (M25):
+    transparent-to-peak vertical gradient. direction: "top" (peak at the
+    top edge), "bottom" (peak at the bottom edge), "middle" (peak in the
+    center)."""
+    overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    peak_alpha = max(0.0, min(1.0, peak_alpha))
+    for y in range(height):
+        t = y / max(1, height - 1)
+        if direction == "top":
+            a = peak_alpha * (1.0 - t)
+        elif direction == "bottom":
+            a = peak_alpha * t
+        else:
+            a = peak_alpha * (1.0 - abs(2.0 * t - 1.0))
+        alpha = round(255 * a)
+        draw.line([(0, y), (width, y)], fill=(color[0], color[1], color[2], alpha))
+    return overlay
+
+
 # Carousel aspect ratio (4:5) used by the "auto" image_layout choice (M22A)
 CANVAS_ASPECT_RATIO = CANVAS_WIDTH / CANVAS_HEIGHT
 # Relative tolerance: sources within +/-10% of the canvas ratio are
@@ -138,6 +166,61 @@ def choose_auto_image_layout(source_w: int, source_h: int) -> str:
     if abs(src_aspect - CANVAS_ASPECT_RATIO) <= AUTO_FULL_BLEED_TOLERANCE * CANVAS_ASPECT_RATIO:
         return "full_bleed_caption"
     return "contain_caption"
+
+
+# ---------------------------------------------------------------------------
+# M25 text composition: zone geometry + rebalanced photo typography
+# ---------------------------------------------------------------------------
+
+# Block width fractions by zone kind (M25): center zones get 70% of the
+# canvas, side/corner zones are limited to 45% and anchored to their side.
+_CENTER_ZONE_FRAC = 0.70
+_SIDE_ZONE_FRAC = 0.45
+# Rebalanced photo-slide typography (M25): title ~22% smaller and body
+# ~18% larger than the legacy M18A sizes, targeting a title/body ratio of
+# ~1.35-1.5 (was ~2.2-2.3).
+_PHOTO_TITLE_FACTOR = 0.78
+_PHOTO_BODY_FACTOR = 1.18
+# Readability patch padding around the text block (canvas fractions)
+_PATCH_PADDING_FRAC = 0.04
+# Per-part fit limits (canvas height fractions, max 3 lines each)
+_TITLE_MAX_HEIGHT_FRAC = 0.28
+_BODY_MAX_HEIGHT_FRAC = 0.20
+_TOP_ZONE_Y_FRAC = 0.08
+# Blend-mode (M25) dual soft shadow: light halo + dark outline alphas
+_BLEND_LIGHT_HALO = (245, 243, 238, 60)
+_BLEND_DARK_SHADOW = (12, 12, 16, 110)
+
+# Zone geometry: every addressable zone maps to a grid row (top/middle/
+# bottom) and a grid column (left/center/right).
+_ZONE_ROW_OF = {zone: zone.split("_")[0] for zone in ZONES_3x3}
+_ZONE_ROW_OF.update({"top": "top", "middle": "middle", "bottom": "bottom"})
+_ZONE_COL_OF = {zone: zone.split("_")[1] for zone in ZONES_3x3}
+# Row zones span the center column; column zones sit in the middle row.
+_ZONE_COL_OF.update({"top": "center", "middle": "center", "bottom": "center",
+                     "left": "left", "right": "right"})
+_ZONE_ROW_OF.update({"left": "middle", "right": "middle"})
+_ROW_IDX = {"top": 0, "middle": 1, "bottom": 2}
+_COL_IDX = {"left": 0, "center": 1, "right": 2}
+
+
+def _zone_row(zone: str) -> str:
+    return _ZONE_ROW_OF[zone]
+
+
+def _zone_col(zone: str) -> str:
+    return _ZONE_COL_OF[zone]
+
+
+def _zone_is_side(zone: str) -> bool:
+    return _ZONE_COL_OF[zone] in ("left", "right")
+
+
+def _cells_adjacent(a: str, b: str) -> bool:
+    """True when two grid cells share an edge (diagonals are allowed)."""
+    ra, ca = _ROW_IDX[_zone_row(a)], _COL_IDX[_zone_col(a)]
+    rb, cb = _ROW_IDX[_zone_row(b)], _COL_IDX[_zone_col(b)]
+    return abs(ra - rb) + abs(ca - cb) == 1
 
 
 class CarouselSlideRenderer:
@@ -392,6 +475,17 @@ class CarouselSlideRenderer:
     # ------------------------------------------------------------------
 
     def _layout_cover(self, draw, img, slide: CarouselSlide, theme: TemplateTheme, W, H, M):
+        # M25: a cover with any composition option (text_zone auto/explicit,
+        # title/body zone, blend style, or a manual text scale) uses the same
+        # composition path as photo slides; otherwise the legacy layout is
+        # kept byte-identical (pre-M25 output).
+        if slide.image_path and not self._cover_is_legacy(slide):
+            source = self._load_image(slide.image_path)
+            self._place_cover_image(img, source, 0, 0, W, H,
+                                    theme.overlay_alpha, gradient=True)
+            self._render_composition(draw, img, slide, theme, W, H, M, source)
+            return
+
         accent = palette_rgb(slide.accent)
         if slide.image_path:
             self._place_cover_image(img, self._load_image(slide.image_path), 0, 0, W, H,
@@ -550,13 +644,264 @@ class CarouselSlideRenderer:
             return choose_auto_image_layout(*source_size)
         return layout
 
-    def _resolve_text_zone(self, slide: CarouselSlide, source: Image.Image) -> str:
-        """Effective text zone for a full-bleed slide (M23): an explicit
-        slide.text_zone wins; otherwise the least-busy band of the source
-        image is auto-detected (deterministic)."""
-        if slide.text_zone:
-            return slide.text_zone
-        return find_best_text_zone(source)
+    # ------------------------------------------------------------------
+    # M25 text composition (full_bleed_caption / image_overlay / cover)
+    # ------------------------------------------------------------------
+
+    def _cover_is_legacy(self, slide: CarouselSlide) -> bool:
+        """M25: a cover with NO composition option set keeps the legacy
+        layout (byte-identical to pre-M25 output)."""
+        return (
+            slide.text_zone is None
+            and slide.title_zone is None
+            and slide.body_zone is None
+            and (slide.text_style or "gradient") == "gradient"
+            and (slide.text_scale if slide.text_scale is not None else 1.0) == 1.0
+        )
+
+    def _resolve_part_zones(self, slide: CarouselSlide, source: Image.Image):
+        """Resolve the title/body zones for a composition slide (M25).
+
+        Precedence: an explicit title_zone/body_zone wins for its part;
+        slide.text_zone is the fallback for both. When both parts fall
+        back to auto, two least-busy NON-ADJACENT grid cells are chosen
+        (the title gets the higher/more prominent one); a single part
+        falls back to a single auto-detected zone.
+        """
+        tz = slide.title_zone if slide.title_zone is not None else slide.text_zone
+        bz = slide.body_zone if slide.body_zone is not None else slide.text_zone
+        tz_auto = tz in (None, "auto")
+        bz_auto = bz in (None, "auto")
+        has_title = bool(slide.title)
+        has_body = bool(slide.body)
+
+        t_z = b_z = None
+        if tz_auto and bz_auto and has_title and has_body:
+            t_z, b_z = self._auto_split_zones(source)
+        else:
+            if has_title:
+                t_z = tz if not tz_auto else find_best_text_zone(source)
+            if has_body:
+                b_z = bz if not bz_auto else find_best_text_zone(source)
+        return t_z, b_z
+
+    def _auto_split_zones(self, source: Image.Image) -> Tuple[str, str]:
+        """Pick the two least-busy non-adjacent grid cells for the
+        title/body split (M25). The title gets the higher/more prominent
+        cell (top row first; ties by grid tie-break priority)."""
+        scores = cell_scores(source)
+        cells = list(ZONES_3x3)
+        best = None
+        for i in range(len(cells)):
+            for j in range(i + 1, len(cells)):
+                a, b = cells[i], cells[j]
+                if _cells_adjacent(a, b):
+                    continue
+                key = (scores[a] + scores[b],
+                       ZONE_GRID_PRIORITY[a], ZONE_GRID_PRIORITY[b])
+                if best is None or key < best[0]:
+                    best = (key, a, b)
+        a, b = best[1], best[2]
+        ra, rb = _ROW_IDX[_zone_row(a)], _ROW_IDX[_zone_row(b)]
+        if rb < ra or (rb == ra and ZONE_GRID_PRIORITY[b] < ZONE_GRID_PRIORITY[a]):
+            a, b = b, a
+        return a, b
+
+    def _render_composition(self, draw, img, slide: CarouselSlide, theme: TemplateTheme,
+                            W, H, M, source: Image.Image):
+        """M25: place title/body (each in its own zone) with localized
+        readability treatments — a small gradient patch sized to the text
+        block (gradient style) or a soft dual shadow (blend style)."""
+        t_z, b_z = self._resolve_part_zones(slide, source)
+        self._render_caption_parts(draw, img, slide, theme, W, H, M, source, t_z, b_z)
+
+    def _caption_block_box(self, zone: str, W: int, H: int, M: int,
+                           block_w: int, block_h: int):
+        """(x0, y0, align) for a caption block in `zone`. align:
+        "center" (centered), "right" (right-anchored, lines right-aligned),
+        "left_anchored" (left-anchored block, lines still right-aligned
+        for RTL reading order)."""
+        row = _zone_row(zone)
+        col = _zone_col(zone)
+        if row == "top":
+            y0 = int(round(H * _TOP_ZONE_Y_FRAC))
+        elif row == "bottom":
+            footer_size = max(18, int(round(30 * self._scale)))
+            y0 = H - M - footer_size - int(round(H * 0.035)) - block_h
+        else:
+            y0 = (H - block_h) // 2
+        if col == "left":
+            x0 = M
+            align = "left_anchored"
+        elif col == "right":
+            x0 = W - M - block_w
+            align = "right"
+        else:
+            x0 = (W - block_w) // 2
+            align = "center"
+        return x0, y0, align
+
+    @staticmethod
+    def _block_line_x(align: str, x0: int, block_w: int, line_w: float,
+                      center_x: float) -> float:
+        if align == "center":
+            return center_x - line_w / 2
+        # right / left_anchored: lines right-aligned within the block
+        return x0 + block_w - line_w
+
+    def _blend_title_font_path(self) -> Optional[str]:
+        """Blend mode uses a lighter title weight when a Regular Vazirmatn
+        is bundled next to the primary font; otherwise keeps the primary
+        (Bold) font."""
+        primary = self.engine.font_path or ""
+        d = os.path.dirname(primary)
+        if not d:
+            return None
+        for name in ("Vazirmatn-Regular.ttf", "Vazirmatn-Regular.woff2",
+                     "Vazirmatn-Variable.ttf", "Vazirmatn-Light.ttf"):
+            p = os.path.join(d, name)
+            if os.path.exists(p):
+                return p
+        return None
+
+    def _draw_blend_text(self, ldraw: ImageDraw.ImageDraw, x: float, y: float,
+                         prepared: str, font, size: int, fill, kwargs: Dict[str, str]):
+        """Dual soft shadow for blend mode (M25): a light halo pass, a dark
+        outline pass, then the text itself. Drawn on an RGBA layer so the
+        semi-transparent strokes composite (Pillow only)."""
+        light_w = max(6, size // 10)
+        dark_w = max(2, size // 25)
+        ldraw.text((x, y), prepared, font=font, fill=_BLEND_LIGHT_HALO,
+                   stroke_width=light_w, stroke_fill=_BLEND_LIGHT_HALO, **kwargs)
+        ldraw.text((x, y), prepared, font=font, fill=_BLEND_DARK_SHADOW,
+                   stroke_width=dark_w, stroke_fill=_BLEND_DARK_SHADOW, **kwargs)
+        ldraw.text((x, y), prepared, font=font,
+                   fill=fill if len(fill) == 4 else fill + (255,), **kwargs)
+
+    def _render_caption_parts(self, draw, img, slide: CarouselSlide, theme: TemplateTheme,
+                              W, H, M, source: Image.Image, title_zone, body_zone):
+        """Render the caption parts. When title and body share a zone they
+        are drawn as one stacked block (eyebrow + title + accent rule +
+        body, single patch); otherwise each part gets its own zone, block
+        and localized treatment (the eyebrow travels with the title, or
+        with the body when there is no title)."""
+        has_title = bool(slide.title)
+        has_body = bool(slide.body)
+        if has_title and has_body and title_zone == body_zone:
+            self._render_caption_block(draw, img, slide, theme, W, H, M, source,
+                                       title_zone, "stack")
+        else:
+            if has_title:
+                self._render_caption_block(draw, img, slide, theme, W, H, M, source,
+                                           title_zone, "title")
+            if has_body:
+                self._render_caption_block(draw, img, slide, theme, W, H, M, source,
+                                           body_zone, "body")
+
+    def _render_caption_block(self, draw, img, slide: CarouselSlide, theme: TemplateTheme,
+                              W, H, M, source: Image.Image, zone: str, which: str):
+        """Fit + place one caption block (M25) in `zone`.
+
+        which: "stack" (eyebrow+title+rule+body), "title" (eyebrow+title)
+        or "body". Uses the rebalanced photo typography (title *0.78,
+        body *1.18 of the theme sizes) scaled by slide.text_scale."""
+        side = _zone_is_side(zone)
+        width = int(round(W * (_SIDE_ZONE_FRAC if side else _CENTER_ZONE_FRAC)))
+        text_scale = slide.text_scale if slide.text_scale is not None else 1.0
+        style = slide.text_style or "gradient"
+        accent = palette_rgb(slide.accent)
+        gap = int(round(H * 0.02))
+        blend = style == "blend"
+        title_font_path = self._blend_title_font_path() if blend else None
+
+        items: List[Tuple[str, List[str], Any, int, float]] = []
+        eyebrow = ""
+        if which == "stack" or which == "title" or not slide.title:
+            eyebrow = slide.eyebrow
+        if eyebrow:
+            eb_size = max(20, int(round(34 * self._scale)))
+            items.append(("eyebrow", [eyebrow],
+                          ImageFont.truetype(self.engine.font_path, eb_size),
+                          eb_size, eb_size * LINE_SPACING))
+        if which in ("stack", "title"):
+            t_start = int(theme.title_size * _PHOTO_TITLE_FACTOR * text_scale)
+            tf, tl, ts = self._fit_block(draw, slide.title, width,
+                                         H * _TITLE_MAX_HEIGHT_FRAC,
+                                         t_start, theme.min_title_size, 3)
+            if title_font_path is not None:
+                tf = ImageFont.truetype(title_font_path, ts)
+            items.append(("title", tl, tf, ts, len(tl) * ts * LINE_SPACING))
+        if which in ("stack", "body"):
+            b_start = int(theme.body_size * _PHOTO_BODY_FACTOR * text_scale)
+            bf, bl, bs = self._fit_block(draw, slide.body, width,
+                                         H * _BODY_MAX_HEIGHT_FRAC,
+                                         b_start, theme.min_body_size, 3)
+            items.append(("body", bl, bf, bs, len(bl) * bs * LINE_SPACING))
+        if not items:
+            return
+
+        rule_h = RULE_THICKNESS if which == "stack" else 0
+        total_h = sum(h for *_, h in items)
+        if len(items) > 1:
+            total_h += gap * (len(items) - 1)
+        if rule_h:
+            total_h += rule_h
+        total_h = int(round(total_h))
+
+        x0, y0, align = self._caption_block_box(zone, W, H, M, width, total_h)
+        block_cx = x0 + width / 2
+        center_x = W / 2
+
+        # Localized readability treatment (gradient style only)
+        if not blend:
+            pad = int(round(H * _PATCH_PADDING_FRAC))
+            px0 = max(0, x0 - pad)
+            py0 = max(0, y0 - pad)
+            pw = min(W - px0, width + 2 * pad)
+            ph = min(H - py0, total_h + 2 * pad)
+            peak = max(0.80, theme.overlay_alpha + 0.18)
+            patch = _local_gradient(pw, ph, _zone_row(zone), peak)
+            img.alpha_composite(patch, (px0, py0))
+
+        # Colors
+        if blend:
+            zone_lum = zone_luminance(source, zone)
+            zone_color = palette_rgb("bone_white") if zone_lum < 128 \
+                else palette_rgb("ink_black")
+            colors = {"eyebrow": accent, "title": zone_color, "body": zone_color}
+        else:
+            colors = {"eyebrow": accent,
+                      "title": palette_rgb(theme.text),
+                      "body": palette_rgb(theme.secondary_text)}
+
+        layer = None
+        ldraw = None
+        if blend:
+            layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+            ldraw = ImageDraw.Draw(layer)
+        target = ldraw if ldraw is not None else draw
+
+        y = y0
+        prev_kind = None
+        for kind, lines, font, size, h in items:
+            if prev_kind is not None:
+                if prev_kind == "title" and kind == "body" and rule_h:
+                    self._accent_rule(target, y + gap, block_cx, accent)
+                    y += gap * 2 + rule_h
+                else:
+                    y += gap
+            for line in lines:
+                prepared, line_w, kwargs = self._line_layout(target, line, font)
+                x = self._block_line_x(align, x0, width, line_w, center_x)
+                if blend:
+                    self._draw_blend_text(ldraw, x, y, prepared, font, size,
+                                          colors[kind], kwargs)
+                else:
+                    target.text((x, y), prepared, font=font, fill=colors[kind], **kwargs)
+                y += size * LINE_SPACING
+            prev_kind = kind
+        if layer is not None:
+            img.alpha_composite(layer)
 
     def _layout_split_panel(self, draw, img, slide: CarouselSlide, theme: TemplateTheme,
                             W, H, M, text_right, text_width, source):
@@ -601,19 +946,14 @@ class CarouselSlideRenderer:
 
     def _layout_full_bleed_caption(self, draw, img, slide: CarouselSlide, theme: TemplateTheme,
                                    W, H, M, source):
-        """Full-bleed caption (M22A + M23): cover-crop the source across
-        the full canvas (aspect preserved, never stretched), a soft dark
-        gradient behind the caption, and the title/body inside the safe
-        region. No opaque text panel.
-
-        The text zone is the explicitly set slide.text_zone (M23), or the
-        auto-detected least-busy band of the source image when it is None.
-        Footer/slide number stay in their fixed bottom positions."""
+        """Full-bleed caption (M22A + M23 + M25): cover-crop the source
+        across the full canvas (aspect preserved, never stretched), then
+        the M25 composition — per-zone readability patches (or blend
+        shadows), rebalanced typography, split title/body zones. No
+        opaque text panel. Footer/slide number stay in their fixed bottom
+        positions."""
         self._place_cover_image(img, source, 0, 0, W, H, theme.overlay_alpha, gradient=True)
-        zone = self._resolve_text_zone(slide, source)
-        # Smaller caption zone when the slide is title-only
-        self._draw_caption(draw, img, slide, theme, W, H, M, zone,
-                           0.58 if slide.body else 0.46)
+        self._render_composition(draw, img, slide, theme, W, H, M, source)
 
     def _layout_contain_caption(self, draw, img, slide: CarouselSlide, theme: TemplateTheme,
                                 W, H, M, source):
@@ -729,15 +1069,14 @@ class CarouselSlideRenderer:
 
     def _layout_image_overlay(self, draw, img, slide: CarouselSlide, theme: TemplateTheme,
                               W, H, M):
-        """M22 full-bleed slide type: full-bleed image (same cover crop as
-        'cover', aspect preserved, never stretched) + gradient + caption.
-        Same rendering as image_text's full_bleed_caption layout; the text
-        zone honors an explicit slide.text_zone, else auto-detection (M23)."""
+        """M22 full-bleed slide type — M25 composition path: full-bleed
+        image (same cover crop as 'cover', aspect preserved, never
+        stretched) + per-zone readability treatment. Same rendering as
+        image_text's full_bleed_caption layout."""
         source = self._load_image(slide.image_path)
         self._place_cover_image(img, source, 0, 0, W, H,
                                 theme.overlay_alpha, gradient=True)
-        self._draw_caption(draw, img, slide, theme, W, H, M,
-                           self._resolve_text_zone(slide, source), 0.58)
+        self._render_composition(draw, img, slide, theme, W, H, M, source)
 
     def _layout_cta(self, draw, img, slide: CarouselSlide, theme: TemplateTheme,
                     W, H, M, text_width):
