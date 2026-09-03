@@ -20,6 +20,11 @@ from agents.carousel.text_zone import (
     zone_luminance,
     zone_scores,
 )
+from agents.carousel.inline_styles import (
+    TextSegment,
+    has_inline_styles,
+    parse_inline_styles,
+)
 from agents.carousel.schema import (
     CANVAS_HEIGHT,
     CANVAS_WIDTH,
@@ -105,6 +110,9 @@ __all__ = [
     "zone_is_acceptable",
     "zone_luminance",
     "zone_scores",
+    "TextSegment",
+    "has_inline_styles",
+    "parse_inline_styles",
     "SUPPORTED_TEMPLATES",
     "TEXT_LIMITS",
     "MIN_BULLETS",

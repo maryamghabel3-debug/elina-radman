@@ -12,12 +12,20 @@ Renders branded Persian carousel slides (1080x1350 PNG) with Pillow:
   a dark gradient overlay behind text.
 - Text is wrapped deterministically and auto-shrunk within configured
   minimums; if it still cannot fit, CAROUSEL_TEXT_OVERFLOW is raised.
+- Default starting font sizes are reduced (M26) so everyday decks do not
+  need manual size=0.75; text_scale still multiplies the starts.
+- Slide titles/bodies support per-word inline styling (M26):
+  [word|color=#B89B65] / [word|size=1.3] / [word|color=#B89B65,size=1.3].
+  Unmarked text renders byte-identically to the plain path; malformed
+  markup falls back to plain (with a warning).
 
-Only standard library + Pillow + existing typography utilities are used.
+Only standard library + Pillow + numpy + existing typography utilities
+are used.
 """
 
 import logging
 import os
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
@@ -31,6 +39,11 @@ from agents.carousel.text_zone import (
     cell_scores,
     find_best_text_zone,
     zone_luminance,
+)
+from agents.carousel.inline_styles import (
+    TextSegment,  # noqa: F401  (re-exported for callers/tests)
+    has_inline_styles,
+    parse_inline_styles,
 )
 from agents.carousel.schema import (
     CANVAS_HEIGHT,
@@ -176,11 +189,21 @@ def choose_auto_image_layout(source_w: int, source_h: int) -> str:
 # canvas, side/corner zones are limited to 45% and anchored to their side.
 _CENTER_ZONE_FRAC = 0.70
 _SIDE_ZONE_FRAC = 0.45
-# Rebalanced photo-slide typography (M25): title ~22% smaller and body
-# ~18% larger than the legacy M18A sizes, targeting a title/body ratio of
-# ~1.35-1.5 (was ~2.2-2.3).
-_PHOTO_TITLE_FACTOR = 0.78
-_PHOTO_BODY_FACTOR = 1.18
+# M26: reduced default starting sizes — operators no longer need to send
+# size=0.75 for everyday decks. text_scale still multiplies these
+# starting sizes (behavior unchanged).
+# Photo-slide title (full_bleed_caption / image_overlay / composed cover):
+# ~25% smaller than the M25 default (104 * 0.78 = 81 on psychological_dark
+# -> 104 * 0.585 = 60).
+_COMP_TITLE_FACTOR = 0.585
+# Photo-slide body: 64% of the reduced title start size — keeps the
+# title/body balance inside the 60-65% target range (54 -> 38 on
+# psychological_dark).
+_COMP_BODY_RATIO = 0.64
+# Legacy cover (no composition options): ~25% smaller title and ~15%
+# smaller body than the M18A theme defaults (104/46 -> 78/39).
+_COVER_TITLE_FACTOR = 0.75
+_COVER_BODY_FACTOR = 0.85
 # Readability patch padding around the text block (canvas fractions)
 _PATCH_PADDING_FRAC = 0.04
 # Per-part fit limits (canvas height fractions, max 3 lines each)
@@ -221,6 +244,24 @@ def _cells_adjacent(a: str, b: str) -> bool:
     ra, ca = _ROW_IDX[_zone_row(a)], _COL_IDX[_zone_col(a)]
     rb, cb = _ROW_IDX[_zone_row(b)], _COL_IDX[_zone_col(b)]
     return abs(ra - rb) + abs(ca - cb) == 1
+
+
+@dataclass
+class TextFit:
+    """Result of CarouselSlideRenderer._fit_text (M26).
+
+    plain=True: the legacy wrapped text (font/lines/size) — rendered
+    byte-identically through _draw_block. plain=False: an inline-styled
+    layout (rich_lines: list of lines, each a list of
+    (text, color, eff_size, width) units).
+    """
+
+    plain: bool
+    size: int
+    height: float
+    font: Optional[Any] = None
+    lines: Optional[List[str]] = None
+    rich_lines: Optional[List[List[Tuple[str, Optional[str], int, float]]]] = None
 
 
 class CarouselSlideRenderer:
@@ -432,6 +473,196 @@ class CarouselSlideRenderer:
             cursor_y += pitch
         return cursor_y
 
+    # ------------------------------------------------------------------
+    # M26 inline-styled ("rich") text: [word|color=#RRGGBB,size=1.3]
+    # ------------------------------------------------------------------
+
+    def _fit_text(self, draw: ImageDraw.ImageDraw, text: str, max_width: float,
+                  max_height: float, start_size: int, min_size: int,
+                  max_lines: int) -> "TextFit":
+        """Like _fit_block, but understands M26 inline markup.
+
+        Without markup this delegates to _fit_block (byte-identical
+        rendering); with valid styled segments it lays the text out as
+        inline units, auto-shrinking the BASE size with the same overflow
+        protection."""
+        if not has_inline_styles(text):
+            font, lines, size = self._fit_block(draw, text, max_width, max_height,
+                                                start_size, min_size, max_lines)
+            return TextFit(plain=True, size=size,
+                           height=len(lines) * size * LINE_SPACING,
+                           font=font, lines=lines)
+        segments = parse_inline_styles(text)
+        laid, size = self._fit_rich(draw, text, segments, max_width, max_height,
+                                    start_size, min_size, max_lines)
+        height = sum(max(u[2] for u in line) * LINE_SPACING for line in laid)
+        return TextFit(plain=False, size=size, height=height, rich_lines=laid)
+
+    def _fit_rich(self, draw: ImageDraw.ImageDraw, text: str,
+                  segments: List[TextSegment], max_width: float, max_height: float,
+                  start_size: int, min_size: int, max_lines: int):
+        """Auto-shrink the BASE size until the styled units fit into
+        max_width x max_height with at most max_lines (same protection as
+        _fit_block). Returns (lines, size) where each line is a list of
+        (text, color, eff_size, width) units."""
+        start_size = max(min_size, int(round(start_size * self._scale)))
+        min_size = max(int(MIN_ABS_SIZE * self._scale), int(round(min_size * self._scale)))
+        step = max(2, int(round(FONT_STEP * self._scale)))
+
+        def _fits(size: int):
+            laid = self._rich_layout(draw, segments, size, max_width)
+            if laid is None:
+                return None
+            if len(laid) > max_lines:
+                return None
+            height = sum(max(u[2] for u in line) * LINE_SPACING for line in laid)
+            if height > max_height:
+                return None
+            return laid
+
+        size = start_size
+        while True:
+            laid = _fits(size)
+            if laid is not None:
+                return laid, size
+            if size <= min_size:
+                break
+            size -= step
+        laid = _fits(min_size)
+        if laid is not None:
+            return laid, min_size
+        n = len(self._rich_layout(draw, segments, min_size, max_width) or [])
+        raise CarouselTextOverflowError(
+            f"text '{(text or '')[:40]}...' does not fit: needs {n} lines at "
+            f"{min_size}px in a {int(max_width)}x{int(max_height)} box (max {max_lines} lines)"
+        )
+
+    def _rich_units(self, draw: ImageDraw.ImageDraw, segments: List[TextSegment],
+                    size: int, max_width: float):
+        """Flatten styled segments into drawable units, word-splitting a
+        styled phrase that is wider than max_width. Returns the unit list
+        ((text, color, eff_size, width)), or None when a single word still
+        does not fit."""
+        units = []
+        for seg in segments:
+            if not seg.text:
+                continue
+            eff_size = max(1, int(round(size * seg.size_multiplier)))
+            font = ImageFont.truetype(self.engine.font_path, eff_size)
+            width = self._line_layout(draw, seg.text, font)[1]
+            if width <= max_width:
+                units.append([seg.text, seg.color, eff_size, width])
+                continue
+            words = [w for w in seg.text.split(" ") if w]
+            for i, word in enumerate(words):
+                word_width = self._line_layout(draw, word, font)[1]
+                if word_width > max_width:
+                    return None
+                if i > 0:  # keep the intra-phrase word spacing
+                    sp_width = self._line_layout(draw, " ", font)[1]
+                    units.append([" ", None, eff_size, sp_width])
+                units.append([word, seg.color, eff_size, word_width])
+        return units
+
+    def _rich_layout(self, draw: ImageDraw.ImageDraw, segments: List[TextSegment],
+                     size: int, max_width: float):
+        """Flow the styled units into lines that fit max_width (a styled
+        segment that does not fit wraps to the next line). Returns the
+        trimmed line list, or None when no layout exists at this size."""
+        units = self._rich_units(draw, segments, size, max_width)
+        if units is None:
+            return None
+        lines = []
+        cur = []
+        cur_w = 0.0
+        for unit in units:
+            if cur and cur_w + unit[3] > max_width:
+                lines.append(cur)
+                cur = []
+                cur_w = 0.0
+            cur.append(unit)
+            cur_w += unit[3]
+        if cur:
+            lines.append(cur)
+        trimmed = []
+        for line in lines:
+            while line and line[0][0] == " ":
+                line = line[1:]
+            while line and line[-1][0] == " ":
+                line = line[:-1]
+            if line:
+                trimmed.append(line)
+        return trimmed or None
+
+    def _draw_rich(self, draw: ImageDraw.ImageDraw, laid, y: float, region_width: float,
+                   right_edge: Optional[float] = None, center_x: Optional[float] = None,
+                   fill: Tuple[int, int, int] = (255, 255, 255)) -> float:
+        """Draw a rich layout: units flow right-to-left (RTL); each unit is
+        shaped and drawn with its own font size and color (default `fill`
+        when the unit has no override). Mirrors _draw_block alignment
+        semantics. Returns the y position below the block."""
+        cursor_y = y
+        for line in laid:
+            total_w = sum(u[3] for u in line)
+            if right_edge is not None:
+                x_cursor = right_edge
+            elif center_x is not None:
+                x_cursor = center_x + total_w / 2
+            else:
+                x_cursor = region_width
+            for text, color, eff_size, width in line:
+                font = ImageFont.truetype(self.engine.font_path, eff_size)
+                prepared, _, kwargs = self._line_layout(draw, text, font)
+                x = x_cursor - width
+                unit_fill = hex_to_rgb(color) if color is not None else fill
+                draw.text((x, cursor_y), prepared, font=font, fill=unit_fill, **kwargs)
+                x_cursor -= width
+            cursor_y += max(u[2] for u in line) * LINE_SPACING
+        return cursor_y
+
+    def _draw_fit(self, draw: ImageDraw.ImageDraw, fit: "TextFit", y: float,
+                  region_width: float, right_edge: Optional[float] = None,
+                  center_x: Optional[float] = None,
+                  fill: Tuple[int, int, int] = (255, 255, 255),
+                  stroke_width: int = 0,
+                  stroke_fill: Optional[Tuple[int, int, int]] = None) -> float:
+        """Draw a TextFit: plain -> the exact M18A path (byte-identical);
+        rich -> the M26 inline-styled path."""
+        if not fit.plain:
+            return self._draw_rich(draw, fit.rich_lines, y, region_width,
+                                   right_edge=right_edge, center_x=center_x, fill=fill)
+        return self._draw_block(draw, fit.lines, fit.font, fit.size, y, region_width,
+                                right_edge=right_edge, center_x=center_x, fill=fill,
+                                stroke_width=stroke_width, stroke_fill=stroke_fill)
+
+    def _draw_rich_composed(self, draw, laid, y: float, x0: int, width: int,
+                            align: str, center_x: float, fill,
+                            blend: bool, ldraw=None) -> float:
+        """Draw a rich layout with the M25 composition alignment (center /
+        right-anchored / left-anchored blocks) and, in blend mode, the
+        dual soft shadow per unit. Returns the y below the block."""
+        cursor_y = y
+        for line in laid:
+            total_w = sum(u[3] for u in line)
+            if align == "center":
+                x_cursor = center_x + total_w / 2
+            else:  # right / left_anchored: lines right-aligned in the block
+                x_cursor = x0 + width
+            for text, color, eff_size, unit_w in line:
+                font = ImageFont.truetype(self.engine.font_path, eff_size)
+                prepared, _, kwargs = self._line_layout(draw, text, font)
+                x = x_cursor - unit_w
+                unit_fill = hex_to_rgb(color) if color is not None else fill
+                if blend:
+                    self._draw_blend_text(ldraw, x, cursor_y, prepared, font,
+                                          eff_size, unit_fill, kwargs)
+                else:
+                    draw.text((x, cursor_y), prepared, font=font,
+                              fill=unit_fill, **kwargs)
+                x_cursor -= unit_w
+            cursor_y += max(u[2] for u in line) * LINE_SPACING
+        return cursor_y
+
     def _accent_rule(self, draw: ImageDraw.ImageDraw, y: float, center_x: float,
                      accent: Tuple[int, int, int], width_frac: float = RULE_WIDTH_FRAC):
         """Restrained accent rule (thin, short — gold kept restrained)."""
@@ -503,23 +734,25 @@ class CarouselSlideRenderer:
             self._draw_block(draw, [slide.eyebrow], font, size, H * 0.235, text_width,
                              center_x=center_x, fill=accent)
 
-        font, lines, size = self._fit_block(draw, slide.title, text_width, H * 0.37,
-                                            theme.title_size, theme.min_title_size, 4)
-        block_h = len(lines) * size * LINE_SPACING
+        title_fit = self._fit_text(draw, slide.title, text_width, H * 0.37,
+                                   int(round(theme.title_size * _COVER_TITLE_FACTOR)),
+                                   theme.min_title_size, 4)
+        block_h = title_fit.height
         title_y = H * 0.31
-        self._draw_block(draw, lines, font, size, title_y, text_width, center_x=center_x, fill=text_fill)
+        self._draw_fit(draw, title_fit, title_y, text_width, center_x=center_x, fill=text_fill)
 
         rule_y = title_y + block_h + int(round(H * 0.03))
         self._accent_rule(draw, rule_y, center_x, accent)
 
         if slide.body:
-            body_font, body_lines, body_size = self._fit_block(
+            body_fit = self._fit_text(
                 draw, slide.body, text_width, H * 0.14,
-                theme.body_size, theme.min_body_size, 2,
+                int(round(theme.body_size * _COVER_BODY_FACTOR)),
+                theme.min_body_size, 2,
             )
-            self._draw_block(draw, body_lines, body_font, body_size, rule_y + H * 0.05,
-                             text_width, center_x=center_x,
-                             fill=palette_rgb(theme.secondary_text))
+            self._draw_fit(draw, body_fit, rule_y + H * 0.05,
+                           text_width, center_x=center_x,
+                           fill=palette_rgb(theme.secondary_text))
 
     def _layout_title_body(self, draw, img, slide: CarouselSlide, theme: TemplateTheme,
                            W, H, M, text_right, text_width):
@@ -538,18 +771,18 @@ class CarouselSlideRenderer:
             bar_w = int(round(W * 0.055))
             draw.rectangle([text_right - bar_w, H * 0.13, text_right, H * 0.13 + RULE_THICKNESS], fill=accent)
 
-        title_font, title_lines, title_size = self._fit_block(
+        title_fit = self._fit_text(
             draw, slide.title, text_width, H * 0.27, theme.title_size, theme.min_title_size, 3)
-        title_bottom = self._draw_block(draw, title_lines, title_font, title_size, H * 0.20,
-                                        text_width, right_edge=text_right, fill=text_fill)
+        title_bottom = self._draw_fit(draw, title_fit, H * 0.20,
+                                      text_width, right_edge=text_right, fill=text_fill)
 
         rule_y = title_bottom + int(round(H * 0.03))
         self._accent_rule(draw, rule_y, text_right - (W * RULE_WIDTH_FRAC) / 2, accent)
 
-        body_font, body_lines, body_size = self._fit_block(
+        body_fit = self._fit_text(
             draw, slide.body, text_width, H * 0.36, theme.body_size, theme.min_body_size, 7)
-        self._draw_block(draw, body_lines, body_font, body_size, rule_y + H * 0.05,
-                         text_width, right_edge=text_right, fill=text_fill)
+        self._draw_fit(draw, body_fit, rule_y + H * 0.05,
+                       text_width, right_edge=text_right, fill=text_fill)
 
     def _layout_quote(self, draw, img, slide: CarouselSlide, theme: TemplateTheme,
                       W, H, M, text_right):
@@ -561,13 +794,13 @@ class CarouselSlideRenderer:
 
         right_edge = text_right - int(round(W * 0.05))
         text_width = right_edge - M
-        font, lines, size = self._fit_block(
+        quote_fit = self._fit_text(
             draw, slide.title, text_width, H * 0.52,
             max(64, int(theme.title_size * 0.75)), max(44, int(theme.min_title_size * 0.8)), 6)
-        block_h = len(lines) * size * LINE_SPACING
+        block_h = quote_fit.height
         quote_y = H * 0.22 + (H * 0.52 - block_h) / 2
-        self._draw_block(draw, lines, font, size, quote_y, text_width,
-                         right_edge=right_edge, fill=text_fill)
+        self._draw_fit(draw, quote_fit, quote_y, text_width,
+                       right_edge=right_edge, fill=text_fill)
 
         if slide.footer:
             size = max(20, int(round(34 * self._scale)))
@@ -580,11 +813,11 @@ class CarouselSlideRenderer:
         accent = palette_rgb(slide.accent)
         text_fill = palette_rgb(theme.text)
 
-        title_font, title_lines, title_size = self._fit_block(
+        title_fit = self._fit_text(
             draw, slide.title, text_width, H * 0.18,
             int(theme.title_size * 0.85), theme.min_title_size, 2)
-        title_bottom = self._draw_block(draw, title_lines, title_font, title_size, H * 0.15,
-                                        text_width, right_edge=text_right, fill=text_fill)
+        title_bottom = self._draw_fit(draw, title_fit, H * 0.15,
+                                      text_width, right_edge=text_right, fill=text_fill)
         rule_y = title_bottom + int(round(H * 0.025))
         self._accent_rule(draw, rule_y, text_right - (W * RULE_WIDTH_FRAC) / 2, accent)
 
@@ -803,8 +1036,10 @@ class CarouselSlideRenderer:
         """Fit + place one caption block (M25) in `zone`.
 
         which: "stack" (eyebrow+title+rule+body), "title" (eyebrow+title)
-        or "body". Uses the rebalanced photo typography (title *0.78,
-        body *1.18 of the theme sizes) scaled by slide.text_scale."""
+        or "body". Uses the reduced photo typography defaults (M26:
+        title *0.585 of the theme size, body = 64% of the title start),
+        scaled by slide.text_scale. Titles/bodies support M26 inline
+        markup ([word|color=...,size=...])."""
         side = _zone_is_side(zone)
         width = int(round(W * (_SIDE_ZONE_FRAC if side else _CENTER_ZONE_FRAC)))
         text_scale = slide.text_scale if slide.text_scale is not None else 1.0
@@ -814,29 +1049,32 @@ class CarouselSlideRenderer:
         blend = style == "blend"
         title_font_path = self._blend_title_font_path() if blend else None
 
-        items: List[Tuple[str, List[str], Any, int, float]] = []
+        # M26 reduced defaults (text_scale still multiplies the starts)
+        t_start = int(theme.title_size * _COMP_TITLE_FACTOR * text_scale)
+        b_start = int(round(t_start * _COMP_BODY_RATIO))
+
+        items: List[Tuple[str, Any, float]] = []  # (kind, payload, h)
         eyebrow = ""
         if which == "stack" or which == "title" or not slide.title:
             eyebrow = slide.eyebrow
         if eyebrow:
             eb_size = max(20, int(round(34 * self._scale)))
-            items.append(("eyebrow", [eyebrow],
-                          ImageFont.truetype(self.engine.font_path, eb_size),
-                          eb_size, eb_size * LINE_SPACING))
+            items.append(("eyebrow", ([eyebrow],
+                                       ImageFont.truetype(self.engine.font_path, eb_size),
+                                       eb_size),
+                          eb_size * LINE_SPACING))
         if which in ("stack", "title"):
-            t_start = int(theme.title_size * _PHOTO_TITLE_FACTOR * text_scale)
-            tf, tl, ts = self._fit_block(draw, slide.title, width,
-                                         H * _TITLE_MAX_HEIGHT_FRAC,
-                                         t_start, theme.min_title_size, 3)
-            if title_font_path is not None:
-                tf = ImageFont.truetype(title_font_path, ts)
-            items.append(("title", tl, tf, ts, len(tl) * ts * LINE_SPACING))
+            t_fit = self._fit_text(draw, slide.title, width,
+                                   H * _TITLE_MAX_HEIGHT_FRAC,
+                                   t_start, theme.min_title_size, 3)
+            if title_font_path is not None and t_fit.plain:
+                t_fit.font = ImageFont.truetype(title_font_path, t_fit.size)
+            items.append(("title", t_fit, t_fit.height))
         if which in ("stack", "body"):
-            b_start = int(theme.body_size * _PHOTO_BODY_FACTOR * text_scale)
-            bf, bl, bs = self._fit_block(draw, slide.body, width,
-                                         H * _BODY_MAX_HEIGHT_FRAC,
-                                         b_start, theme.min_body_size, 3)
-            items.append(("body", bl, bf, bs, len(bl) * bs * LINE_SPACING))
+            b_fit = self._fit_text(draw, slide.body, width,
+                                   H * _BODY_MAX_HEIGHT_FRAC,
+                                   b_start, theme.min_body_size, 3)
+            items.append(("body", b_fit, b_fit.height))
         if not items:
             return
 
@@ -883,22 +1121,42 @@ class CarouselSlideRenderer:
 
         y = y0
         prev_kind = None
-        for kind, lines, font, size, h in items:
+        for kind, payload, _ in items:
             if prev_kind is not None:
                 if prev_kind == "title" and kind == "body" and rule_h:
                     self._accent_rule(target, y + gap, block_cx, accent)
                     y += gap * 2 + rule_h
                 else:
                     y += gap
-            for line in lines:
-                prepared, line_w, kwargs = self._line_layout(target, line, font)
-                x = self._block_line_x(align, x0, width, line_w, center_x)
-                if blend:
-                    self._draw_blend_text(ldraw, x, y, prepared, font, size,
-                                          colors[kind], kwargs)
-                else:
-                    target.text((x, y), prepared, font=font, fill=colors[kind], **kwargs)
-                y += size * LINE_SPACING
+            if kind == "eyebrow":
+                lines, font, size = payload
+                for line in lines:
+                    prepared, line_w, kwargs = self._line_layout(target, line, font)
+                    x = self._block_line_x(align, x0, width, line_w, center_x)
+                    if blend:
+                        self._draw_blend_text(ldraw, x, y, prepared, font, size,
+                                              colors[kind], kwargs)
+                    else:
+                        target.text((x, y), prepared, font=font,
+                                    fill=colors[kind], **kwargs)
+                    y += size * LINE_SPACING
+            elif not payload.plain:
+                y = self._draw_rich_composed(ldraw if blend else target,
+                                             payload.rich_lines, y, x0, width,
+                                             align, center_x, colors[kind],
+                                             blend, ldraw)
+            else:
+                for line in payload.lines:
+                    prepared, line_w, kwargs = self._line_layout(target, line,
+                                                                 payload.font)
+                    x = self._block_line_x(align, x0, width, line_w, center_x)
+                    if blend:
+                        self._draw_blend_text(ldraw, x, y, prepared, payload.font,
+                                              payload.size, colors[kind], kwargs)
+                    else:
+                        target.text((x, y), prepared, font=payload.font,
+                                    fill=colors[kind], **kwargs)
+                    y += payload.size * LINE_SPACING
             prev_kind = kind
         if layer is not None:
             img.alpha_composite(layer)
@@ -929,20 +1187,20 @@ class CarouselSlideRenderer:
         else:
             title_y = panel_top + panel_h * 0.12
 
-        title_font, title_lines, title_size = self._fit_block(
+        title_fit = self._fit_text(
             draw, slide.title, text_width, panel_h * 0.30,
             int(theme.title_size * 0.62), max(30, int(theme.min_title_size * 0.6)), 2)
-        title_bottom = self._draw_block(draw, title_lines, title_font, title_size, title_y,
-                                        text_width, right_edge=text_right, fill=text_fill)
+        title_bottom = self._draw_fit(draw, title_fit, title_y,
+                                      text_width, right_edge=text_right, fill=text_fill)
 
         if slide.body:
             rule_y = title_bottom + int(round(panel_h * 0.04))
             self._accent_rule(draw, rule_y, text_right - (W * RULE_WIDTH_FRAC) / 2, accent)
-            body_font, body_lines, body_size = self._fit_block(
+            body_fit = self._fit_text(
                 draw, slide.body, text_width, panel_h * 0.34,
                 int(theme.body_size * 0.85), max(26, int(theme.min_body_size * 0.75)), 3)
-            self._draw_block(draw, body_lines, body_font, body_size, rule_y + panel_h * 0.05,
-                             text_width, right_edge=text_right, fill=text_fill)
+            self._draw_fit(draw, body_fit, rule_y + panel_h * 0.05,
+                           text_width, right_edge=text_right, fill=text_fill)
 
     def _layout_full_bleed_caption(self, draw, img, slide: CarouselSlide, theme: TemplateTheme,
                                    W, H, M, source):
@@ -1006,26 +1264,24 @@ class CarouselSlideRenderer:
         peak = max(0.80, theme.overlay_alpha + 0.18)
 
         gap = int(round(H * 0.02))
-        stack: List[Tuple[str, List[str], Any, int, float]] = []
+        stack: List[Tuple[str, Any, Any, int, float]] = []
         if slide.eyebrow:
             eb_size = max(20, int(round(34 * self._scale)))
             stack.append(("eyebrow", [slide.eyebrow],
                           ImageFont.truetype(self.engine.font_path, eb_size),
                           eb_size, eb_size * LINE_SPACING))
         if slide.title:
-            ti_font, ti_lines, ti_size = self._fit_block(
+            ti_fit = self._fit_text(
                 draw, slide.title, text_width, H * 0.25,
                 theme.title_size, theme.min_title_size, 3)
-            stack.append(("title", ti_lines, ti_font, ti_size,
-                          len(ti_lines) * ti_size * LINE_SPACING))
+            stack.append(("title", ti_fit, ti_fit.size, ti_fit.height))
         if slide.body:
-            bo_font, bo_lines, bo_size = self._fit_block(
+            bo_fit = self._fit_text(
                 draw, slide.body, text_width, H * 0.18,
                 theme.body_size, theme.min_body_size, 3)
-            stack.append(("body", bo_lines, bo_font, bo_size,
-                          len(bo_lines) * bo_size * LINE_SPACING))
+            stack.append(("body", bo_fit, bo_fit.size, bo_fit.height))
 
-        total_h = sum(h for _, _, _, _, h in stack)
+        total_h = sum(h for *_, h in stack)
         if len(stack) > 1:
             total_h += gap * (len(stack) - 1)
         if slide.title and slide.body:
@@ -1051,21 +1307,24 @@ class CarouselSlideRenderer:
             footer_size = max(18, int(round(30 * self._scale)))
             y = H - M - footer_size - int(round(H * 0.035)) - total_h
 
-        for kind, lines, font, size, _ in stack:
+        for item in stack:
+            kind = item[0]
             if kind == "eyebrow":
+                _, lines, font, size, _ = item
                 y = self._draw_block(draw, lines, font, size, y, text_width,
                                      center_x=center_x, fill=accent)
                 y += gap
             elif kind == "title":
-                y = self._draw_block(draw, lines, font, size, y, text_width,
-                                     center_x=center_x, fill=text_fill)
+                _, fit, _, _ = item
+                y = self._draw_fit(draw, fit, y, text_width,
+                                   center_x=center_x, fill=text_fill)
                 if slide.body:
                     self._accent_rule(draw, y + gap, center_x, accent)
                     y += gap * 2 + RULE_THICKNESS
             else:  # body
-                y = self._draw_block(draw, lines, font, size, y, text_width,
-                                     center_x=center_x,
-                                     fill=palette_rgb(theme.secondary_text))
+                _, fit, _, _ = item
+                y = self._draw_fit(draw, fit, y, text_width, center_x=center_x,
+                                   fill=palette_rgb(theme.secondary_text))
 
     def _layout_image_overlay(self, draw, img, slide: CarouselSlide, theme: TemplateTheme,
                               W, H, M):
@@ -1091,22 +1350,22 @@ class CarouselSlideRenderer:
                              center_x=center_x, fill=accent)
 
         # One clear action, centered
-        font, lines, size = self._fit_block(draw, slide.title, text_width, H * 0.20,
-                                            max(theme.title_size, 100), theme.min_title_size, 2)
-        block_h = len(lines) * size * LINE_SPACING
+        title_fit = self._fit_text(draw, slide.title, text_width, H * 0.20,
+                                   max(theme.title_size, 100), theme.min_title_size, 2)
+        block_h = title_fit.height
         title_y = H * 0.36
-        self._draw_block(draw, lines, font, size, title_y, text_width, center_x=center_x, fill=text_fill)
+        self._draw_fit(draw, title_fit, title_y, text_width, center_x=center_x, fill=text_fill)
 
         rule_y = title_y + block_h + int(round(H * 0.03))
         self._accent_rule(draw, rule_y, center_x, accent)
 
         if slide.body:
-            body_font, body_lines, body_size = self._fit_block(
+            body_fit = self._fit_text(
                 draw, slide.body, text_width, H * 0.10,
                 theme.body_size, theme.min_body_size, 2)
-            self._draw_block(draw, body_lines, body_font, body_size, rule_y + H * 0.05,
-                             text_width, center_x=center_x,
-                             fill=palette_rgb(theme.secondary_text))
+            self._draw_fit(draw, body_fit, rule_y + H * 0.05,
+                           text_width, center_x=center_x,
+                           fill=palette_rgb(theme.secondary_text))
 
     # ------------------------------------------------------------------
     # Footer / page number
