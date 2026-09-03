@@ -702,3 +702,113 @@ def test_O_missing_image_typed_error_all_layouts(tmp_path):
         with pytest.raises(CarouselImageError) as exc_info:
             renderer.render(slide, str(tmp_path / "x.png"))
         assert exc_info.value.code == CAROUSEL_IMAGE_NOT_FOUND
+
+
+# === P. text_zone: smart placement for full-bleed slides (M23) ===
+
+def test_H_invalid_text_zone_rejected():
+    with pytest.raises(CarouselConfigError) as exc_info:
+        parse_carousel_slide({"slide_type": "image_text", "title": "تست",
+                              "image_path": "x.jpg", "text_zone": "sideways"})
+    assert exc_info.value.code == CAROUSEL_SLIDE_CONFIG_INVALID
+    # Valid values parse fine
+    for zone in ("top", "middle", "bottom"):
+        assert parse_carousel_slide({"slide_type": "image_text", "title": "تست",
+                                     "image_path": "x.jpg",
+                                     "text_zone": zone}).text_zone == zone
+    # Omitted -> None (auto-detect)
+    assert parse_carousel_slide({"slide_type": "image_text", "title": "تست",
+                                 "image_path": "x.jpg"}).text_zone is None
+
+
+@pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
+def test_F_text_zone_top_renders_text_in_top_region(tmp_path):
+    """Explicit text_zone='top': gradient + text in the top safe area, and
+    the bottom of the photo is NOT darkened by the caption gradient."""
+    src = make_colored_source(str(tmp_path / "s.png"), (1080, 1350), (30, 120, 220))
+    renderer = make_renderer()
+    out = str(tmp_path / "zone_top.png")
+    renderer.render({
+        "slide_type": "image_text", "image_path": src,
+        "title": "تست", "body": "بدنه‌ی تست",
+        "image_layout": "full_bleed_caption", "text_zone": "top",
+    }, out)
+    img = Image.open(out)
+    assert img.size == (CANVAS_WIDTH, CANVAS_HEIGHT)
+    # Top is darkened by the mirrored gradient; bottom only has the light
+    # base gradient -> bottom stays visibly brighter
+    top = img.getpixel((540, 60))[:3]
+    bottom = img.getpixel((540, 1200))[:3]
+    assert top[1] < bottom[1] and top[2] < bottom[2]
+    # Text (bright) lives in the top region, not in the bottom region
+    assert img.crop((0, 100, 1080, 560)).getextrema()[0][1] > 200
+    assert img.crop((0, 900, 1080, 1220)).getextrema()[0][1] < 200
+
+
+@pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
+def test_F2_text_zone_middle_renders_centered_band(tmp_path):
+    """Explicit text_zone='middle': band gradient peaks in the vertical
+    center and the text is centered. (Title+body: the band grows with the
+    text stack — an int height is required for the gradient.)"""
+    src = make_colored_source(str(tmp_path / "s.png"), (1080, 1350), (30, 120, 220))
+    renderer = make_renderer()
+    out = str(tmp_path / "zone_mid.png")
+    renderer.render({
+        "slide_type": "image_text", "image_path": src,
+        "title": "تست", "body": "بدنه‌ی تست برای مرکز تصویر",
+        "image_layout": "full_bleed_caption", "text_zone": "middle",
+    }, out)
+    img = Image.open(out)
+    assert img.size == (CANVAS_WIDTH, CANVAS_HEIGHT)
+    # Center row darker than the top row (band gradient peaks mid-way)
+    assert img.getpixel((540, 675))[2] < img.getpixel((540, 60))[2]
+    # Text is bright in the center, absent from the top area
+    assert img.crop((0, 560, 1080, 800)).getextrema()[0][1] > 200
+    assert img.crop((0, 100, 1080, 400)).getextrema()[0][1] < 200
+
+
+@pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
+def test_G_text_zone_none_triggers_auto_detection(tmp_path, monkeypatch):
+    """text_zone=None (default): the renderer auto-detects the zone from the
+    source image and uses the result."""
+    import agents.carousel.slide_renderer as sr
+    src = make_colored_source(str(tmp_path / "s.png"), (1080, 1350), (30, 120, 220))
+    renderer = make_renderer()
+    calls = []
+
+    def fake_zone(image):
+        calls.append(image)
+        return "top"
+
+    monkeypatch.setattr(sr, "find_best_text_zone", fake_zone)
+    out = str(tmp_path / "zone_auto.png")
+    renderer.render({
+        "slide_type": "image_text", "image_path": src,
+        "title": "تست", "image_layout": "full_bleed_caption",
+    }, out)
+    # Auto-detection was called exactly once with the source image...
+    assert len(calls) == 1
+    assert calls[0].size == (1080, 1350)
+    # ...and its result ("top") was used: text bright at the top, not bottom
+    img = Image.open(out)
+    assert img.crop((0, 100, 1080, 560)).getextrema()[0][1] > 200
+    assert img.crop((0, 900, 1080, 1220)).getextrema()[0][1] < 200
+
+
+@pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
+def test_P_bottom_zone_unchanged_for_flat_source(tmp_path):
+    """Regression: a flat source auto-detects 'bottom' (tie-break), so the
+    default full-bleed render keeps the M22 bottom-aligned behavior."""
+    import agents.carousel.slide_renderer as sr
+    src = make_colored_source(str(tmp_path / "s.png"), (1080, 1350), (30, 120, 220))
+    assert sr.find_best_text_zone(Image.open(src)) == "bottom"
+    renderer = make_renderer()
+    out = str(tmp_path / "zone_default.png")
+    renderer.render({
+        "slide_type": "image_text", "image_path": src,
+        "title": "تست", "body": "بدنه", "image_layout": "full_bleed_caption",
+    }, out)
+    img = Image.open(out)
+    # Bottom-aligned: text bright in the lower region, top free of text
+    assert img.crop((0, 900, 1080, 1220)).getextrema()[0][1] > 200
+    assert img.crop((0, 100, 1080, 400)).getextrema()[0][1] < 200

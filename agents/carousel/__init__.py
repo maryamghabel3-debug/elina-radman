@@ -5,6 +5,14 @@ carousel slides rendered with Pillow.
 See docs/CAROUSEL-STUDIO-MVP.md for capabilities and limits.
 """
 
+from agents.carousel.text_zone import (
+    ZONE_BOTTOM,
+    ZONE_MIDDLE,
+    ZONE_TOP,
+    SUPPORTED_TEXT_ZONES,
+    find_best_text_zone,
+    zone_is_acceptable,
+)
 from agents.carousel.schema import (
     CANVAS_HEIGHT,
     CANVAS_WIDTH,
@@ -71,6 +79,12 @@ __all__ = [
     "CANVAS_HEIGHT",
     "SUPPORTED_SLIDE_TYPES",
     "SUPPORTED_IMAGE_LAYOUTS",
+    "SUPPORTED_TEXT_ZONES",
+    "ZONE_BOTTOM",
+    "ZONE_MIDDLE",
+    "ZONE_TOP",
+    "find_best_text_zone",
+    "zone_is_acceptable",
     "SUPPORTED_TEMPLATES",
     "TEXT_LIMITS",
     "MIN_BULLETS",

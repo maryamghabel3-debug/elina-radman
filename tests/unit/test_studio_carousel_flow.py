@@ -590,3 +590,164 @@ async def test_R_plan_flow_unchanged_without_carousel_session():
     reply = update.message.reply_text.call_args[0][0]
     assert "پیش‌نمایش برنامه ادیت" in reply
     assert "/plan_ok" in reply
+
+
+# === M23 — /carousel_layout + /carousel_edit layout=|zone= tokens ===
+
+def make_image_text_plan_result(n_slides=3):
+    """A plan result whose non-cover content slides are image_text (so the
+    layout/zone commands have targets)."""
+    from agents.carousel.schema import CarouselSlide
+    from agents.carousel.deck_renderer import CarouselDeck
+    from agents.carousel.planner import CarouselPlanResult
+
+    slides = [CarouselSlide(slide_type="cover", title="کاور")]
+    for i in range(n_slides - 2):
+        slides.append(CarouselSlide(slide_type="image_text",
+                                    title=f"تصویر {i + 1}",
+                                    image_path=f"/img/{i}.jpg",
+                                    image_layout="auto"))
+    slides.append(CarouselSlide(slide_type="cta", title="ذخیره کن"))
+    deck = CarouselDeck(title="دک تصویری", template="psychological_dark", slides=slides)
+    return CarouselPlanResult(deck=deck, caption="کپشن", hashtags=["#تست"],
+                              provider_used=None)
+
+
+def make_preview_session(tmp_path, n_slides=3, image_text=True):
+    """A PREVIEW-state session with a real deck + renderer mocks, ready for
+    layout/zone edits."""
+    cs = import_cs()
+    session = cs.new_session()
+    session["state"] = cs.PREVIEW
+    factory = make_image_text_plan_result if image_text else make_fake_plan_result
+    session["deck"] = factory(n_slides).deck
+    session["slide_paths"] = [write_image(tmp_path, f"s{i}.png") for i in range(n_slides)]
+    def _fake_render(slide, path):
+        with open(path, "wb") as f:
+            f.write(b"RENDERED")
+
+    fake_slide_renderer = MagicMock()
+    fake_slide_renderer.render = MagicMock(side_effect=_fake_render)
+    renderer = MagicMock()
+    renderer.slide_renderer = fake_slide_renderer
+    session["_renderer"] = renderer
+    return session
+
+
+# --- J. /carousel_layout <layout> applies to ALL non-cover image slides ---
+
+def test_J_carousel_layout_all_non_cover_image_slides(tmp_path):
+    cs = import_cs()
+    session = make_preview_session(tmp_path, n_slides=4)  # cover + 2 img + cta
+    deck = session["deck"]
+    reply = cs.apply_layout(session, "contain")
+    assert "✅" in reply
+    # All non-cover image slides switched; cover/cta untouched
+    for s in deck.slides:
+        if s.slide_type == "image_text":
+            assert s.image_layout == "contain_caption"
+        else:
+            assert s.image_layout is None
+    # Each affected slide re-rendered once
+    assert session["_renderer"].slide_renderer.render.call_count == 2
+    cs.cleanup(session)
+
+
+# --- K. /carousel_layout <layout> <n> applies to slide n only ---
+
+def test_K_carousel_layout_single_slide(tmp_path):
+    cs = import_cs()
+    session = make_preview_session(tmp_path, n_slides=4)
+    deck = session["deck"]
+    reply = cs.apply_layout(session, "full 2")
+    assert "✅" in reply
+    assert deck.slides[1].image_layout == "full_bleed_caption"
+    # sibling image slide untouched
+    assert deck.slides[2].image_layout == "auto"
+    assert session["_renderer"].slide_renderer.render.call_count == 1
+    cs.cleanup(session)
+
+
+def test_K2_carousel_layout_persian_digit_and_out_of_range(tmp_path):
+    cs = import_cs()
+    session = make_preview_session(tmp_path, n_slides=4)
+    deck = session["deck"]
+    assert "✅" in cs.apply_layout(session, "split ۲")
+    assert deck.slides[1].image_layout == "split_panel"
+    # out-of-range -> Persian error, nothing changed, no render
+    before = session["_renderer"].slide_renderer.render.call_count
+    err = cs.apply_layout(session, "full 99")
+    assert "❌" in err
+    assert session["_renderer"].slide_renderer.render.call_count == before
+    cs.cleanup(session)
+
+
+# --- L. /carousel_edit <n> | zone=... and layout=... tokens ---
+
+def test_L_carousel_edit_zone_token(tmp_path):
+    cs = import_cs()
+    session = make_preview_session(tmp_path, n_slides=4)
+    deck = session["deck"]
+    err, path = cs.edit_slide(session, 2, "zone=top")
+    assert err is None and path is not None
+    assert deck.slides[1].text_zone == "top"
+    # re-rendered once
+    assert session["_renderer"].slide_renderer.render.call_count == 1
+    cs.cleanup(session)
+
+
+def test_L2_carousel_edit_layout_token(tmp_path):
+    cs = import_cs()
+    session = make_preview_session(tmp_path, n_slides=4)
+    deck = session["deck"]
+    err, path = cs.edit_slide(session, 2, "layout=contain")
+    assert err is None and path is not None
+    assert deck.slides[1].image_layout == "contain_caption"
+    assert session["_renderer"].slide_renderer.render.call_count == 1
+    cs.cleanup(session)
+
+
+def test_L3_carousel_edit_invalid_zone_and_layout(tmp_path):
+    cs = import_cs()
+    session = make_preview_session(tmp_path, n_slides=4)
+    deck = session["deck"]
+    # invalid zone -> Persian error, field unchanged, no render
+    err, _ = cs.edit_slide(session, 2, "zone=nowhere")
+    assert "❌" in err
+    assert deck.slides[1].text_zone is None
+    # invalid layout -> Persian error, field unchanged, no render
+    err2, _ = cs.edit_slide(session, 2, "layout=poster")
+    assert "❌" in err2
+    assert deck.slides[1].image_layout == "auto"
+    assert session["_renderer"].slide_renderer.render.call_count == 0
+    # plain title|body editing still works
+    err3, _ = cs.edit_slide(session, 2, "عنوان جدید | بدنه جدید")
+    assert err3 is None
+    assert deck.slides[1].title == "عنوان جدید"
+    assert deck.slides[1].body == "بدنه جدید"
+    cs.cleanup(session)
+
+
+# --- M. invalid layout name -> Persian error, state preserved ---
+
+def test_M_carousel_layout_invalid_name_preserves_state(tmp_path):
+    cs = import_cs()
+    session = make_preview_session(tmp_path, n_slides=4)
+    deck = session["deck"]
+    before = [(s.image_layout, s.text_zone) for s in deck.slides]
+    reply = cs.apply_layout(session, "poster")
+    assert "❌" in reply
+    assert "نام layout نامعتبر" in reply
+    # state preserved (still PREVIEW), no layouts changed, no renders
+    assert session["state"] == cs.PREVIEW
+    assert [(s.image_layout, s.text_zone) for s in deck.slides] == before
+    assert session["_renderer"].slide_renderer.render.call_count == 0
+    # wrong state (COLLECT with a slide number -> stored, not applied)
+    collect = cs.new_session()
+    cs.select_mode(collect, "1")
+    collect["state"] = cs.COLLECT_TEXTS
+    r = cs.apply_layout(collect, "full")
+    assert "✅" in r and "ذخیره" in r
+    assert collect["pending_image_layout"] == "full_bleed_caption"
+    cs.cleanup(session)
+    cs.cleanup(collect)

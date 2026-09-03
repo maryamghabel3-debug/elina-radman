@@ -39,7 +39,9 @@ from agents.carousel.planner import (
     CarouselPlanGenerationError,
 )
 from agents.carousel.schema import (
+    SUPPORTED_TEXT_ZONES,
     CarouselError,
+    CarouselSlide,
     CarouselTextOverflowError,
     parse_carousel_slide,
 )
@@ -102,9 +104,20 @@ PREVIEW_COMMANDS_FA = (
     "برای ادامه:\n"
     "/carousel_ok — تأیید و ذخیره\n"
     "/carousel_edit <شماره> | <متن جدید> — ویرایش یک اسلاید\n"
+    "/carousel_edit <شماره> | layout=full — چیدمان (split|full|contain|auto)\n"
+    "/carousel_edit <شماره> | zone=top — جای متن (top|middle|bottom)\n"
+    "/carousel_layout <layout> [شماره] — چیدمان اسلایدهای تصویری\n"
     "/carousel_theme <قالب> — تغییر قالب و رندر مجدد\n"
     "/carousel_cancel — انصراف"
 )
+
+# /carousel_layout short names -> slide image_layout values (M22A/M23)
+LAYOUT_ALIASES = {
+    "split": "split_panel",
+    "full": "full_bleed_caption",
+    "contain": "contain_caption",
+    "auto": "auto",
+}
 
 
 class CarouselSessionActiveError(Exception):
@@ -131,6 +144,9 @@ def new_session() -> Dict[str, Any]:
         "template": "psychological_dark",
         "created_at": time.time(),
         "work_dir": work_dir,
+        # M23: /carousel_layout issued during a COLLECT state is stored here
+        # and applied to all image slides at build time
+        "pending_image_layout": None,
         # populated at build time (in-memory only)
         "deck": None,          # CarouselDeck
         "slide_paths": [],     # ordered rendered PNGs
@@ -377,6 +393,15 @@ def build_deck(
                 character_asset_provider=provider,
             )
 
+        # M23: a /carousel_layout issued during a COLLECT state is applied
+        # to all image slides now, before the first render.
+        pending_layout = session.get("pending_image_layout")
+        if pending_layout:
+            for s in result.deck.slides:
+                if s.slide_type == "image_text":
+                    s.image_layout = pending_layout
+            session["pending_image_layout"] = None
+
         renderer = renderer or session.get("_renderer") or CarouselDeckRenderer()
         out_dir = os.path.join(session["work_dir"], "slides")
         os.makedirs(out_dir, exist_ok=True)
@@ -447,36 +472,16 @@ def build_preview_message(session: Dict[str, Any]) -> str:
 # Preview editing
 # ---------------------------------------------------------------------------
 
-def edit_slide(
+def _revalidate_and_rerender(
     session: Dict[str, Any],
+    slide: CarouselSlide,
     index: int,
-    new_text: str,
+    rollback,
 ) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Replace slide `index` (1-based) title (and body when '|' present).
-    Re-renders ONLY that slide (documented choice: single-slide re-render is
-    faster and the layout is per-slide independent).
-    Returns (error_message, updated_path); error_message None on success.
-    """
-    deck: Optional[CarouselDeck] = session.get("deck")
-    if not deck:
-        return "هنوز کاروسلی ساخته نشده است.", None
-    total = len(deck.slides)
-    if not (1 <= index <= total):
-        return f"❌ شماره اسلاید نامعتبر است (۱ تا {total}).", None
-    slide = deck.slides[index - 1]
-
-    title, sep, body = (new_text or "").partition("|")
-    title = title.strip()
-    if not title:
-        return "❌ متن جدید اسلاید خالی است.", None
-    body = body.strip() if sep else None
-
-    old_title, old_body = slide.title, slide.body
-    slide.title = title
-    if body and slide.slide_type in ("title_body", "image_text", "image_overlay"):
-        slide.body = body
-
+    """Re-validate the edited slide through the M18A schema, then re-render
+    ONLY that slide in place. `rollback()` restores the previous state on
+    failure. Returns (error_message, updated_path); error_message None on
+    success."""
     try:
         # Re-validate the edited slide through the M18A schema
         parse_carousel_slide({
@@ -486,6 +491,7 @@ def edit_slide(
             "bullets": slide.bullets,
             "image_path": slide.image_path,
             "image_layout": slide.image_layout,
+            "text_zone": slide.text_zone,
             "eyebrow": slide.eyebrow,
             "footer": slide.footer,
             "template": slide.template,
@@ -493,7 +499,7 @@ def edit_slide(
             "slide_number": slide.slide_number,
         })
     except CarouselError as exc:
-        slide.title, slide.body = old_title, old_body
+        rollback()
         code = getattr(exc, "code", "")
         return f"❌ ویرایش انجام نشد: {exc.detail or exc} ({code})".strip(" ()"), None
 
@@ -506,13 +512,171 @@ def edit_slide(
             from agents.carousel.slide_renderer import CarouselSlideRenderer
             CarouselSlideRenderer().render(slide, path)
     except CarouselError as exc:
-        slide.title, slide.body = old_title, old_body
+        rollback()
         return f"❌ رندر اسلاید ناکام بود: {exc.detail or exc}", None
     except Exception as exc:
-        slide.title, slide.body = old_title, old_body
+        rollback()
         logger.exception("Slide re-render failed")
         return f"❌ خطا در رندر اسلاید: {type(exc).__name__}: {str(exc)[:150]}", None
     return None, path
+
+
+def edit_slide(
+    session: Dict[str, Any],
+    index: int,
+    new_text: str,
+) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Edit slide `index` (1-based).
+
+    Accepted forms (M23 extends title|body with layout/zone tokens;
+    mixing text + layout in one command is not supported):
+    - "<title> | <body>" or "<title>" — replace title (and body)
+    - "layout=split|full|contain|auto" — change the slide's image layout
+    - "zone=top|middle|bottom" — set the caption text zone
+
+    Re-renders ONLY that slide (documented choice: single-slide re-render is
+    faster and the layout is per-slide independent).
+    Returns (error_message, updated_path); error_message None on success.
+    """
+    deck: Optional[CarouselDeck] = session.get("deck")
+    if not deck:
+        return "هنوز کاروسلی ساخته نشده است.", None
+    total = len(deck.slides)
+    if not (1 <= index <= total):
+        return f"❌ شماره اسلاید نامعتبر است (۱ تا {total}).", None
+    slide = deck.slides[index - 1]
+    text = (new_text or "").strip()
+
+    if text.startswith("layout="):
+        value = text[len("layout="):].strip().lower()
+        layout = LAYOUT_ALIASES.get(value)
+        if layout is None:
+            return "❌ نام layout نامعتبر است. گزینه‌ها: split | full | contain | auto", None
+        if slide.slide_type != "image_text":
+            return "❌ چیدمان فقط برای اسلایدهای تصویری (image_text) کاربرد دارد.", None
+        old_layout = slide.image_layout
+        slide.image_layout = layout
+
+        def _rollback_layout():
+            slide.image_layout = old_layout
+
+        return _revalidate_and_rerender(session, slide, index, _rollback_layout)
+
+    if text.startswith("zone="):
+        value = text[len("zone="):].strip().lower()
+        if value not in SUPPORTED_TEXT_ZONES:
+            return "❌ نام zone نامعتبر است. گزینه‌ها: top | middle | bottom", None
+        if slide.slide_type not in ("image_text", "image_overlay"):
+            return "❌ zone فقط برای اسلایدهای تمام‌صفحه (تصویری) کاربرد دارد.", None
+        old_zone = slide.text_zone
+        slide.text_zone = value
+
+        def _rollback_zone():
+            slide.text_zone = old_zone
+
+        return _revalidate_and_rerender(session, slide, index, _rollback_zone)
+
+    title, sep, body = text.partition("|")
+    title = title.strip()
+    if not title:
+        return "❌ متن جدید اسلاید خالی است.", None
+    body = body.strip() if sep else None
+
+    old_title, old_body = slide.title, slide.body
+    slide.title = title
+    if body and slide.slide_type in ("title_body", "image_text", "image_overlay"):
+        slide.body = body
+
+    def _rollback_text():
+        slide.title, slide.body = old_title, old_body
+
+    return _revalidate_and_rerender(session, slide, index, _rollback_text)
+
+
+def apply_layout(
+    session: Dict[str, Any],
+    raw_text: str,
+) -> str:
+    """
+    Handle /carousel_layout <layout> [slide_number] (M23).
+
+    - layout: split | full | contain | auto (mapped to the image_layout
+      values split_panel / full_bleed_caption / contain_caption / auto)
+    - slide_number given: apply to that slide only (PREVIEW)
+    - omitted: apply to ALL non-cover image slides in the draft
+    - valid during PREVIEW (re-renders the affected slides) or a COLLECT
+      state (stored in the session and applied to all image slides at
+      build time)
+
+    Returns the Persian confirmation/error message.
+    """
+    state = session.get("state")
+    if state not in (COLLECT_IMAGES, COLLECT_TEXTS, COLLECT_TOPIC, PREVIEW):
+        return "این دستور الان کاربرد ندارد. اول کاروسل ساخته شود."
+
+    tokens = (raw_text or "").split()
+    if not tokens:
+        return "فرمت: /carousel_layout <split|full|contain|auto> [شماره‌ی اسلاید]"
+    layout = LAYOUT_ALIASES.get(tokens[0].strip().lower())
+    if layout is None:
+        return "❌ نام layout نامعتبر است. گزینه‌ها: split | full | contain | auto"
+
+    slide_num = None
+    if len(tokens) >= 2:
+        num_text = tokens[1].strip().translate(PERSIAN_DIGITS)
+        if not num_text.isdigit():
+            return "❌ شماره‌ی اسلاید نامعتبر است."
+        slide_num = int(num_text)
+
+    deck: Optional[CarouselDeck] = session.get("deck")
+    if deck is None:
+        # COLLECT state: no deck yet — remember it for build time
+        if slide_num is not None:
+            session["pending_image_layout"] = layout
+            return (
+                "شماره‌ی اسلاید فقط بعد از ساخت (پیش‌نمایش) معنا دارد؛ "
+                f"چیدمان «{layout}» برای همه‌ی اسلایدهای تصویری ذخیره شد."
+            )
+        session["pending_image_layout"] = layout
+        return (
+            f"✅ چیدمان «{layout}» ذخیره شد؛ بعد از ساخت روی همه‌ی "
+            "اسلایدهای تصویری اعمال می‌شود."
+        )
+
+    if slide_num is not None:
+        if not (1 <= slide_num <= len(deck.slides)):
+            return f"❌ شماره اسلاید نامعتبر است (۱ تا {len(deck.slides)})."
+        slide = deck.slides[slide_num - 1]
+        if slide.slide_type != "image_text":
+            return "❌ چیدمان فقط برای اسلایدهای تصویری (image_text) کاربرد دارد."
+        targets = [slide_num]
+    else:
+        targets = [i for i, s in enumerate(deck.slides, 1) if s.slide_type == "image_text"]
+        if not targets:
+            return "اسلاید تصویری (image_text) برای اعمال چیدمان پیدا نشد."
+
+    renderer = session.get("_renderer")
+    failed = []
+    for i in targets:
+        s = deck.slides[i - 1]
+        s.image_layout = layout
+        path = session["slide_paths"][i - 1]
+        try:
+            if renderer is not None and hasattr(renderer, "slide_renderer"):
+                renderer.slide_renderer.render(s, path)
+            else:
+                from agents.carousel.slide_renderer import CarouselSlideRenderer
+                CarouselSlideRenderer().render(s, path)
+        except Exception as exc:
+            logger.exception("Layout re-render failed for slide %s", i)
+            failed.append(i)
+    if failed:
+        return f"❌ رندر مجدد اسلاید {' و '.join(str(n) for n in failed)} ناکام بود."
+
+    if slide_num is not None:
+        return f"✅ چیدمان «{layout}» روی اسلاید {slide_num} اعمال شد."
+    return f"✅ چیدمان «{layout}» روی {len(targets)} اسلاید تصویری اعمال شد."
 
 
 def change_theme(

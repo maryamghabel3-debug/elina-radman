@@ -679,6 +679,7 @@ class CarouselPlanner:
                     "bullets": s.bullets,
                     "image_path": s.image_path,
                     "image_layout": s.image_layout,
+                    "text_zone": s.text_zone,
                     "eyebrow": s.eyebrow,
                     "footer": s.footer,
                     "template": s.template,
