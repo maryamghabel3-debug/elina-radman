@@ -179,6 +179,8 @@ class CarouselSlideRenderer:
             self._layout_bullet_list(draw, img, slide, theme, W, H, M, text_right, text_width)
         elif slide.slide_type == "image_text":
             self._layout_image_text(draw, img, slide, theme, W, H, M, text_right, text_width)
+        elif slide.slide_type == "image_overlay":
+            self._layout_image_overlay(draw, img, slide, theme, W, H, M)
         elif slide.slide_type == "cta":
             self._layout_cta(draw, img, slide, theme, W, H, M, text_width)
         else:  # pragma: no cover - guarded by parse_carousel_slide
@@ -523,6 +525,77 @@ class CarouselSlideRenderer:
                 int(theme.body_size * 0.85), max(26, int(theme.min_body_size * 0.75)), 3)
             self._draw_block(draw, body_lines, body_font, body_size, rule_y + panel_h * 0.05,
                              text_width, right_edge=text_right, fill=text_fill)
+
+    def _layout_image_overlay(self, draw, img, slide: CarouselSlide, theme: TemplateTheme,
+                              W, H, M):
+        """Full-bleed image + bottom gradient, title/body bottom-aligned (M22).
+
+        Uses the same aspect-preserving cover crop as 'cover' (never
+        stretched, crop from the edges only) and a dark gradient at the
+        bottom — slightly taller than the cover's text zone so title +
+        body stay readable. Eyebrow/footer/slide number behave like the
+        other types. Text limits match image_text (title<=60, body<=140).
+        """
+        accent = palette_rgb(slide.accent)
+        text_fill = palette_rgb(theme.text)
+        text_width = W - 2 * M
+        center_x = W / 2
+
+        # 1) Full-bleed image: same cover crop + base gradient as 'cover'
+        self._place_cover_image(img, self._load_image(slide.image_path), 0, 0, W, H,
+                                theme.overlay_alpha, gradient=True)
+        # 2) Taller bottom gradient so title + body stay readable
+        bottom_h = int(round(H * 0.58))
+        grad = _vertical_gradient(W, bottom_h, 0.0, max(0.80, theme.overlay_alpha + 0.18))
+        img.alpha_composite(grad, (0, H - bottom_h))
+
+        # 3) Bottom-aligned text stack: [eyebrow] title [rule] body
+        gap = int(round(H * 0.02))
+        stack: List[Tuple[str, List[str], Any, int, float]] = []
+        if slide.eyebrow:
+            eb_size = max(20, int(round(34 * self._scale)))
+            stack.append(("eyebrow", [slide.eyebrow],
+                          ImageFont.truetype(self.engine.font_path, eb_size),
+                          eb_size, eb_size * LINE_SPACING))
+        if slide.title:
+            ti_font, ti_lines, ti_size = self._fit_block(
+                draw, slide.title, text_width, H * 0.25,
+                theme.title_size, theme.min_title_size, 3)
+            stack.append(("title", ti_lines, ti_font, ti_size,
+                          len(ti_lines) * ti_size * LINE_SPACING))
+        if slide.body:
+            bo_font, bo_lines, bo_size = self._fit_block(
+                draw, slide.body, text_width, H * 0.18,
+                theme.body_size, theme.min_body_size, 3)
+            stack.append(("body", bo_lines, bo_font, bo_size,
+                          len(bo_lines) * bo_size * LINE_SPACING))
+
+        total_h = sum(h for _, _, _, _, h in stack)
+        if len(stack) > 1:
+            total_h += gap * (len(stack) - 1)
+        if slide.title and slide.body:
+            total_h += gap + RULE_THICKNESS  # accent rule between title and body
+
+        # Block bottom sits above the footer line (same bottom zone as the
+        # other types; _draw_footer paints footer + page number below it).
+        footer_size = max(18, int(round(30 * self._scale)))
+        y = H - M - footer_size - int(round(H * 0.035)) - total_h
+
+        for kind, lines, font, size, _ in stack:
+            if kind == "eyebrow":
+                y = self._draw_block(draw, lines, font, size, y, text_width,
+                                     center_x=center_x, fill=accent)
+                y += gap
+            elif kind == "title":
+                y = self._draw_block(draw, lines, font, size, y, text_width,
+                                     center_x=center_x, fill=text_fill)
+                if slide.body:
+                    self._accent_rule(draw, y + gap, center_x, accent)
+                    y += gap * 2 + RULE_THICKNESS
+            else:  # body
+                y = self._draw_block(draw, lines, font, size, y, text_width,
+                                     center_x=center_x,
+                                     fill=palette_rgb(theme.secondary_text))
 
     def _layout_cta(self, draw, img, slide: CarouselSlide, theme: TemplateTheme,
                     W, H, M, text_width):

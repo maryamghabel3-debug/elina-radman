@@ -275,9 +275,13 @@ class CarouselPlanner:
         data, provider = self._generate_deck_data(user_prompt, system_prompt, language, slide_count)
 
         deck = self._assemble_deck(data, template, None)
-        # Zip the generated text with the provided images, in order
+        # Zip the generated text with the provided images, in order.
+        # Image-bearing text slides get the full-bleed image_overlay layout
+        # (M22) instead of the 65/35 image_text panel.
         for slide, path in zip(deck.slides, paths):
             slide.image_path = path
+            if slide.slide_type == "image_text":
+                slide.slide_type = "image_overlay"
         self._final_validate_deck(deck)
 
         return CarouselPlanResult(
@@ -323,10 +327,11 @@ class CarouselPlanner:
                 }
             else:
                 # Non-cover slides always carry their paired image, so they
-                # use image_text (the M18A title_body type requires a body
-                # and would silently drop the user's image).
+                # use image_overlay (full-bleed image + bottom gradient, M22;
+                # the M18A title_body type requires a body and would silently
+                # drop the user's image).
                 raw_slide = {
-                    "slide_type": "image_text",
+                    "slide_type": "image_overlay",
                     "title": title.strip(),
                     "body": body,
                     "eyebrow": eyebrow,
@@ -536,11 +541,11 @@ class CarouselPlanner:
         ]
         if paired_images:
             # image_deck mode: every slide will be paired (in order) with a
-            # user-provided image; image_text slides use a placeholder path.
+            # user-provided image; image_overlay slides use a placeholder path.
             parts.append(
                 "برای این کاروسل به تعداد دقیقِ اسلایدها، تصویر از طرف کاربر "
                 "و به همان ترتیب جفت می‌شود. برای هر اسلاید بعد از cover که "
-                "متن آن باید روی تصویر دیده شود، slide_type=image_text را "
+                "متن آن باید روی تصویر دیده شود، slide_type=image_overlay را "
                 "استفاده کن و image_path را دقیقاً مقدار pending بگذار "
                 "(سیستم تصویر واقعی را جایگزین می‌کند). برای اسلایدهای بدون "
                 "تصویر از title_body یا quote استفاده کن."

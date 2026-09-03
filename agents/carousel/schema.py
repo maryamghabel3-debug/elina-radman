@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 CANVAS_WIDTH = 1080
 CANVAS_HEIGHT = 1350
 
-SUPPORTED_SLIDE_TYPES = ("cover", "title_body", "quote", "bullet_list", "image_text", "cta")
+SUPPORTED_SLIDE_TYPES = ("cover", "title_body", "quote", "bullet_list", "image_text", "image_overlay", "cta")
 SUPPORTED_TEMPLATES = ("psychological_dark", "midnight_editorial", "warm_cream", "minimal_photo")
 DEFAULT_TEMPLATE = "psychological_dark"
 
@@ -61,6 +61,7 @@ TEXT_LIMITS: Dict[str, Dict[str, int]] = {
     "quote":       {"title": 180, "body": 0},
     "bullet_list": {"title": 80, "body": 0, "bullet": 64},
     "image_text":  {"title": 60, "body": 140},
+    "image_overlay": {"title": 60, "body": 140},
     "cta":         {"title": 60, "body": 80},
 }
 MIN_BULLETS = 2
@@ -184,11 +185,11 @@ def parse_carousel_slide(raw: Dict[str, Any]) -> CarouselSlide:
     elif bullets:
         raise CarouselConfigError(f"'bullets' is only supported by slide_type 'bullet_list'")
 
-    if slide_type == "image_text":
+    if slide_type in ("image_text", "image_overlay"):
         if not image_path:
-            raise CarouselConfigError("image_text slide requires 'image_path'")
+            raise CarouselConfigError(f"{slide_type} slide requires 'image_path'")
         if not title and not body:
-            raise CarouselConfigError("image_text slide requires a non-empty title and/or body")
+            raise CarouselConfigError(f"{slide_type} slide requires a non-empty title and/or body")
 
     return CarouselSlide(
         slide_type=slide_type,

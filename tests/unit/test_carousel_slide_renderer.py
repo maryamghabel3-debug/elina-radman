@@ -328,6 +328,123 @@ def test_M_repeated_render_is_deterministic(tmp_path):
 
 # === LTR footer/handle handling ===
 
+# === N. image_overlay: full-bleed image + bottom gradient (M22) ===
+
+def make_overlay_source(path, size=(900, 1600), color=(30, 120, 220)):
+    """Portrait source: solid color plus a full-width white band at
+    src y 250..400 (visible after the center crop)."""
+    img = Image.new("RGB", size, color)
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([0, 250, size[0], 400], fill=(255, 255, 255))
+    img.save(path)
+    return path
+
+
+@pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
+def test_N_image_overlay_full_bleed_1080x1350(tmp_path):
+    """The image covers the whole canvas: the source's top band is visible
+    (like the cover) AND the bottom zone shows image color, not the flat
+    background panel image_text paints there."""
+    src_path = make_overlay_source(str(tmp_path / "src.png"))
+    renderer = make_renderer()
+    slide = {
+        "slide_type": "image_overlay",
+        "image_path": src_path,
+        "title": "تصویر، حافظه‌ی بصری ماست",
+        "body": "هر تصویری که می‌سازیم، روایتی از درون ماست.",
+        "slide_number": 2,
+    }
+    out = str(tmp_path / "image_overlay.png")
+    renderer.render(slide, out)
+    img = Image.open(out)
+    assert img.size == (CANVAS_WIDTH, CANVAS_HEIGHT) == (1080, 1350)
+    assert os.path.getsize(out) > 0
+
+    # Top: the source's white band survives the crop -> bright pixels
+    r, g, b = img.getpixel((540, 100))[:3]
+    assert min(r, g, b) > 100
+    # Bottom zone (safe margin column, below the text block): the source's
+    # blue is still visible under the gradient
+    r2, g2, b2 = img.getpixel((45, 1000))[:3]
+    assert b2 >= 45 and g2 >= 28
+
+
+@pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
+def test_N_image_overlay_preserves_source_aspect(tmp_path):
+    """A landscape 1600x900 source cover-cropped to 1080x1350 scales by 1.5
+    and center-crops horizontally; a white marker at src (800..850, 450..500)
+    must land at output (540..615, 675..750). A stretched render would put
+    it at (540..574, ...) instead — the probe point discriminates."""
+    src = Image.new("RGB", (1600, 900), (30, 120, 220))
+    draw = ImageDraw.Draw(src)
+    draw.rectangle([800, 450, 850, 500], fill=(255, 255, 255))
+    src_path = str(tmp_path / "landscape.png")
+    src.save(src_path)
+
+    renderer = make_renderer()
+    out = str(tmp_path / "aspect.png")
+    renderer.render({
+        "slide_type": "image_overlay",
+        "image_path": src_path,
+        "title": "تست",
+    }, out)
+    img = Image.open(out)
+    # White marker visible at its cover-crop position (no stretch)
+    r, g, b = img.getpixel((577, 712))[:3]
+    assert r > 70 and g > 70
+    # Just right of the marker: darkened source color, not white
+    r2, g2, b2 = img.getpixel((700, 712))[:3]
+    assert r2 < 60
+
+
+@pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
+def test_N_image_overlay_title_only_and_title_body(tmp_path):
+    src_path = make_overlay_source(str(tmp_path / "src.png"))
+    renderer = make_renderer()
+    # title-only (with eyebrow + footer + slide number)
+    out1 = str(tmp_path / "io_title.png")
+    renderer.render({
+        "slide_type": "image_overlay",
+        "image_path": src_path,
+        "title": "فقط عنوان",
+        "eyebrow": "هویت",
+        "footer": "الینا",
+        "slide_number": 2,
+    }, out1)
+    img1 = Image.open(out1)
+    assert img1.size == (1080, 1350)
+    assert os.path.getsize(out1) > 0
+    # title + body
+    out2 = str(tmp_path / "io_title_body.png")
+    renderer.render({
+        "slide_type": "image_overlay",
+        "image_path": src_path,
+        "title": "عنوان اسلاید",
+        "body": "متن بدنه‌ای روی گرادیان پایین تصویر.",
+        "slide_number": 3,
+    }, out2)
+    img2 = Image.open(out2)
+    assert img2.size == (1080, 1350)
+    assert os.path.getsize(out2) > 0
+
+
+def test_N_image_overlay_text_limits_match_image_text():
+    base = {"slide_type": "image_overlay", "image_path": "x.jpg"}
+    # Boundaries pass: title 60, body 140 (same as image_text)
+    parse_carousel_slide(dict(base, title="ع" * 60, body="ب" * 140))
+    # One char over each limit is rejected
+    with pytest.raises(CarouselConfigError):
+        parse_carousel_slide(dict(base, title="ع" * 61))
+    with pytest.raises(CarouselConfigError):
+        parse_carousel_slide(dict(base, title="ع", body="ب" * 141))
+
+
+def test_N_image_overlay_requires_image_path():
+    with pytest.raises(CarouselConfigError) as exc_info:
+        parse_carousel_slide({"slide_type": "image_overlay", "title": "تست"})
+    assert exc_info.value.code == CAROUSEL_SLIDE_CONFIG_INVALID
+
+
 @pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
 def test_LTR_footer_not_reordered_by_rtl(tmp_path):
     """An LTR handle like '@elina' must not be reordered into 'elina@' by the
