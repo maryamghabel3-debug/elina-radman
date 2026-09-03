@@ -13,13 +13,14 @@ from agents.carousel import (
     CarouselSlideRenderer,
     TEMPLATES,
     parse_carousel_slide,
+    palette_rgb,
 )
 from agents.carousel.schema import (
     CAROUSEL_IMAGE_NOT_FOUND,
     CAROUSEL_SLIDE_CONFIG_INVALID,
     CAROUSEL_TEXT_OVERFLOW,
 )
-from agents.carousel.slide_renderer import _cover_crop
+from agents.carousel.slide_renderer import _cover_crop, choose_auto_image_layout
 
 pytestmark = pytest.mark.unit
 
@@ -461,3 +462,243 @@ def test_LTR_footer_not_reordered_by_rtl(tmp_path):
     assert os.path.getsize(out) > 0
     img = Image.open(out)
     assert img.size == (1080, 1350)
+
+
+# === O. image_text image_layout variants (M22A) ===
+
+def make_colored_source(path, size, color):
+    Image.new("RGB", size, color).save(path)
+    return path
+
+
+def test_O_invalid_image_layout_rejected():
+    with pytest.raises(CarouselConfigError) as exc_info:
+        parse_carousel_slide({"slide_type": "image_text", "title": "تست",
+                              "image_path": "x.jpg", "image_layout": "poster"})
+    assert exc_info.value.code == CAROUSEL_SLIDE_CONFIG_INVALID
+    # All supported values parse fine
+    for layout in ("split_panel", "full_bleed_caption", "contain_caption", "auto"):
+        assert parse_carousel_slide({"slide_type": "image_text", "title": "تست",
+                                     "image_path": "x.jpg",
+                                     "image_layout": layout}).image_layout == layout
+    # Omitted -> None (legacy split_panel)
+    assert parse_carousel_slide({"slide_type": "image_text", "title": "تست",
+                                 "image_path": "x.jpg"}).image_layout is None
+
+
+@pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
+def test_O_image_layout_none_keeps_legacy_split_panel(tmp_path):
+    """image_layout=None renders exactly the legacy 65/35 layout (stored
+    decks without the field are byte-for-byte unchanged)."""
+    src = make_colored_source(str(tmp_path / "s.png"), (1600, 900), (30, 120, 220))
+    renderer = make_renderer()
+    out = str(tmp_path / "split_none.png")
+    renderer.render({"slide_type": "image_text", "image_path": src, "title": "تست"}, out)
+    img = Image.open(out)
+    assert img.size == (CANVAS_WIDTH, CANVAS_HEIGHT)
+    # Image region (top 65%): the source blue is visible
+    r, g, b = img.getpixel((540, 876))[:3]
+    assert b > 100
+    # Bottom 35%: opaque panel, exactly the template background
+    assert img.getpixel((540, 880))[:3] == palette_rgb("ink_black")
+
+
+@pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
+def test_O_split_panel_explicit_uses_65_over_35(tmp_path):
+    """Explicit 'split_panel' == None (legacy), byte for byte."""
+    src = make_colored_source(str(tmp_path / "s.png"), (1600, 900), (30, 120, 220))
+    renderer = make_renderer()
+    out_explicit = str(tmp_path / "split_explicit.png")
+    renderer.render({
+        "slide_type": "image_text", "image_path": src,
+        "title": "تست", "image_layout": "split_panel",
+    }, out_explicit)
+    img = Image.open(out_explicit)
+    r, g, b = img.getpixel((540, 876))[:3]
+    assert b > 100
+    assert img.getpixel((540, 880))[:3] == palette_rgb("ink_black")
+
+    out_none = str(tmp_path / "split_none.png")
+    renderer.render({"slide_type": "image_text", "image_path": src, "title": "تست"}, out_none)
+    assert open(out_explicit, "rb").read() == open(out_none, "rb").read()
+
+
+@pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
+def test_O_full_bleed_caption_covers_full_canvas(tmp_path):
+    """full_bleed_caption: the image spans the whole canvas and the bottom
+    35% is NOT an opaque background panel."""
+    src = make_colored_source(str(tmp_path / "s.png"), (1600, 900), (30, 120, 220))
+    renderer = make_renderer()
+    out = str(tmp_path / "fb.png")
+    renderer.render({
+        "slide_type": "image_text", "image_path": src,
+        "title": "تصویر، حافظه‌ی بصری ماست",
+        "body": "هر تصویری که می‌سازیم، روایتی از درون ماست.",
+        "image_layout": "full_bleed_caption",
+        "slide_number": 2,
+    }, out)
+    img = Image.open(out)
+    assert img.size == (CANVAS_WIDTH, CANVAS_HEIGHT)
+    # Top of the canvas: the (darkened) source, not the template background
+    r, g, b = img.getpixel((540, 60))[:3]
+    assert b >= 60 and g >= 30
+    # Bottom zone (text-free margin column): image color under the gradient
+    r2, g2, b2 = img.getpixel((45, 950))[:3]
+    assert b2 >= 50 and g2 >= 25
+    # Definitely not an opaque 35% background panel
+    bottom = img.getpixel((45, 1200))[:3]
+    assert bottom != palette_rgb("ink_black")
+    assert bottom[2] >= 30
+
+
+@pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
+def test_O_full_bleed_caption_smaller_zone_without_body(tmp_path):
+    """Without a body the caption zone (bottom gradient) is smaller, so a
+    point inside it is less darkened than in the title+body render."""
+    src = make_colored_source(str(tmp_path / "s.png"), (1600, 900), (30, 120, 220))
+    renderer = make_renderer()
+    base = {"slide_type": "image_text", "image_path": src, "title": "تست",
+            "image_layout": "full_bleed_caption"}
+    out_tb = str(tmp_path / "fb_tb.png")
+    renderer.render(dict(base, body="متن بدنه‌ای برای تست."), out_tb)
+    out_t = str(tmp_path / "fb_t.png")
+    renderer.render(base, out_t)
+    b_with_body = Image.open(out_tb).getpixel((45, 700))[2]
+    b_title_only = Image.open(out_t).getpixel((45, 700))[2]
+    assert b_title_only > b_with_body
+
+
+@pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
+def test_O_contain_caption_wide_source_no_crop_no_stretch(tmp_path):
+    """A 16:9 source is contain-fitted (1080x608, centered): the marker
+    lands exactly at the contain position (proves no stretch and no
+    cover-crop) and both top and bottom image edges stay visible."""
+    src = Image.new("RGB", (1600, 900), (30, 120, 220))
+    draw = ImageDraw.Draw(src)
+    draw.rectangle([800, 450, 850, 500], fill=(255, 255, 255))
+    src_path = str(tmp_path / "wide.png")
+    src.save(src_path)
+
+    renderer = make_renderer()
+    out = str(tmp_path / "contain_wide.png")
+    renderer.render({
+        "slide_type": "image_text", "image_path": src_path,
+        "title": "تست", "body": "بدنه", "image_layout": "contain_caption",
+    }, out)
+    img = Image.open(out)
+    assert img.size == (CANVAS_WIDTH, CANVAS_HEIGHT)
+
+    scale = min(CANVAS_WIDTH / 1600, CANVAS_HEIGHT / 900)  # 0.675
+    fit_h = round(900 * scale)                             # 608
+    top = (CANVAS_HEIGHT - fit_h) // 2                     # 371
+    # Marker (src 800..850 x 450..500) at its exact contain position
+    mx, my = int(825 * scale), top + int(475 * scale)      # (556, 691)
+    assert img.getpixel((mx, my))[0] > 150
+    # A point below the marker: source color under contain (would be white
+    # under a stretched render) -> proves no stretch and no cover-crop
+    assert img.getpixel((mx, top + int(560 * scale)))[0] < 100
+    # Top edge of the fitted image: pure source color (no crop at the top)
+    assert img.getpixel((10, top + 10))[:3] == (30, 120, 220)
+    # Bottom edge of the fitted image still visible (under the gradient)
+    assert img.getpixel((10, top + fit_h - 3))[2] > 100
+    # Letterbox above the image: blurred+darkened source — not flat bg,
+    # not the pure source either
+    r2, g2, b2 = img.getpixel((540, 200))[:3]
+    assert 100 < b2 < 200
+    # Letterbox below the image: darkened source, not a flat panel
+    r3, g3, b3 = img.getpixel((540, 1000))[:3]
+    assert b3 > 40 and g3 > 30
+
+
+@pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
+def test_O_contain_caption_portrait_source_side_letterboxed(tmp_path):
+    """A 9:16 source is contain-fitted to a full-height centered column;
+    the left/right letterbox is a blurred+darkened copy (Pillow only)."""
+    src = Image.new("RGB", (900, 1600), (30, 120, 220))
+    draw = ImageDraw.Draw(src)
+    draw.rectangle([400, 800, 450, 850], fill=(255, 255, 255))
+    src_path = str(tmp_path / "tall.png")
+    src.save(src_path)
+
+    renderer = make_renderer()
+    out = str(tmp_path / "contain_tall.png")
+    renderer.render({
+        "slide_type": "image_text", "image_path": src_path,
+        "title": "تست", "body": "بدنه", "image_layout": "contain_caption",
+    }, out)
+    img = Image.open(out)
+    assert img.size == (CANVAS_WIDTH, CANVAS_HEIGHT)
+
+    scale = min(CANVAS_WIDTH / 900, CANVAS_HEIGHT / 1600)  # 0.84375
+    fit_w = round(900 * scale)                             # 759
+    x0 = (CANVAS_WIDTH - fit_w) // 2                       # 160
+    # Marker at its exact contain position
+    mx, my = x0 + int(425 * scale), int(825 * scale)
+    assert img.getpixel((mx, my))[0] > 150
+    # Fitted column: pure source color at the top (no crop at the top)
+    assert img.getpixel((x0 + 40, 50))[:3] == (30, 120, 220)
+    # Side letterbox: darkened source, not flat background, not pure source
+    for x in (80, CANVAS_WIDTH - 80):
+        r, g, b = img.getpixel((x, 300))[:3]
+        assert 100 < b < 200
+
+
+def test_O_auto_selection_by_aspect():
+    # 4:5 (the carousel ratio) -> full-bleed
+    assert choose_auto_image_layout(1080, 1350) == "full_bleed_caption"
+    assert choose_auto_image_layout(900, 1125) == "full_bleed_caption"
+    assert choose_auto_image_layout(1200, 1500) == "full_bleed_caption"
+    # Very wide / very tall / square -> contain (letterboxed)
+    assert choose_auto_image_layout(1920, 1080) == "contain_caption"
+    assert choose_auto_image_layout(1080, 1920) == "contain_caption"
+    assert choose_auto_image_layout(1080, 1080) == "contain_caption"
+    # Deterministic
+    assert choose_auto_image_layout(1600, 900) == choose_auto_image_layout(1600, 900)
+
+
+@pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
+def test_O_auto_e2e_4to5_full_bleed_wide_contain(tmp_path):
+    renderer = make_renderer()
+    # 4:5 source -> full-bleed (top of the canvas shows the source)
+    src45 = make_colored_source(str(tmp_path / "r45.png"), (1080, 1350), (30, 120, 220))
+    out1 = str(tmp_path / "auto_45.png")
+    renderer.render({"slide_type": "image_text", "image_path": src45,
+                     "title": "تست", "image_layout": "auto"}, out1)
+    assert Image.open(out1).getpixel((540, 60))[2] >= 60
+    # 16:9 source -> contain (letterbox band at the top)
+    src169 = make_colored_source(str(tmp_path / "r169.png"), (1920, 1080), (30, 120, 220))
+    out2 = str(tmp_path / "auto_169.png")
+    renderer.render({"slide_type": "image_text", "image_path": src169,
+                     "title": "تست", "image_layout": "auto"}, out2)
+    img2 = Image.open(out2)
+    assert 100 < img2.getpixel((540, 200))[2] < 200
+
+
+@pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
+def test_O_cover_layout_unchanged(tmp_path):
+    """image_layout only applies to image_text: cover renders identically
+    with and without it (full-bleed image, centered title)."""
+    src = make_colored_source(str(tmp_path / "s.png"), (1080, 1350), (30, 120, 220))
+    renderer = make_renderer()
+    base = {"slide_type": "cover", "title": "کاور", "image_path": src}
+    out1 = str(tmp_path / "cover1.png")
+    out2 = str(tmp_path / "cover2.png")
+    renderer.render(base, out1)
+    renderer.render(dict(base, image_layout="auto"), out2)
+    assert open(out1, "rb").read() == open(out2, "rb").read()
+    # Full-bleed cover: the source is visible at the top
+    assert Image.open(out1).getpixel((540, 60))[2] >= 60
+
+
+@pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
+def test_O_missing_image_typed_error_all_layouts(tmp_path):
+    renderer = make_renderer()
+    for layout in (None, "split_panel", "full_bleed_caption",
+                   "contain_caption", "auto"):
+        slide = {"slide_type": "image_text", "title": "تست",
+                 "image_path": "/nonexistent/img.jpg"}
+        if layout is not None:
+            slide["image_layout"] = layout
+        with pytest.raises(CarouselImageError) as exc_info:
+            renderer.render(slide, str(tmp_path / "x.png"))
+        assert exc_info.value.code == CAROUSEL_IMAGE_NOT_FOUND

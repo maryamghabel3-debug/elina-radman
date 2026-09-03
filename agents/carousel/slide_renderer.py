@@ -20,7 +20,7 @@ import logging
 import os
 from typing import Any, Dict, List, Optional, Tuple
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 from agents.editing.typography_engine import TypographyEngine
 from agents.editing.font_resolver import FontNotFoundError
@@ -100,6 +100,29 @@ def _vertical_gradient(width: int, height: int, top_alpha: float, bottom_alpha: 
         alpha = round(255 * (top_alpha + (bottom_alpha - top_alpha) * t))
         draw.line([(0, y), (width, y)], fill=(color[0], color[1], color[2], alpha))
     return overlay
+
+
+# Carousel aspect ratio (4:5) used by the "auto" image_layout choice (M22A)
+CANVAS_ASPECT_RATIO = CANVAS_WIDTH / CANVAS_HEIGHT
+# Relative tolerance: sources within +/-10% of the canvas ratio are
+# full-bleed; wider/taller sources are letterboxed instead.
+AUTO_FULL_BLEED_TOLERANCE = 0.10
+
+
+def choose_auto_image_layout(source_w: int, source_h: int) -> str:
+    """Deterministic "auto" choice for image_text slides (M22A).
+
+    A source close to the carousel ratio (1080x1350 = 4:5) loses little to a
+    cover crop -> "full_bleed_caption". A very wide or very tall source
+    would lose too much of the photo -> "contain_caption" (letterboxed,
+    nothing cropped).
+    """
+    if source_w <= 0 or source_h <= 0:
+        raise CarouselConfigError("source image size must be positive")
+    src_aspect = source_w / source_h
+    if abs(src_aspect - CANVAS_ASPECT_RATIO) <= AUTO_FULL_BLEED_TOLERANCE * CANVAS_ASPECT_RATIO:
+        return "full_bleed_caption"
+    return "contain_caption"
 
 
 class CarouselSlideRenderer:
@@ -488,13 +511,40 @@ class CarouselSlideRenderer:
 
     def _layout_image_text(self, draw, img, slide: CarouselSlide, theme: TemplateTheme,
                            W, H, M, text_right, text_width):
+        """image_text dispatcher (M22A): routes on slide.image_layout.
+
+        None / "split_panel" -> legacy 65/35 layout (byte-identical to the
+        M18A implementation, so stored decks render exactly as before);
+        "full_bleed_caption" / "contain_caption" -> photo-preserving
+        layouts; "auto" -> deterministic aspect-based choice.
+        """
+        source = self._load_image(slide.image_path)
+        layout = self._resolve_image_layout(slide, source.size)
+        if layout == "full_bleed_caption":
+            self._layout_full_bleed_caption(draw, img, slide, theme, W, H, M, source)
+        elif layout == "contain_caption":
+            self._layout_contain_caption(draw, img, slide, theme, W, H, M, source)
+        else:
+            self._layout_split_panel(draw, img, slide, theme, W, H, M,
+                                     text_right, text_width, source)
+
+    def _resolve_image_layout(self, slide: CarouselSlide, source_size: Tuple[int, int]) -> str:
+        """Effective image_text layout for a slide (deterministic)."""
+        layout = slide.image_layout or "split_panel"
+        if layout == "auto":
+            return choose_auto_image_layout(*source_size)
+        return layout
+
+    def _layout_split_panel(self, draw, img, slide: CarouselSlide, theme: TemplateTheme,
+                            W, H, M, text_right, text_width, source):
+        """Legacy M18A layout: image region top 65%, opaque panel bottom 35%."""
         accent = palette_rgb(slide.accent)
         text_fill = palette_rgb(theme.text)
         text_width = W - 2 * M
 
         # Deterministic split: image region top 65%, text panel bottom 35%
         image_h = int(round(H * 0.65))
-        self._place_cover_image(img, self._load_image(slide.image_path), 0, 0, W, image_h,
+        self._place_cover_image(img, source, 0, 0, W, image_h,
                                 theme.overlay_alpha * 0.55, gradient=True)
         panel = Image.new("RGBA", (W, H - image_h), palette_rgb(theme.background) + (255,))
         img.alpha_composite(panel, (0, image_h))
@@ -526,30 +576,58 @@ class CarouselSlideRenderer:
             self._draw_block(draw, body_lines, body_font, body_size, rule_y + panel_h * 0.05,
                              text_width, right_edge=text_right, fill=text_fill)
 
-    def _layout_image_overlay(self, draw, img, slide: CarouselSlide, theme: TemplateTheme,
-                              W, H, M):
-        """Full-bleed image + bottom gradient, title/body bottom-aligned (M22).
+    def _layout_full_bleed_caption(self, draw, img, slide: CarouselSlide, theme: TemplateTheme,
+                                   W, H, M, source):
+        """Full-bleed caption (M22A): cover-crop the source across the full
+        canvas (aspect preserved, never stretched), a soft dark gradient
+        only near the bottom, and the title/body inside the lower safe
+        region. No opaque text panel. Footer/slide number stay visible."""
+        self._place_cover_image(img, source, 0, 0, W, H, theme.overlay_alpha, gradient=True)
+        # Smaller caption zone when the slide is title-only
+        self._draw_bottom_caption(draw, img, slide, theme, W, H, M,
+                                  0.58 if slide.body else 0.46)
 
-        Uses the same aspect-preserving cover crop as 'cover' (never
-        stretched, crop from the edges only) and a dark gradient at the
-        bottom — slightly taller than the cover's text zone so title +
-        body stay readable. Eyebrow/footer/slide number behave like the
-        other types. Text limits match image_text (title<=60, body<=140).
-        """
+    def _layout_contain_caption(self, draw, img, slide: CarouselSlide, theme: TemplateTheme,
+                                W, H, M, source):
+        """Contain caption (M22A): the complete source image, uncropped and
+        un-stretched, centered on the canvas; unused space is filled with a
+        blurred + darkened version of the same image (Pillow only); a soft
+        bottom gradient carries the caption (no opaque panel)."""
+        # Background: blurred, darkened cover-crop of the same source
+        bg = _cover_crop(source, W, H)
+        if bg.mode != "RGB":
+            bg = bg.convert("RGB")
+        bg = bg.filter(ImageFilter.GaussianBlur(radius=max(4, int(round(W * 0.01)))))
+        bg = Image.blend(bg, Image.new("RGB", bg.size, (16, 16, 20)), 0.45)
+        img.alpha_composite(bg.convert("RGBA"))
+
+        # Foreground: contain-fit (min scale -> no edge crop), centered
+        src_w, src_h = source.size
+        scale = min(W / src_w, H / src_h)
+        fit_w = max(1, round(src_w * scale))
+        fit_h = max(1, round(src_h * scale))
+        fitted = source.resize((fit_w, fit_h), Image.LANCZOS)
+        if fitted.mode != "RGBA":
+            fitted = fitted.convert("RGBA")
+        img.alpha_composite(fitted, ((W - fit_w) // 2, (H - fit_h) // 2))
+
+        self._draw_bottom_caption(draw, img, slide, theme, W, H, M,
+                                  0.58 if slide.body else 0.46)
+
+    def _draw_bottom_caption(self, draw, img, slide: CarouselSlide, theme: TemplateTheme,
+                             W, H, M, gradient_frac: float):
+        """Soft bottom gradient + bottom-aligned caption stack
+        ([eyebrow] title [accent rule] body) over the lower safe region.
+        Footer/slide number are painted below it by _draw_footer."""
         accent = palette_rgb(slide.accent)
         text_fill = palette_rgb(theme.text)
         text_width = W - 2 * M
         center_x = W / 2
 
-        # 1) Full-bleed image: same cover crop + base gradient as 'cover'
-        self._place_cover_image(img, self._load_image(slide.image_path), 0, 0, W, H,
-                                theme.overlay_alpha, gradient=True)
-        # 2) Taller bottom gradient so title + body stay readable
-        bottom_h = int(round(H * 0.58))
+        bottom_h = int(round(H * gradient_frac))
         grad = _vertical_gradient(W, bottom_h, 0.0, max(0.80, theme.overlay_alpha + 0.18))
         img.alpha_composite(grad, (0, H - bottom_h))
 
-        # 3) Bottom-aligned text stack: [eyebrow] title [rule] body
         gap = int(round(H * 0.02))
         stack: List[Tuple[str, List[str], Any, int, float]] = []
         if slide.eyebrow:
@@ -596,6 +674,17 @@ class CarouselSlideRenderer:
                 y = self._draw_block(draw, lines, font, size, y, text_width,
                                      center_x=center_x,
                                      fill=palette_rgb(theme.secondary_text))
+
+    def _layout_image_overlay(self, draw, img, slide: CarouselSlide, theme: TemplateTheme,
+                              W, H, M):
+        """M22 full-bleed slide type: full-bleed image (same cover crop as
+        'cover', aspect preserved, never stretched) + bottom gradient +
+        title/body bottom-aligned. Renders exactly like image_text's
+        full_bleed_caption layout (kept unchanged for existing decks)."""
+        source = self._load_image(slide.image_path)
+        self._place_cover_image(img, source, 0, 0, W, H,
+                                theme.overlay_alpha, gradient=True)
+        self._draw_bottom_caption(draw, img, slide, theme, W, H, M, 0.58)
 
     def _layout_cta(self, draw, img, slide: CarouselSlide, theme: TemplateTheme,
                     W, H, M, text_width):
