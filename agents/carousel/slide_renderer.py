@@ -25,6 +25,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from agents.editing.typography_engine import TypographyEngine
 from agents.editing.font_resolver import FontNotFoundError
 from agents.carousel.brand_theme import TemplateTheme, get_template, hex_to_rgb, palette_rgb
+from agents.carousel.text_zone import find_best_text_zone
 from agents.carousel.schema import (
     CANVAS_HEIGHT,
     CANVAS_WIDTH,
@@ -98,6 +99,20 @@ def _vertical_gradient(width: int, height: int, top_alpha: float, bottom_alpha: 
     for y in range(height):
         t = y / max(1, height - 1)
         alpha = round(255 * (top_alpha + (bottom_alpha - top_alpha) * t))
+        draw.line([(0, y), (width, y)], fill=(color[0], color[1], color[2], alpha))
+    return overlay
+
+
+def _middle_band_gradient(width: int, height: int, peak_alpha: float,
+                          color: Tuple[int, int, int] = (16, 16, 20)) -> Image.Image:
+    """A horizontal band gradient: transparent at both ends, peaking in the
+    middle (for middle-zone captions, M23)."""
+    overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    peak_alpha = max(0.0, min(1.0, peak_alpha))
+    for y in range(height):
+        t = y / max(1, height - 1)
+        alpha = round(255 * peak_alpha * (1.0 - abs(2.0 * t - 1.0)))
         draw.line([(0, y), (width, y)], fill=(color[0], color[1], color[2], alpha))
     return overlay
 
@@ -535,6 +550,14 @@ class CarouselSlideRenderer:
             return choose_auto_image_layout(*source_size)
         return layout
 
+    def _resolve_text_zone(self, slide: CarouselSlide, source: Image.Image) -> str:
+        """Effective text zone for a full-bleed slide (M23): an explicit
+        slide.text_zone wins; otherwise the least-busy band of the source
+        image is auto-detected (deterministic)."""
+        if slide.text_zone:
+            return slide.text_zone
+        return find_best_text_zone(source)
+
     def _layout_split_panel(self, draw, img, slide: CarouselSlide, theme: TemplateTheme,
                             W, H, M, text_right, text_width, source):
         """Legacy M18A layout: image region top 65%, opaque panel bottom 35%."""
@@ -578,14 +601,19 @@ class CarouselSlideRenderer:
 
     def _layout_full_bleed_caption(self, draw, img, slide: CarouselSlide, theme: TemplateTheme,
                                    W, H, M, source):
-        """Full-bleed caption (M22A): cover-crop the source across the full
-        canvas (aspect preserved, never stretched), a soft dark gradient
-        only near the bottom, and the title/body inside the lower safe
-        region. No opaque text panel. Footer/slide number stay visible."""
+        """Full-bleed caption (M22A + M23): cover-crop the source across
+        the full canvas (aspect preserved, never stretched), a soft dark
+        gradient behind the caption, and the title/body inside the safe
+        region. No opaque text panel.
+
+        The text zone is the explicitly set slide.text_zone (M23), or the
+        auto-detected least-busy band of the source image when it is None.
+        Footer/slide number stay in their fixed bottom positions."""
         self._place_cover_image(img, source, 0, 0, W, H, theme.overlay_alpha, gradient=True)
+        zone = self._resolve_text_zone(slide, source)
         # Smaller caption zone when the slide is title-only
-        self._draw_bottom_caption(draw, img, slide, theme, W, H, M,
-                                  0.58 if slide.body else 0.46)
+        self._draw_caption(draw, img, slide, theme, W, H, M, zone,
+                           0.58 if slide.body else 0.46)
 
     def _layout_contain_caption(self, draw, img, slide: CarouselSlide, theme: TemplateTheme,
                                 W, H, M, source):
@@ -611,22 +639,31 @@ class CarouselSlideRenderer:
             fitted = fitted.convert("RGBA")
         img.alpha_composite(fitted, ((W - fit_w) // 2, (H - fit_h) // 2))
 
-        self._draw_bottom_caption(draw, img, slide, theme, W, H, M,
-                                  0.58 if slide.body else 0.46)
+        # contain_caption keeps bottom-only captions (M23 decision): its
+        # letterbox already keeps the caption off the photo, and bottom is
+        # the natural caption position — slide.text_zone is ignored here.
+        self._draw_caption(draw, img, slide, theme, W, H, M, "bottom",
+                           0.58 if slide.body else 0.46)
 
-    def _draw_bottom_caption(self, draw, img, slide: CarouselSlide, theme: TemplateTheme,
-                             W, H, M, gradient_frac: float):
-        """Soft bottom gradient + bottom-aligned caption stack
-        ([eyebrow] title [accent rule] body) over the lower safe region.
-        Footer/slide number are painted below it by _draw_footer."""
+    def _draw_caption(self, draw, img, slide: CarouselSlide, theme: TemplateTheme,
+                      W, H, M, zone: str, gradient_frac: float):
+        """Gradient + caption stack ([eyebrow] title [accent rule] body)
+        inside the requested text zone (M23):
+
+        - "bottom": soft gradient rising from the bottom edge, text
+          bottom-aligned above the footer (the original M22 behavior).
+        - "top": mirrored gradient from the top edge, text in the top safe
+          area (eyebrow first, then title/body).
+        - "middle": soft horizontal band gradient centered vertically,
+          text centered in the band.
+
+        Footer and slide number always stay in their fixed bottom
+        positions (painted by _draw_footer)."""
         accent = palette_rgb(slide.accent)
         text_fill = palette_rgb(theme.text)
         text_width = W - 2 * M
         center_x = W / 2
-
-        bottom_h = int(round(H * gradient_frac))
-        grad = _vertical_gradient(W, bottom_h, 0.0, max(0.80, theme.overlay_alpha + 0.18))
-        img.alpha_composite(grad, (0, H - bottom_h))
+        peak = max(0.80, theme.overlay_alpha + 0.18)
 
         gap = int(round(H * 0.02))
         stack: List[Tuple[str, List[str], Any, int, float]] = []
@@ -654,10 +691,25 @@ class CarouselSlideRenderer:
         if slide.title and slide.body:
             total_h += gap + RULE_THICKNESS  # accent rule between title and body
 
-        # Block bottom sits above the footer line (same bottom zone as the
-        # other types; _draw_footer paints footer + page number below it).
-        footer_size = max(18, int(round(30 * self._scale)))
-        y = H - M - footer_size - int(round(H * 0.035)) - total_h
+        if zone == "top":
+            grad = _vertical_gradient(W, int(round(H * gradient_frac)), peak, 0.0)
+            img.alpha_composite(grad, (0, 0))
+            y = int(round(H * 0.08))
+        elif zone == "middle":
+            band_h = max(int(round(H * 0.25)),
+                         int(round(total_h)) + 2 * int(round(H * 0.06)))
+            grad = _middle_band_gradient(W, band_h, peak)
+            img.alpha_composite(grad, (0, (H - band_h) // 2))
+            y = (H - total_h) // 2
+        else:  # "bottom" — original M22 behavior (byte-identical)
+            bottom_h = int(round(H * gradient_frac))
+            grad = _vertical_gradient(W, bottom_h, 0.0, peak)
+            img.alpha_composite(grad, (0, H - bottom_h))
+            # Block bottom sits above the footer line (same bottom zone as
+            # the other types; _draw_footer paints footer + page number
+            # below it).
+            footer_size = max(18, int(round(30 * self._scale)))
+            y = H - M - footer_size - int(round(H * 0.035)) - total_h
 
         for kind, lines, font, size, _ in stack:
             if kind == "eyebrow":
@@ -678,13 +730,14 @@ class CarouselSlideRenderer:
     def _layout_image_overlay(self, draw, img, slide: CarouselSlide, theme: TemplateTheme,
                               W, H, M):
         """M22 full-bleed slide type: full-bleed image (same cover crop as
-        'cover', aspect preserved, never stretched) + bottom gradient +
-        title/body bottom-aligned. Renders exactly like image_text's
-        full_bleed_caption layout (kept unchanged for existing decks)."""
+        'cover', aspect preserved, never stretched) + gradient + caption.
+        Same rendering as image_text's full_bleed_caption layout; the text
+        zone honors an explicit slide.text_zone, else auto-detection (M23)."""
         source = self._load_image(slide.image_path)
         self._place_cover_image(img, source, 0, 0, W, H,
                                 theme.overlay_alpha, gradient=True)
-        self._draw_bottom_caption(draw, img, slide, theme, W, H, M, 0.58)
+        self._draw_caption(draw, img, slide, theme, W, H, M,
+                           self._resolve_text_zone(slide, source), 0.58)
 
     def _layout_cta(self, draw, img, slide: CarouselSlide, theme: TemplateTheme,
                     W, H, M, text_width):

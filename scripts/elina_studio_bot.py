@@ -772,6 +772,39 @@ async def cmd_carousel_theme(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 @record_update_decorator
+async def cmd_carousel_layout(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """M23: /carousel_layout <split|full|contain|auto> [slide_number].
+    Thin handler — all logic lives in agents/studio/carousel_session.py."""
+    if not is_owner(update):
+        await update.message.reply_text("⛔ دسترسی فقط برای مالک است.")
+        return
+    session = _get_carousel_session(context)
+    if not session:
+        await update.message.reply_text("جلسه کاروسلی فعال نیست. /carousel را بزن.")
+        return
+
+    raw = (update.message.text or "").strip()
+    raw = re.sub(r"^/carousel_layout(@\S+)?\s*", "", raw)
+
+    def run():
+        return carousel_session.apply_layout(session, raw)
+
+    try:
+        loop = asyncio.get_running_loop()
+        reply = await loop.run_in_executor(None, run)
+    except Exception as exc:
+        logger.exception("Carousel layout change failed")
+        await update.message.reply_text(
+            f"❌ خطا در تغییر چیدمان: {type(exc).__name__}: {str(exc)[:200]}"
+        )
+        return
+    await update.message.reply_text(reply)
+    # Show the result when the layout was applied to a previewed deck
+    if reply.startswith("✅") and session.get("state") == carousel_session.PREVIEW:
+        await _send_carousel_preview(update, session)
+
+
+@record_update_decorator
 async def cmd_carousel_ok(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update):
         await update.message.reply_text("⛔ دسترسی فقط برای مالک است.")
@@ -1044,6 +1077,7 @@ def main():
     app.add_handler(CommandHandler("carousel_ok", cmd_carousel_ok))
     app.add_handler(CommandHandler("carousel_edit", cmd_carousel_edit))
     app.add_handler(CommandHandler("carousel_theme", cmd_carousel_theme))
+    app.add_handler(CommandHandler("carousel_layout", cmd_carousel_layout))
     app.add_handler(CommandHandler("done", cmd_done))
 
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_studio_media))

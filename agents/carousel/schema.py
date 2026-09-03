@@ -8,6 +8,8 @@ Defines the CarouselSlide data model, the canonical carousel canvas
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from agents.carousel.text_zone import SUPPORTED_TEXT_ZONES
+
 # Canonical static carousel canvas (Instagram portrait 4:5)
 CANVAS_WIDTH = 1080
 CANVAS_HEIGHT = 1350
@@ -86,6 +88,9 @@ class CarouselSlide:
     # image_text layout variant (M22A): split_panel (default/legacy),
     # full_bleed_caption, contain_caption, or auto (aspect-based)
     image_layout: Optional[str] = None
+    # Text zone for full-bleed slides (M23): None = auto-detect,
+    # "bottom" | "top" | "middle"
+    text_zone: Optional[str] = None
     eyebrow: str = ""
     footer: str = ""
     template: Optional[str] = None
@@ -151,6 +156,17 @@ def parse_carousel_slide(raw: Dict[str, Any]) -> CarouselSlide:
                 f"(use one of {list(SUPPORTED_IMAGE_LAYOUTS)})"
             )
 
+    # Text zone for full-bleed slides (M23). None -> auto-detect at render.
+    # Only meaningful for full-bleed layouts; other types ignore it
+    # (forward compatible).
+    text_zone = raw.get("text_zone")
+    if text_zone is not None:
+        if not isinstance(text_zone, str) or text_zone not in SUPPORTED_TEXT_ZONES:
+            raise CarouselConfigError(
+                f"text_zone '{text_zone}' is not supported "
+                f"(use one of {list(SUPPORTED_TEXT_ZONES)})"
+            )
+
     slide_number = raw.get("slide_number")
     if slide_number is not None:
         if not isinstance(slide_number, int) or isinstance(slide_number, bool) or slide_number < 1:
@@ -213,6 +229,7 @@ def parse_carousel_slide(raw: Dict[str, Any]) -> CarouselSlide:
         bullets=bullets,
         image_path=image_path,
         image_layout=image_layout,
+        text_zone=text_zone,
         eyebrow=eyebrow,
         footer=footer,
         template=template,
