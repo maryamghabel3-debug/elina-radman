@@ -342,8 +342,10 @@ def test_mode_text_overlay_builds_deck_without_llm(tmp_path):
     assert result.deck.slides[0].slide_type == "cover"
     assert result.deck.slides[0].image_path == images[0]
     assert [s.image_path for s in result.deck.slides] == images
-    # Non-cover with body -> image_overlay (full-bleed, M22)
-    assert result.deck.slides[1].slide_type == "image_overlay"
+    # Non-cover with body -> image_text with the photo-preserving
+    # "auto" layout (M22A)
+    assert result.deck.slides[1].slide_type == "image_text"
+    assert result.deck.slides[1].image_layout == "auto"
     # Deck validates end-to-end
     parse_carousel_deck({
         "title": result.deck.title,
@@ -358,22 +360,23 @@ def test_mode_text_overlay_builds_deck_without_llm(tmp_path):
     })
 
 
-def test_mode_text_overlay_no_body_still_full_bleed_image_overlay(tmp_path):
-    """A title-only slide still uses full-bleed image_overlay (the M18A
-    title_body type requires a body and would drop the user's image)."""
+def test_mode_text_overlay_no_body_uses_image_text_auto(tmp_path):
+    """A title-only slide still uses image_text + auto (the M18A title_body
+    type requires a body and would drop the user's image)."""
     images = make_image_files(tmp_path, 3)
     texts = text_overlay_texts(3, with_body=False)
     result = make_planner(FakeRouter([])).plan(
         mode="text_overlay", image_paths=images, slide_texts=texts
     )
-    assert result.deck.slides[1].slide_type == "image_overlay"
+    assert result.deck.slides[1].slide_type == "image_text"
+    assert result.deck.slides[1].image_layout == "auto"
     assert result.deck.slides[1].body == ""
     assert [s.image_path for s in result.deck.slides] == images
 
 
-def test_mode_text_overlay_all_content_slides_are_image_overlay(tmp_path):
-    """M22: slides 2..N map to full-bleed image_overlay (not image_text),
-    each keeping its paired image."""
+def test_mode_text_overlay_all_content_slides_are_image_text_auto(tmp_path):
+    """M22A: slides 2..N map to image_text with image_layout='auto'
+    (photo-preserving), each keeping its paired image."""
     images = make_image_files(tmp_path, 4)
     texts = text_overlay_texts(4)
     result = make_planner(FakeRouter([])).plan(
@@ -381,7 +384,8 @@ def test_mode_text_overlay_all_content_slides_are_image_overlay(tmp_path):
     )
     assert result.deck.slides[0].slide_type == "cover"
     for slide in result.deck.slides[1:]:
-        assert slide.slide_type == "image_overlay"
+        assert slide.slide_type == "image_text"
+        assert slide.image_layout == "auto"
         assert slide.image_path
     assert [s.image_path for s in result.deck.slides] == images
 
@@ -474,6 +478,33 @@ def test_mode_image_deck_image_text_becomes_image_overlay(tmp_path):
     assert result.deck.slides[0].slide_type == "cover"
     assert result.deck.slides[2].slide_type == "quote"
     assert result.deck.slides[3].slide_type == "cta"
+
+
+def test_mode_image_deck_explicit_image_layout_is_preserved(tmp_path):
+    """M22A: when the model explicitly sets image_layout on an image_text
+    slide, image_deck keeps the slide as image_text with that layout
+    (no silent conversion to image_overlay)."""
+    images = make_image_files(tmp_path, 4)
+    deck = {
+        "deck_title": "دک تصاویر",
+        "slides": [
+            {"slide_type": "cover", "title": "کاور"},
+            {"slide_type": "image_text", "title": "متن روی تصویر",
+             "body": "بدنه‌ی روی تصویر", "image_path": "pending",
+             "image_layout": "contain_caption"},
+            {"slide_type": "quote", "title": "نقل قول"},
+            {"slide_type": "cta", "title": "ذخیره کن"},
+        ],
+        "caption": "کپشن تست",
+        "hashtags": ["#تست"],
+    }
+    router = FakeRouter([json.dumps(deck, ensure_ascii=False)])
+    result = make_planner(router).plan(
+        mode="image_deck", topic="موضوع", image_paths=images
+    )
+    assert result.deck.slides[1].slide_type == "image_text"
+    assert result.deck.slides[1].image_layout == "contain_caption"
+    assert result.deck.slides[1].image_path == images[1]
 
 
 def test_mode_image_deck_requires_topic_and_images(tmp_path):

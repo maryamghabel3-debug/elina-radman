@@ -485,6 +485,7 @@ def edit_slide(
             "body": slide.body,
             "bullets": slide.bullets,
             "image_path": slide.image_path,
+            "image_layout": slide.image_layout,
             "eyebrow": slide.eyebrow,
             "footer": slide.footer,
             "template": slide.template,

@@ -277,10 +277,11 @@ class CarouselPlanner:
         deck = self._assemble_deck(data, template, None)
         # Zip the generated text with the provided images, in order.
         # Image-bearing text slides get the full-bleed image_overlay layout
-        # (M22) instead of the 65/35 image_text panel.
+        # (M22) instead of the 65/35 image_text panel — unless an explicit
+        # image_layout was set (M22A), which is preserved as-is.
         for slide, path in zip(deck.slides, paths):
             slide.image_path = path
-            if slide.slide_type == "image_text":
+            if slide.slide_type == "image_text" and slide.image_layout is None:
                 slide.slide_type = "image_overlay"
         self._final_validate_deck(deck)
 
@@ -327,15 +328,17 @@ class CarouselPlanner:
                 }
             else:
                 # Non-cover slides always carry their paired image, so they
-                # use image_overlay (full-bleed image + bottom gradient, M22;
-                # the M18A title_body type requires a body and would silently
-                # drop the user's image).
+                # stay image_text with the photo-preserving "auto" layout
+                # (M22A): full-bleed caption when the source is close to
+                # 4:5, letterboxed contain otherwise. (title_body requires a
+                # body and would silently drop the user's image.)
                 raw_slide = {
-                    "slide_type": "image_overlay",
+                    "slide_type": "image_text",
                     "title": title.strip(),
                     "body": body,
                     "eyebrow": eyebrow,
                     "image_path": img,
+                    "image_layout": "auto",
                 }
             try:
                 slides.append(parse_carousel_slide(raw_slide))
@@ -675,6 +678,7 @@ class CarouselPlanner:
                     "body": s.body,
                     "bullets": s.bullets,
                     "image_path": s.image_path,
+                    "image_layout": s.image_layout,
                     "eyebrow": s.eyebrow,
                     "footer": s.footer,
                     "template": s.template,

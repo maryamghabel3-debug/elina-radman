@@ -13,6 +13,8 @@ CANVAS_WIDTH = 1080
 CANVAS_HEIGHT = 1350
 
 SUPPORTED_SLIDE_TYPES = ("cover", "title_body", "quote", "bullet_list", "image_text", "image_overlay", "cta")
+# image_text layout variants (M22A); None means split_panel (legacy)
+SUPPORTED_IMAGE_LAYOUTS = ("split_panel", "full_bleed_caption", "contain_caption", "auto")
 SUPPORTED_TEMPLATES = ("psychological_dark", "midnight_editorial", "warm_cream", "minimal_photo")
 DEFAULT_TEMPLATE = "psychological_dark"
 
@@ -81,6 +83,9 @@ class CarouselSlide:
     body: str = ""
     bullets: List[str] = field(default_factory=list)
     image_path: Optional[str] = None
+    # image_text layout variant (M22A): split_panel (default/legacy),
+    # full_bleed_caption, contain_caption, or auto (aspect-based)
+    image_layout: Optional[str] = None
     eyebrow: str = ""
     footer: str = ""
     template: Optional[str] = None
@@ -135,6 +140,16 @@ def parse_carousel_slide(raw: Dict[str, Any]) -> CarouselSlide:
     image_path = raw.get("image_path")
     if image_path is not None and not isinstance(image_path, str):
         raise CarouselConfigError("'image_path' must be a string or null")
+
+    # image_text layout variant (M22A). None -> legacy split_panel. Only
+    # meaningful for image_text; other types ignore it (forward compatible).
+    image_layout = raw.get("image_layout")
+    if image_layout is not None:
+        if not isinstance(image_layout, str) or image_layout not in SUPPORTED_IMAGE_LAYOUTS:
+            raise CarouselConfigError(
+                f"image_layout '{image_layout}' is not supported "
+                f"(use one of {list(SUPPORTED_IMAGE_LAYOUTS)})"
+            )
 
     slide_number = raw.get("slide_number")
     if slide_number is not None:
@@ -197,6 +212,7 @@ def parse_carousel_slide(raw: Dict[str, Any]) -> CarouselSlide:
         body=body,
         bullets=bullets,
         image_path=image_path,
+        image_layout=image_layout,
         eyebrow=eyebrow,
         footer=footer,
         template=template,
