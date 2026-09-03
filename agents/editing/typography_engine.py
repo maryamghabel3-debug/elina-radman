@@ -3,14 +3,19 @@ import logging
 from PIL import Image, ImageDraw, ImageFont, features
 import arabic_reshaper
 from bidi.algorithm import get_display
+from agents.editing.font_resolver import resolve_persian_font
 
 logger = logging.getLogger(__name__)
 
 class TypographyEngine:
     def __init__(self, font_path: str = None, render_mode: str = "auto"):
-        self.font_path = font_path or os.environ.get("ELINA_FONT_PRIMARY_PATH")
-        if not self.font_path or not os.path.exists(self.font_path):
-            raise FileNotFoundError(f"Font not found at path: {self.font_path}")
+        # Reliable Persian font resolution: explicit path -> ELINA_FONT_
+        # PRIMARY_PATH -> repo-bundled Vazirmatn -> known system fonts. A
+        # configured-but-missing path falls through to the fallbacks (with a
+        # warning) instead of failing, so rendering never depends on /tmp or
+        # a manual download. Raises FontNotFoundError when no candidate
+        # font can be loaded at all.
+        self.font_path = resolve_persian_font(font_path)
 
         valid_modes = ["auto", "raqm", "fallback"]
         if render_mode not in valid_modes:

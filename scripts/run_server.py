@@ -78,6 +78,33 @@ def check_env():
     return missing
 
 
+def check_persian_font():
+    """
+    Resolve and validate a Persian-capable font BEFORE starting child bots.
+
+    Sets os.environ["ELINA_FONT_PRIMARY_PATH"] to the resolved absolute path
+    so the Intake/Studio child processes inherit a working font and Persian
+    rendering never depends on /tmp or a manual download. Returns True when a
+    valid font was resolved, False when none exists (a clear startup error is
+    logged, but the bots still start — only Persian rendering would fail).
+    """
+    from agents.editing.font_resolver import FontNotFoundError, resolve_persian_font
+
+    try:
+        font_path = resolve_persian_font()
+    except FontNotFoundError as exc:
+        logger.error(f"❌ {exc}")
+        logger.error(
+            "Persian rendering will FAIL until a Persian font is available "
+            "(set ELINA_FONT_PRIMARY_PATH or restore assets/fonts/Vazirmatn-Bold.ttf)."
+        )
+        return False
+
+    os.environ["ELINA_FONT_PRIMARY_PATH"] = font_path
+    logger.info(f"Persian font ready: {font_path}")
+    return True
+
+
 def stream_output(name, proc):
     prefix = f"[{name}]"
     for line in iter(proc.stdout.readline, b""):
@@ -205,6 +232,7 @@ class HealthHandler(BaseHTTPRequestHandler):
 
 def main():
     check_env()
+    check_persian_font()
 
     intake_token = os.environ.get("INTAKE_BOT_TOKEN", "").strip()
     studio_token = os.environ.get("STUDIO_BOT_TOKEN", "").strip()
