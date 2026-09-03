@@ -22,6 +22,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from agents.editing.recipe_schema import SubtitleEntry
 from agents.editing.typography_engine import TypographyEngine
+from agents.editing.font_resolver import FontNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -185,14 +186,17 @@ class SubtitleRenderer:
 
     def __init__(self, engine: Optional[TypographyEngine] = None, canvas_width: int = CANVAS_WIDTH):
         if engine is None:
-            # Existing font resolution order:
-            # ELINA_FONT_PRIMARY_PATH -> (repo has no bundled font asset)
+            # Reliable font resolution: ELINA_FONT_PRIMARY_PATH ->
+            # repo-bundled Vazirmatn -> known system fonts (see
+            # font_resolver). A configured-but-missing env path falls
+            # through to the fallbacks instead of failing.
             try:
                 engine = TypographyEngine()
-            except FileNotFoundError as exc:
+            except (FileNotFoundError, FontNotFoundError) as exc:
                 raise RuntimeError(
                     f"{SUBTITLE_FONT_NOT_FOUND}: no Persian-capable font available "
-                    f"(set ELINA_FONT_PRIMARY_PATH to a valid .ttf/.otf); {exc}"
+                    f"(check ELINA_FONT_PRIMARY_PATH or the bundled "
+                    f"assets/fonts/Vazirmatn-Bold.ttf); {exc}"
                 ) from exc
         self.engine = engine
         self.canvas_width = canvas_width

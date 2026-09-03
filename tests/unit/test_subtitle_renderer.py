@@ -217,8 +217,16 @@ def test_L_position_expressions():
 # === Font failure (unit level) ===
 
 def test_P_font_not_found_raises_typed_error(monkeypatch):
-    """Without a resolvable font, SubtitleRenderer raises SUBTITLE_FONT_NOT_FOUND."""
+    """With no resolvable font at all, SubtitleRenderer raises SUBTITLE_FONT_NOT_FOUND.
+
+    (The repo now bundles a Persian font, so we patch every candidate to be
+    unavailable to simulate a truly fontless environment.)
+    """
+    import agents.editing.font_resolver as font_resolver
+
     monkeypatch.delenv("ELINA_FONT_PRIMARY_PATH", raising=False)
+    monkeypatch.setattr(font_resolver, "BUNDLED_FONT_PATH", "/non/existent/bundled.ttf")
+    monkeypatch.setattr(font_resolver, "SYSTEM_PERSIAN_FONT_CANDIDATES", [])
     with pytest.raises(RuntimeError) as exc_info:
         SubtitleRenderer()
     assert SUBTITLE_FONT_NOT_FOUND in str(exc_info.value)

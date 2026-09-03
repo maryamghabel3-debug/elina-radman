@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from PIL import Image, ImageDraw, ImageFont
 
 from agents.editing.typography_engine import TypographyEngine
+from agents.editing.font_resolver import FontNotFoundError
 from agents.carousel.brand_theme import TemplateTheme, get_template, hex_to_rgb, palette_rgb
 from agents.carousel.schema import (
     CANVAS_HEIGHT,
@@ -115,10 +116,11 @@ class CarouselSlideRenderer:
         if engine is None:
             try:
                 engine = TypographyEngine(font_path=font_path)
-            except FileNotFoundError as exc:
+            except (FileNotFoundError, FontNotFoundError) as exc:
                 raise CarouselFontError(
                     "no Persian-capable font available "
-                    "(set ELINA_FONT_PRIMARY_PATH to a valid .ttf/.otf)"
+                    "(check ELINA_FONT_PRIMARY_PATH or the bundled "
+                    "assets/fonts/Vazirmatn-Bold.ttf)"
                 ) from exc
         self.engine = engine
         self.canvas_size = tuple(canvas_size) if canvas_size else (CANVAS_WIDTH, CANVAS_HEIGHT)
