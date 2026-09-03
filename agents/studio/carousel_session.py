@@ -474,7 +474,7 @@ def edit_slide(
 
     old_title, old_body = slide.title, slide.body
     slide.title = title
-    if body and slide.slide_type in ("title_body", "image_text"):
+    if body and slide.slide_type in ("title_body", "image_text", "image_overlay"):
         slide.body = body
 
     try:
