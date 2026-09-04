@@ -1,0 +1,24 @@
+{
+  "test_id": "2026-09-04-false-self-free",
+  "concept": "Winnicott False Self — hiding to protect the bond",
+  "images": [
+    {
+      "file": "2026-09-04-false-self-free_01.png",
+      "raw_url": "https://raw.githubusercontent.com/maryamghabel3-debug/elina-radman/main/visual-tests/2026-09-04-false-self-free/2026-09-04-false-self-free_01.png",
+      "sources": [],
+      "safe_zone": {"x": 220, "y": 70, "w": 800, "h": 270}
+    },
+    {
+      "file": "2026-09-04-false-self-free_02.png",
+      "raw_url": "https://raw.githubusercontent.com/maryamghabel3-debug/elina-radman/main/visual-tests/2026-09-04-false-self-free/2026-09-04-false-self-free_02.png",
+      "sources": [],
+      "safe_zone": {"x": 80, "y": 40, "w": 920, "h": 300}
+    },
+    {
+      "file": "2026-09-04-false-self-free_03.png",
+      "raw_url": "https://raw.githubusercontent.com/maryamghabel3-debug/elina-radman/main/visual-tests/2026-09-04-false-self-free/2026-09-04-false-self-free_03.png",
+      "sources": [],
+      "safe_zone": {"x": 80, "y": 40, "w": 920, "h": 280}
+    }
+  ]
+}
