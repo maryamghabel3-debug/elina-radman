@@ -1,38 +1,40 @@
-# Typography report — E_elli.png background
+# Typography test report
 
 Background: visual-tests/media-test/E_elli.png (1080×1350), not regenerated.
-Persian: title «خودت را پنهان نکردی» / body «تا پیوند را از دست ندهی.»
-Shaping: Pillow raqm, direction=rtl, language=fa, anchor=rt.
-Note: T1 asked for off-white/cream and T2 for warm ivory; both fail contrast on this cream paper. T1/T2 use dark warm ink. Actual HEX below.
+Text composited with Pillow + libraqm (`direction="rtl"`, `language="fa"`, `anchor="ra"`).
+Safe zone: x=60, y=40, w=960, h=340.
+
+Note: cream paper ground. Requested off-white/ivory for T1/T2 would vanish, so warm charcoal/umber was used.
 
 ## T1_modern_editorial.png
-- Fonts: Vazirmatn ExtraBold (title, 54 px), Vazirmatn Medium (body, 26 px)
-- Colors: text #2C2924
-- Alignment: RTL, right-aligned; right edge x=1020
-- Title coordinates: x=570, y=72, w=450, h=56
-- Body coordinates: x=766, y=146, w=254, h=27
-- Line gap title→body: 18 px
+- Fonts: Vazirmatn ExtraBold 52px (title), Vazirmatn Medium 26px (body)
+- Colors: title #2C2824, body #4A453E
+- Alignment: RTL, right-aligned, anchor (1000, 96)
+- Title: x=566, y=113, w=434, h=55
+- Body: x=746, y=195, w=254, h=27
+- Gap title→body: 18px
 
 ## T2_psychoanalytic_journal.png
-- Fonts: Amiri Bold (title, 52 px), Amiri Regular (body, 28 px). Naskh journal face; Lalezar available but too display-like.
-- Colors: text #3A3228; rule #6B4454
-- Alignment: RTL, right-aligned; right edge x=1008
-- Vertical rule: x=1024, y=84 to 191, width 2 px
-- Title coordinates: x=622, y=78, w=386, h=65
-- Body coordinates: x=771, y=157, w=238, h=32
+- Fonts: Amiri Bold 50px (title), Amiri Regular 26px (body)
+- Colors: title #3A3128, body #5A5146, rule #7A4E5C
+- Alignment: RTL, right-aligned, anchor (972, 100)
+- Title: x=601, y=116, w=371, h=62
+- Body: x=752, y=200, w=221, h=30
+- Vertical rule: x=1004, y=120 to 230, width=2px
 
 ## T3_whisper_minimal.png
-- Fonts: Vazirmatn Light (title, 28 px), Vazirmatn Light (body, 20 px)
-- Colors: #8E8680
-- Alignment: RTL, right-aligned; right edge x=1020
-- Title coordinates: x=794, y=88, w=226, h=28
-- Body coordinates: x=828, y=144, w=192, h=20
-- Line gap title→body: 28 px
+- Fonts: Vazirmatn Light 28px (title), Vazirmatn Light 20px (body)
+- Colors: title #8E867C, body #9A9288
+- Alignment: RTL, right-aligned, anchor (1000, 100)
+- Title: x=774, y=110, w=226, h=28
+- Body: x=808, y=176, w=192, h=20
+- Gap title→body: 30px
 
 ## T4_paper_label.png
-- Fonts: Vazirmatn ExtraBold (title, 36 px), Vazirmatn Medium (body, 22 px)
-- Colors: title #2A2622; body #8A4E55; label ~#F4ECD6; tape #D6C496 alpha 120
-- Label origin: x=70, y=48, w=640, h=200
-- Tape origin: x=88, y=32
-- Title coordinates: x=374, y=96, w=300, h=38
-- Body coordinates: x=459, y=150, w=215, h=23
+- Fonts: Vazirmatn ExtraBold 36px (title), Vazirmatn Medium 22px (body)
+- Colors: title #2A2622, body #6B3F4A, label rgba(244,236,220,235), tape rgba(210,196,160,110)
+- Alignment: RTL, right-aligned, anchor (980, 112)
+- Title: x=680, y=123, w=300, h=38
+- Body: x=765, y=183, w=215, h=23
+- Label approx: x=430, y=48, w=600, h=210
+- Tape approx: x=620, y=28, w=200, h=50
