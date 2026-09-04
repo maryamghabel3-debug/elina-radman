@@ -139,6 +139,57 @@ REPLY_IMAGE_READDED_FA = "✅ عکس {n} دوباره ثبت شد."
 REPLY_TEXT_READDED_FA = "✅ متن {n} دوباره ثبت شد."
 SLIDE_REPLACED_FA = "✅ اسلاید {n} جایگزین شد."
 DRAFT_DELETED_NOTE_FA = "💾 پیش‌نمایش ذخیره‌شده هم حذف شد."
+# M29A: shown when the Telegram chat id cannot be resolved for draft ops
+OWNER_CHAT_ID_UNRESOLVED_FA = (
+    "شناسه تلگرام شما پیدا نشد. لطفاً /whoami را بزنید و دوباره تلاش کنید."
+)
+
+# M29A: carousel_drafts.owner_chat_id is bigint — draft operations must
+# ALWAYS be keyed by the active Telegram chat id (update.effective_chat.id),
+# normalized to a real int. Never query the table with None or "None"
+# (OWNER_CHAT_ID env is for permission checks only, never for ownership).
+CAROUSEL_OWNER_CHAT_ID_INVALID = "CAROUSEL_OWNER_CHAT_ID_INVALID"
+
+
+class CarouselOwnerChatIdError(ValueError):
+    """Raised when a carousel draft operation is given an unusable owner
+    chat id (None, 'None', non-numeric, ...)."""
+
+    code = CAROUSEL_OWNER_CHAT_ID_INVALID
+
+    def __init__(self, value: Any = None):
+        self.value = value
+        super().__init__(f"invalid owner chat id: {value!r}")
+
+
+def normalize_owner_chat_id(value: Any) -> int:
+    """Normalize a draft owner chat id to a real int (M29A).
+
+    Accepts an int or a numeric string (Telegram chat ids). Rejects None,
+    "None", empty/whitespace strings, booleans, and non-numeric values by
+    raising CarouselOwnerChatIdError (code CAROUSEL_OWNER_CHAT_ID_INVALID)
+    — so a Supabase bigint query can never receive None or "None".
+    """
+    if value is None:
+        raise CarouselOwnerChatIdError(None)
+    if isinstance(value, bool):
+        raise CarouselOwnerChatIdError(value)
+    if isinstance(value, int):
+        if value == 0:
+            raise CarouselOwnerChatIdError(value)
+        return value
+    if isinstance(value, str):
+        text = value.strip()
+        if not text or text.lower() == "none":
+            raise CarouselOwnerChatIdError(value)
+        try:
+            chat_id = int(text)
+        except ValueError:
+            raise CarouselOwnerChatIdError(value)
+        if chat_id == 0:
+            raise CarouselOwnerChatIdError(value)
+        return chat_id
+    raise CarouselOwnerChatIdError(value)
 
 # /carousel_layout short names -> slide image_layout values (M22A/M23)
 LAYOUT_ALIASES = {
@@ -303,8 +354,15 @@ def attach_persistence(session: Dict[str, Any], db: Any, storage: Any,
     Once attached, every meaningful step upserts the owner's durable draft
     so the carousel survives bot restarts. Persistence failures never
     break the interactive flow (logged and skipped).
+
+    M29A: chat_id is normalized to a real int up front — attaching with
+    None/'None' would later poison every carousel_drafts query.
     """
-    session["_persistence"] = {"db": db, "storage": storage, "chat_id": chat_id}
+    session["_persistence"] = {
+        "db": db,
+        "storage": storage,
+        "chat_id": normalize_owner_chat_id(chat_id),
+    }
 
 
 def _deck_to_dict(deck: Optional[CarouselDeck]) -> Optional[Dict[str, Any]]:
@@ -361,6 +419,7 @@ def save_carousel_draft(session: Dict[str, Any], db: Any, storage: Any,
     per-slide layout/zone/size/style/template), rendered media keys once
     finalized, and the history of finalized versions.
     """
+    chat_id = normalize_owner_chat_id(chat_id)  # M29A: bigint-safe owner id
     # Upload source images not yet in storage (tracked per local path)
     uploaded: Dict[str, str] = session.setdefault("uploaded_image_keys", {})
     for local in session.get("images", []):
@@ -451,6 +510,7 @@ def resume_carousel_draft(
     - PREVIEW if a deck exists (re-rendered locally — the renderer is
       deterministic); otherwise COLLECT_* so the operator continues
     """
+    chat_id = normalize_owner_chat_id(chat_id)  # M29A: bigint-safe owner id
     active = get_session(chat_data)
     if active:
         return "", DRAFT_ACTIVE_SESSION_FA
@@ -559,6 +619,7 @@ def resume_carousel_draft(
 def list_carousels_fa(db: Any, chat_id: Any) -> str:
     """Persian list of the owner's resumable carousels (current draft +
     recent finalized versions)."""
+    chat_id = normalize_owner_chat_id(chat_id)  # M29A: bigint-safe owner id
     record = db.get_carousel_draft(chat_id)
     if not record:
         return DRAFT_NONE_FA
@@ -638,6 +699,7 @@ def replace_slide_image(session: Dict[str, Any], index: int,
 def clear_persistent_draft(db: Any, chat_id: Any) -> bool:
     """Best-effort deletion of the owner's durable draft (M29 cancel).
     Returns True when deleted (or nothing to delete); False on failure."""
+    chat_id = normalize_owner_chat_id(chat_id)  # M29A: bigint-safe owner id
     try:
         db.delete_carousel_draft(chat_id)
         return True
