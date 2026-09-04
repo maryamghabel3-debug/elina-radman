@@ -248,6 +248,13 @@ async def cmd_start_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "تأیید و شروع رندر واقعی\n\n"
         "/plan_cancel\n"
         "خروج از حالت برنامه‌ریزی\n\n"
+        "۱۱) ساخت کاروسل\n"
+        "/carousel — شروع ساخت کاروسل (عکس+متن / عکس+موضوع / فقط موضوع)\n"
+        "/carousel_list — نمایش کاروسل‌های ذخیره‌شده\n"
+        "/carousel_resume [custom_id] — ادامه‌ی یک پیش‌نمایش ذخیره‌شده\n"
+        "Reply به یک عکس/متن قبلی + «ثبت» — ثبت دوباره‌ی همان عکس/متن\n"
+        "Reply به یک اسلایدِ پیش‌نمایش + «جایگزین» — تعویض تصویر همان اسلاید\n"
+        "پیش‌نمایش‌ها به‌صورت خودکار ذخیره می‌شوند و تا ۶ ساعت (جلسه) / ۳۰ روز (پیش‌نمایش) ماندگارند.\n\n"
         "نکته:\n"
         "هیچ محتوایی بدون تأیید و زمان‌بندی شما منتشر نمی‌شود."
     )
@@ -584,24 +591,59 @@ def _get_carousel_session(context) -> Optional[Dict]:
         carousel_session.cleanup(session)
         if isinstance(chat_data, dict):
             chat_data["carousel_session"] = None
-        return None
+            return None
+    if session:
+        _ensure_persistence(context, session)
     return session
 
 
+def _ensure_persistence(context, session: Dict) -> None:
+    """M29: attach the durable-draft persistence context (best effort) so
+    every meaningful step upserts the owner's draft. Failures (e.g. no
+    Supabase credentials) are logged and skipped — the interactive flow
+    keeps working without durable drafts."""
+    if not session or session.get("_persistence"):
+        return
+    try:
+        from agents.db.supabase_client import ElinaDB
+        from agents.storage.supabase_storage import ElinaStorage
+        chat_id = getattr(context, "chat_id", None)
+        if chat_id is None:
+            return
+        carousel_session.attach_persistence(session, ElinaDB(), ElinaStorage(), chat_id)
+    except Exception as exc:
+        logger.warning("Carousel draft persistence unavailable: %s", exc)
+
+
+def _draft_suffix(session: Dict, before_ts) -> str:
+    """M29: '💾 saved' hint when the draft was upserted during this step."""
+    saved_at = session.get("draft_saved_at")
+    if saved_at is not None and saved_at != before_ts:
+        return "\n" + carousel_session.DRAFT_SAVED_HINT_FA
+    return ""
+
+
 async def _send_carousel_preview(update: Update, session: Dict) -> None:
-    """Send the rendered slides as an ordered media group (2-10 slides)."""
+    """Send the rendered slides as an ordered media group (2-10 slides).
+
+    M29: remembers the group's first message id / media group id so the
+    reply-based «جایگزین» shortcut can map a replied slide to its index.
+    """
     paths = session.get("slide_paths") or []
     media = []
     for p in paths:
         with open(p, "rb") as f:
             media.append(InputMediaPhoto(media=f))
-    await update.message.reply_media_group(media=media)
+    sent = await update.message.reply_media_group(media=media)
+    session["preview_media_group_id"] = getattr(sent, "media_group_id", None)
+    session["preview_first_message_id"] = getattr(sent, "message_id", None)
 
 
 async def _run_carousel_build(update: Update, session: Dict) -> None:
     """Run planner + renderer (blocking) in an executor, then show preview
     or the Persian error message (session is already recovered on failure)."""
     msg = await update.message.reply_text("⏳ در حال ساخت کاروسل...")
+    before = session.get("draft_saved_at")
 
     def run():
         return carousel_session.build_deck(session)
@@ -616,7 +658,9 @@ async def _run_carousel_build(update: Update, session: Dict) -> None:
     if error:
         await msg.edit_text(error)
         return
-    await msg.edit_text(carousel_session.build_preview_message(session))
+    await msg.edit_text(
+        carousel_session.build_preview_message(session) + _draft_suffix(session, before)
+    )
     await _send_carousel_preview(update, session)
 
 
@@ -643,6 +687,141 @@ async def _download_message_image(message, dest_dir: str) -> Optional[str]:
     return local_path
 
 
+# ---------------------------------------------------------------------------
+# M29: reply-based fast re-register (ثبت / جایگزین)
+# ---------------------------------------------------------------------------
+
+REPLY_ADD_WORDS = {"ثبت", "add"}
+REPLY_REPLACE_WORDS = {"جایگزین", "replace"}
+
+
+def _reply_word(message) -> str:
+    """Normalized reply-shortcut word of a message ('' when none)."""
+    text = (message.text or message.caption or "").strip()
+    return text if text.lower() in REPLY_ADD_WORDS | REPLY_REPLACE_WORDS else ""
+
+
+def _resolve_preview_slide_index(session: Dict, replied) -> Optional[int]:
+    """Map a replied preview-slide message to its 1-based slide index.
+
+    A media group is sent as a burst of consecutive message ids; we
+    remember the group's first id, so index = replied.message_id -
+    first_id + 1 (clamped to the deck size). Returns None when the
+    replied message can't be mapped to a slide of the CURRENT preview
+    (e.g. an older preview — message ids are not stored durably).
+    """
+    first_id = session.get("preview_first_message_id")
+    group_id = session.get("preview_media_group_id")
+    if not first_id:
+        return None
+    total = len(session.get("slide_paths") or [])
+    in_group = (
+        (group_id and getattr(replied, "media_group_id", None) == group_id)
+        or getattr(replied, "message_id", None) == first_id
+    )
+    if not in_group:
+        return None
+    delta = (getattr(replied, "message_id", None) or first_id) - first_id
+    index = delta + 1
+    if 1 <= index <= total:
+        return index
+    return None
+
+
+async def _reply_replace_slide(update: Update, session: Dict, message, replied) -> None:
+    """«جایگزین» on a preview slide: replace that slide's source image —
+    with the image in the same reply when provided, otherwise arm a
+    pending replace and ask for the image."""
+    if session["state"] != carousel_session.PREVIEW:
+        await message.reply_text(carousel_session.REPLY_WRONG_STATE_FA)
+        return
+    index = _resolve_preview_slide_index(session, replied)
+    if index is None:
+        await message.reply_text(carousel_session.REPLY_REPLACE_UNKNOWN_SLIDE_FA)
+        return
+    if message.photo or message.document:
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            local_path = await _download_message_image(message, tmpdir)
+            if not local_path:
+                await message.reply_text("❌ عکس جایگزین دریافت نشد؛ دوباره بفرست.")
+                return
+            before = session.get("draft_saved_at")
+            error, path = carousel_session.replace_slide_image(session, index, local_path)
+        if error:
+            await message.reply_text(error)
+        else:
+            await message.reply_photo(
+                open(path, "rb"),
+                caption=carousel_session.SLIDE_REPLACED_FA.format(n=index)
+                + _draft_suffix(session, before),
+            )
+        return
+    session["pending_replace_slide"] = index
+    await message.reply_text(carousel_session.REPLY_REPLACE_PENDING_FA.format(n=index))
+
+
+async def _handle_carousel_reply(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                                 message) -> bool:
+    """M29 reply shortcuts during an active carousel session. Returns True
+    when the message was consumed (a reply to a message with a shortcut
+    word), False to fall through to normal handling.
+
+    - Reply «ثبت»/«add» to an image  -> re-add it (COLLECT_IMAGES)
+    - Reply «ثبت»/«add» to a text    -> re-add the text (COLLECT_TEXTS)
+    - Reply «جایگزین»/«replace» to a preview slide -> replace its image
+    """
+    word = _reply_word(message)
+    if not word or not message.reply_to_message:
+        return False
+    session = _get_carousel_session(context)
+    if not session:
+        await message.reply_text("❌ جلسه کاروسل فعال نیست. اول /carousel را بزن.")
+        return True
+
+    if word.lower() in REPLY_REPLACE_WORDS:
+        await _reply_replace_slide(update, session, message, message.reply_to_message)
+        return True
+
+    # «ثبت»/«add»: re-add the replied image or text
+    if session["state"] not in (carousel_session.COLLECT_IMAGES,
+                                carousel_session.COLLECT_TEXTS):
+        await message.reply_text(carousel_session.REPLY_WRONG_STATE_FA)
+        return True
+    replied = message.reply_to_message
+    before = session.get("draft_saved_at")
+    if session["state"] == carousel_session.COLLECT_IMAGES:
+        if not (replied.photo or replied.document):
+            await message.reply_text(carousel_session.REPLY_NOT_RESOLVED_FA)
+            return True
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            local_path = await _download_message_image(replied, tmpdir)
+            if not local_path:
+                await message.reply_text("❌ عکس مرجع دریافت نشد؛ دوباره بفرست.")
+                return
+            error = carousel_session.add_image(session, local_path)
+        if error:
+            await message.reply_text(error)
+        else:
+            n = len(session["images"])
+            await message.reply_text(
+                carousel_session.REPLY_IMAGE_READDED_FA.format(n=n)
+                + _draft_suffix(session, before))
+        return True
+    # COLLECT_TEXTS: re-add the replied text (photo captions count)
+    replied_text = (replied.text or replied.caption or "").strip()
+    if not replied_text:
+        await message.reply_text(carousel_session.REPLY_NOT_RESOLVED_FA)
+        return True
+    carousel_session.add_text(session, replied_text)
+    n = len(session["texts"])
+    await message.reply_text(
+        carousel_session.REPLY_TEXT_READDED_FA.format(n=n)
+        + _draft_suffix(session, before))
+    return True
+
+
 @record_update_decorator
 async def cmd_carousel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update):
@@ -654,6 +833,7 @@ async def cmd_carousel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except carousel_session.CarouselSessionActiveError as exc:
         await update.message.reply_text(exc.message_fa)
         return
+    _ensure_persistence(context, chat_data.get("carousel_session") or {})
     await update.message.reply_text(reply)
 
 
@@ -665,9 +845,18 @@ async def cmd_carousel_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE
     chat_data = _chat_data(context)
     session = chat_data.get("carousel_session")
     if session:
+        # M29: clear the durable draft as well (best effort)
+        draft_cleared = False
+        persistence = session.get("_persistence")
+        if persistence:
+            draft_cleared = carousel_session.clear_persistent_draft(
+                persistence["db"], persistence["chat_id"])
         carousel_session.cleanup(session)
         chat_data["carousel_session"] = None
-        await update.message.reply_text("✅ جلسه کاروسل لغو و فایل‌های موقت پاک شد.")
+        reply = "✅ جلسه کاروسل لغو و فایل‌های موقت پاک شد."
+        if draft_cleared:
+            reply += "\n" + carousel_session.DRAFT_DELETED_NOTE_FA
+        await update.message.reply_text(reply)
     else:
         await update.message.reply_text("جلسه کاروسلی فعال نیست.")
 
@@ -720,6 +909,7 @@ async def cmd_carousel_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("استفاده: /carousel_edit <شماره> | <متن جدید>")
         return
     index = int(index_str)
+    before = session.get("draft_saved_at")
 
     def run():
         return carousel_session.edit_slide(session, index, new_text)
@@ -734,7 +924,10 @@ async def cmd_carousel_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if error:
         await update.message.reply_text(error)
         return
-    await update.message.reply_photo(open(path, "rb"), caption=f"✅ اسلاید {index} به‌روز شد.")
+    await update.message.reply_photo(
+        open(path, "rb"),
+        caption=f"✅ اسلاید {index} به‌روز شد." + _draft_suffix(session, before),
+    )
 
 
 @record_update_decorator
@@ -753,6 +946,7 @@ async def cmd_carousel_theme(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         return
     template_name = context.args[0].strip()
+    before = session.get("draft_saved_at")
 
     def run():
         return carousel_session.change_theme(session, template_name)
@@ -767,7 +961,10 @@ async def cmd_carousel_theme(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if error:
         await update.message.reply_text(error)
         return
-    await update.message.reply_text(f"✅ قالب {template_name} اعمال و کاروسل دوباره رندر شد.")
+    await update.message.reply_text(
+        f"✅ قالب {template_name} اعمال و کاروسل دوباره رندر شد."
+        + _draft_suffix(session, before)
+    )
     await _send_carousel_preview(update, session)
 
 
@@ -785,6 +982,7 @@ async def cmd_carousel_layout(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     raw = (update.message.text or "").strip()
     raw = re.sub(r"^/carousel_layout(@\S+)?\s*", "", raw)
+    before = session.get("draft_saved_at")
 
     def run():
         return carousel_session.apply_layout(session, raw)
@@ -798,9 +996,70 @@ async def cmd_carousel_layout(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"❌ خطا در تغییر چیدمان: {type(exc).__name__}: {str(exc)[:200]}"
         )
         return
+    if not reply.startswith("❌") and not reply.startswith("فرمت"):
+        reply += _draft_suffix(session, before)
     await update.message.reply_text(reply)
     # Show the result when the layout was applied to a previewed deck
     if reply.startswith("✅") and session.get("state") == carousel_session.PREVIEW:
+        await _send_carousel_preview(update, session)
+
+
+@record_update_decorator
+async def cmd_carousel_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """M29: list the owner's resumable carousel drafts/content items."""
+    if not is_owner(update):
+        await update.message.reply_text("⛔ دسترسی فقط برای مالک است.")
+        return
+    chat_id = getattr(context, "chat_id", None)
+
+    def run():
+        from agents.db.supabase_client import ElinaDB
+        return carousel_session.list_carousels_fa(ElinaDB(), chat_id)
+
+    try:
+        loop = asyncio.get_running_loop()
+        reply = await loop.run_in_executor(None, run)
+    except Exception as exc:
+        logger.exception("Carousel list failed")
+        await update.message.reply_text(
+            f"❌ خطا در نمایش فهرست: {type(exc).__name__}: {str(exc)[:150]}"
+        )
+        return
+    await update.message.reply_text(reply)
+
+
+@record_update_decorator
+async def cmd_carousel_resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """M29: resume the latest saved carousel draft, or a specific one by
+    custom_id (/carousel_resume ELN-CAR-...)."""
+    if not is_owner(update):
+        await update.message.reply_text("⛔ دسترسی فقط برای مالک است.")
+        return
+    chat_data = _chat_data(context)
+    custom_id = context.args[0].strip() if context.args else None
+    chat_id = getattr(context, "chat_id", None)
+
+    def run():
+        from agents.db.supabase_client import ElinaDB
+        from agents.storage.supabase_storage import ElinaStorage
+        return carousel_session.resume_carousel_draft(
+            chat_data, ElinaDB(), ElinaStorage(), chat_id, custom_id)
+
+    try:
+        loop = asyncio.get_running_loop()
+        message_fa, error = await loop.run_in_executor(None, run)
+    except Exception as exc:
+        logger.exception("Carousel resume failed")
+        await update.message.reply_text(
+            f"❌ خطا در بازیابی: {type(exc).__name__}: {str(exc)[:150]}"
+        )
+        return
+    if error:
+        await update.message.reply_text(error)
+        return
+    session = chat_data.get("carousel_session")
+    await update.message.reply_text(message_fa)
+    if session and session.get("state") == carousel_session.PREVIEW:
         await _send_carousel_preview(update, session)
 
 
@@ -848,6 +1107,11 @@ async def handle_studio_media(update: Update, context: ContextTypes.DEFAULT_TYPE
         if not message:
             return
 
+        # M29: reply-based fast re-register (ثبت / جایگزین) — handled
+        # before any normal intake so a reply never double-registers.
+        if await _handle_carousel_reply(update, context, message):
+            return
+
         is_plain_text = (
             not message.video
             and not message.photo
@@ -868,11 +1132,13 @@ async def handle_studio_media(update: Update, context: ContextTypes.DEFAULT_TYPE
                     await message.reply_text(carousel_session.select_mode(session, text))
                     return
                 if state == carousel_session.COLLECT_TEXTS:
+                    before = session.get("draft_saved_at")
                     carousel_session.add_text(session, text)
                     await message.reply_text(
                         f"✅ متن {len(session['texts'])} ثبت شد.\n"
                         "برای بدنه: عنوان | بدنه\n"
                         "وقتی تمام شد /done بزن."
+                        + _draft_suffix(session, before)
                     )
                     return
                 if state == carousel_session.COLLECT_TOPIC:
@@ -932,6 +1198,38 @@ async def handle_studio_media(update: Update, context: ContextTypes.DEFAULT_TYPE
         # M18D: collect carousel images while a session is in COLLECT_IMAGES.
         # Without an active session the intake path below is unchanged.
         carousel_session_active = _get_carousel_session(context)
+
+        # M29: answering a «جایگزین» prompt — the replacement image arrives
+        # as a plain photo/document during PREVIEW.
+        if (
+            carousel_session_active
+            and carousel_session_active["state"] == carousel_session.PREVIEW
+            and carousel_session_active.get("pending_replace_slide")
+            and (message.photo or message.document)
+        ):
+            index = carousel_session_active["pending_replace_slide"]
+            carousel_session_active["pending_replace_slide"] = None
+            import tempfile
+            with tempfile.TemporaryDirectory() as tmpdir:
+                local_path = await _download_message_image(message, tmpdir)
+                if not local_path:
+                    await message.reply_text("❌ عکس جایگزین دریافت نشد؛ دوباره بفرست.")
+                    return
+                before = carousel_session_active.get("draft_saved_at")
+                error, path = carousel_session.replace_slide_image(
+                    carousel_session_active, index, local_path
+                )
+            if error:
+                carousel_session_active["pending_replace_slide"] = index  # retry
+                await message.reply_text(error)
+            else:
+                await message.reply_photo(
+                    open(path, "rb"),
+                    caption=carousel_session.SLIDE_REPLACED_FA.format(n=index)
+                    + _draft_suffix(carousel_session_active, before),
+                )
+            return
+
         if (
             carousel_session_active
             and carousel_session_active["state"] == carousel_session.COLLECT_IMAGES
@@ -945,6 +1243,7 @@ async def handle_studio_media(update: Update, context: ContextTypes.DEFAULT_TYPE
                         if not local_path:
                             await message.reply_text("❌ عکس دریافت نشد؛ دوباره بفرست.")
                             return
+                        before = carousel_session_active.get("draft_saved_at")
                         error = carousel_session.add_image(
                             carousel_session_active, local_path
                         )
@@ -957,6 +1256,7 @@ async def handle_studio_media(update: Update, context: ContextTypes.DEFAULT_TYPE
                                 f"حداقل {carousel_session.MIN_IMAGES}، "
                                 f"حداکثر {carousel_session.MAX_IMAGES} عکس.\n"
                                 "وقتی تمام شد /done بزن."
+                                + _draft_suffix(carousel_session_active, before)
                             )
                 except Exception as e:
                     logger.exception("Carousel image download failed")
@@ -1075,6 +1375,8 @@ def main():
     app.add_handler(CommandHandler("carousel", cmd_carousel))
     app.add_handler(CommandHandler("carousel_cancel", cmd_carousel_cancel))
     app.add_handler(CommandHandler("carousel_ok", cmd_carousel_ok))
+    app.add_handler(CommandHandler("carousel_list", cmd_carousel_list))
+    app.add_handler(CommandHandler("carousel_resume", cmd_carousel_resume))
     app.add_handler(CommandHandler("carousel_edit", cmd_carousel_edit))
     app.add_handler(CommandHandler("carousel_theme", cmd_carousel_theme))
     app.add_handler(CommandHandler("carousel_layout", cmd_carousel_layout))
