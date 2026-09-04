@@ -1019,13 +1019,19 @@ def test_M27B_text_scale_default_and_override(tmp_path):
 # === M29: persistent draft, resume, reply re-register ===
 
 class FakeDraftDB:
-    """In-memory stand-in for the carousel_drafts Supabase table."""
+    """In-memory stand-in for the carousel_drafts Supabase table.
+
+    `received_chat_ids` records every owner_chat_id received by any
+    method so tests can assert the query never sees None / "None" (M29A).
+    """
 
     def __init__(self):
         self.drafts = {}
         self.deleted = []
+        self.received_chat_ids = []
 
     def upsert_carousel_draft(self, owner_chat_id, draft):
+        self.received_chat_ids.append(owner_chat_id)
         record = {
             "id": "uuid-1",
             "owner_chat_id": owner_chat_id,
@@ -1040,6 +1046,7 @@ class FakeDraftDB:
         return [record]
 
     def get_carousel_draft(self, owner_chat_id):
+        self.received_chat_ids.append(owner_chat_id)
         return self.drafts.get(owner_chat_id)
 
     def list_carousel_drafts(self, limit=10):
@@ -1047,6 +1054,7 @@ class FakeDraftDB:
                       key=lambda r: r["updated_at"], reverse=True)[:limit]
 
     def delete_carousel_draft(self, owner_chat_id):
+        self.received_chat_ids.append(owner_chat_id)
         self.deleted.append(owner_chat_id)
         self.drafts.pop(owner_chat_id, None)
         return []
@@ -1482,3 +1490,138 @@ async def test_M29_normal_intake_unchanged_without_reply(tmp_path):
     # normal COLLECT_TEXTS handling: the text is added as a slide text
     assert session["texts"] == [{"title": "ثبت", "body": ""}]
     cs.cleanup(session)
+
+
+# === M29A: draft ownership must use the Telegram chat id (bigint-safe) ===
+
+@pytest.mark.asyncio
+async def test_M29A_carousel_list_uses_effective_chat_id(tmp_path):
+    """A: /carousel_list keys the query by update.effective_chat.id —
+    NOT context.chat_id (which is None in production)."""
+    bot = import_bot()
+    cs = import_cs()
+    update, context = make_mock_update(is_owner=True)
+    # context.chat_id is the bug source: None (app-level conversation id)
+    context.chat_id = None
+    # update.effective_chat.id = OWNER ("12345", a numeric string)
+    db = FakeDraftDB()
+    with patch("agents.db.supabase_client.ElinaDB", return_value=db), \
+         patch.object(bot, "OWNER_CHAT_ID", OWNER):
+        await bot.cmd_carousel_list(update, context)
+    # The query received the normalized INT chat id, never None/"None"
+    assert db.received_chat_ids, "list must query the draft table"
+    assert all(isinstance(v, int) for v in db.received_chat_ids)
+    assert 12345 in db.received_chat_ids
+    assert None not in db.received_chat_ids
+    assert "None" not in db.received_chat_ids
+
+
+@pytest.mark.asyncio
+async def test_M29A_carousel_resume_uses_effective_chat_id(tmp_path):
+    """B: /carousel_resume keys the query by update.effective_chat.id —
+    NOT context.chat_id (None in production)."""
+    bot = import_bot()
+    update, context = make_mock_update(is_owner=True)
+    context.chat_id = None
+    db = FakeDraftDB()
+    storage = FakeMediaStorage()
+    with patch("agents.db.supabase_client.ElinaDB", return_value=db), \
+         patch("agents.storage.supabase_storage.ElinaStorage", return_value=storage), \
+         patch.object(bot, "OWNER_CHAT_ID", OWNER):
+        await bot.cmd_carousel_resume(update, context)
+    assert db.received_chat_ids, "resume must query the draft table"
+    assert all(isinstance(v, int) for v in db.received_chat_ids)
+    assert 12345 in db.received_chat_ids
+    assert None not in db.received_chat_ids
+    assert "None" not in db.received_chat_ids
+
+
+def test_M29A_draft_upsert_uses_normalized_int_chat_id(tmp_path):
+    """C: draft persistence stores/queries the owner id as a real int,
+    even when the chat id is handed over as a numeric string."""
+    cs = import_cs()
+    db = FakeDraftDB()
+    storage = FakeMediaStorage()
+    session = cs.new_session()
+    cs.attach_persistence(session, db, storage, "12345")  # numeric string
+    # attach_persistence normalizes to int immediately
+    assert session["_persistence"]["chat_id"] == 12345
+    assert isinstance(session["_persistence"]["chat_id"], int)
+    img = write_image(tmp_path, "c1.jpg", b"IMGDATA")
+    assert cs.add_image(session, img) is None
+    # Every draft query used the normalized int owner id
+    assert db.received_chat_ids
+    assert all(isinstance(v, int) and v == 12345 for v in db.received_chat_ids)
+    cs.cleanup(session)
+
+
+def test_M29A_normalize_rejects_none():
+    """D: normalize_owner_chat_id(None) raises CAROUSEL_OWNER_CHAT_ID_INVALID."""
+    cs = import_cs()
+    with pytest.raises(Exception) as exc_info:
+        cs.normalize_owner_chat_id(None)
+    assert exc_info.value.code == cs.CAROUSEL_OWNER_CHAT_ID_INVALID
+    assert exc_info.value.code == "CAROUSEL_OWNER_CHAT_ID_INVALID"
+
+
+def test_M29A_normalize_rejects_string_none():
+    """E: normalize_owner_chat_id('None'/'none'/''/whitespace) raises."""
+    cs = import_cs()
+    for bad in ("None", "none", "NONE", "", "   ", "abc", "12a", True, 0, 3.5):
+        with pytest.raises(Exception) as exc_info:
+            cs.normalize_owner_chat_id(bad)
+        assert exc_info.value.code == "CAROUSEL_OWNER_CHAT_ID_INVALID"
+
+
+def test_M29A_normalize_numeric_string_returns_int():
+    """F: normalize_owner_chat_id('6366392934') returns int 6366392934."""
+    cs = import_cs()
+    result = cs.normalize_owner_chat_id("6366392934")
+    assert result == 6366392934
+    assert isinstance(result, int)
+    # ints pass through unchanged; surrounding whitespace is stripped
+    assert cs.normalize_owner_chat_id(6366392934) == 6366392934
+    assert cs.normalize_owner_chat_id(" 6366392934 ") == 6366392934
+
+
+def test_M29A_db_query_never_receives_none_string(monkeypatch):
+    """G: the Supabase adapter rejects None/'None' BEFORE any query runs —
+    the bigint column can never be queried with None or 'None'."""
+    import agents.db.supabase_client as db_mod
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("SUPABASE_SECRET_KEY", "secret")
+    db = db_mod.ElinaDB()
+
+    class _BoomClient:
+        """Fails loudly if any query is attempted for a bad owner id."""
+        def table(self, *a, **k):
+            raise AssertionError("query must not run for None/'None'")
+
+    db.client = _BoomClient()
+    for bad in (None, "None", "none", "", "   "):
+        with pytest.raises(Exception) as exc_info:
+            db.get_carousel_draft(bad)
+        assert exc_info.value.code == "CAROUSEL_OWNER_CHAT_ID_INVALID"
+        with pytest.raises(Exception) as exc_info:
+            db.upsert_carousel_draft(bad, {})
+        assert exc_info.value.code == "CAROUSEL_OWNER_CHAT_ID_INVALID"
+        with pytest.raises(Exception) as exc_info:
+            db.delete_carousel_draft(bad)
+        assert exc_info.value.code == "CAROUSEL_OWNER_CHAT_ID_INVALID"
+
+
+def test_M29A_owner_permission_uses_env_not_ownership(monkeypatch):
+    """H: /whoami and owner permission are UNCHANGED — is_owner still
+    compares effective_chat.id to the OWNER_CHAT_ID env var (permission),
+    independent of the M29A draft-ownership normalization."""
+    bot = import_bot()
+    update, _ = make_mock_update(is_owner=True)      # effective_chat.id = "12345"
+    stranger, _ = make_mock_update(is_owner=False)   # effective_chat.id = "99999"
+    with patch.object(bot, "OWNER_CHAT_ID", OWNER):
+        # permission is still env-based: effective_chat.id vs OWNER_CHAT_ID
+        assert bot.is_owner(update) is True
+        assert bot.is_owner(stranger) is False
+    # A non-owner id is never treated as owner, even though it normalizes
+    # to a perfectly valid int — ownership normalization did not touch perms
+    with patch.object(bot, "OWNER_CHAT_ID", "12345"):
+        assert bot.is_owner(stranger) is False

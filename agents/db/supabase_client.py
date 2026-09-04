@@ -126,6 +126,14 @@ class ElinaDB:
     # Carousel drafts (M29): one durable draft row per owner chat
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _normalize_owner_chat_id(owner_chat_id) -> int:
+        """M29A: owner_chat_id is a bigint column — normalize to a real
+        int so the query can never receive None or 'None'. Lazy import
+        avoids a db -> studio layer dependency at module import time."""
+        from agents.studio.carousel_session import normalize_owner_chat_id
+        return normalize_owner_chat_id(owner_chat_id)
+
     def upsert_carousel_draft(self, owner_chat_id: int, draft: dict) -> list:
         """Insert or update the owner's carousel draft row.
 
@@ -133,6 +141,7 @@ class ElinaDB:
         promoted to top-level columns (used for listing), the rest is
         stored in the draft JSONB column.
         """
+        owner_chat_id = self._normalize_owner_chat_id(owner_chat_id)
         payload = {
             "owner_chat_id": owner_chat_id,
             "title": draft.get("title") or "",
@@ -153,6 +162,7 @@ class ElinaDB:
 
     def get_carousel_draft(self, owner_chat_id: int) -> dict | None:
         """Fetch the owner's carousel draft row (or None)."""
+        owner_chat_id = self._normalize_owner_chat_id(owner_chat_id)
         response = (
             self.client.table("carousel_drafts")
             .select("*")
@@ -175,6 +185,7 @@ class ElinaDB:
 
     def delete_carousel_draft(self, owner_chat_id: int) -> list:
         """Delete the owner's carousel draft row (cancel)."""
+        owner_chat_id = self._normalize_owner_chat_id(owner_chat_id)
         response = (
             self.client.table("carousel_drafts")
             .delete()

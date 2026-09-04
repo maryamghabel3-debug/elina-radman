@@ -581,7 +581,21 @@ def _chat_data(context) -> Dict:
     return context.chat_data
 
 
-def _get_carousel_session(context) -> Optional[Dict]:
+def _effective_chat_id(update) -> Optional[int]:
+    """M29A: the active Telegram chat id (update.effective_chat.id).
+
+    This is the ONLY source of carousel draft ownership. The OWNER_CHAT_ID
+    env var is for permission checks only, and PTB's context.chat_id is
+    the app-level conversation chat id (None here) — neither may be used
+    for draft ownership.
+    """
+    chat = getattr(update, "effective_chat", None)
+    if chat is None:
+        return None
+    return getattr(chat, "id", None)
+
+
+def _get_carousel_session(context, update) -> Optional[Dict]:
     """Return the live (non-expired) carousel session, clearing an expired
     one in place. Never returns an expired session. Defensive against
     non-dict chat_data (pre-M18D mocks/tests) — treated as no session."""
@@ -593,21 +607,22 @@ def _get_carousel_session(context) -> Optional[Dict]:
             chat_data["carousel_session"] = None
             return None
     if session:
-        _ensure_persistence(context, session)
+        _ensure_persistence(update, session)
     return session
 
 
-def _ensure_persistence(context, session: Dict) -> None:
-    """M29: attach the durable-draft persistence context (best effort) so
-    every meaningful step upserts the owner's draft. Failures (e.g. no
-    Supabase credentials) are logged and skipped — the interactive flow
+def _ensure_persistence(update, session: Dict) -> None:
+    """M29/M29A: attach the durable-draft persistence context (best
+    effort) so every meaningful step upserts the owner's draft, keyed by
+    update.effective_chat.id. Failures (e.g. no Supabase credentials,
+    unresolvable chat id) are logged and skipped — the interactive flow
     keeps working without durable drafts."""
     if not session or session.get("_persistence"):
         return
     try:
         from agents.db.supabase_client import ElinaDB
         from agents.storage.supabase_storage import ElinaStorage
-        chat_id = getattr(context, "chat_id", None)
+        chat_id = _effective_chat_id(update)
         if chat_id is None:
             return
         carousel_session.attach_persistence(session, ElinaDB(), ElinaStorage(), chat_id)
@@ -774,7 +789,7 @@ async def _handle_carousel_reply(update: Update, context: ContextTypes.DEFAULT_T
     word = _reply_word(message)
     if not word or not message.reply_to_message:
         return False
-    session = _get_carousel_session(context)
+    session = _get_carousel_session(context, update)
     if not session:
         await message.reply_text("❌ جلسه کاروسل فعال نیست. اول /carousel را بزن.")
         return True
@@ -833,7 +848,7 @@ async def cmd_carousel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except carousel_session.CarouselSessionActiveError as exc:
         await update.message.reply_text(exc.message_fa)
         return
-    _ensure_persistence(context, chat_data.get("carousel_session") or {})
+    _ensure_persistence(update, chat_data.get("carousel_session") or {})
     await update.message.reply_text(reply)
 
 
@@ -845,12 +860,21 @@ async def cmd_carousel_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE
     chat_data = _chat_data(context)
     session = chat_data.get("carousel_session")
     if session:
-        # M29: clear the durable draft as well (best effort)
+        # M29/M29A: clear the durable draft as well (best effort), keyed
+        # by the active Telegram chat id
         draft_cleared = False
         persistence = session.get("_persistence")
         if persistence:
+            try:
+                owner_chat_id = carousel_session.normalize_owner_chat_id(
+                    _effective_chat_id(update))
+            except carousel_session.CarouselOwnerChatIdError:
+                owner_chat_id = persistence.get("chat_id")
+                logger.warning(
+                    "Cannot resolve effective chat id for draft delete; "
+                    "falling back to the attached chat id")
             draft_cleared = carousel_session.clear_persistent_draft(
-                persistence["db"], persistence["chat_id"])
+                persistence["db"], owner_chat_id)
         carousel_session.cleanup(session)
         chat_data["carousel_session"] = None
         reply = "✅ جلسه کاروسل لغو و فایل‌های موقت پاک شد."
@@ -866,7 +890,7 @@ async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update):
         await update.message.reply_text("⛔ دسترسی فقط برای مالک است.")
         return
-    session = _get_carousel_session(context)
+    session = _get_carousel_session(context, update)
     if not session:
         await update.message.reply_text("جلسه کاروسلی فعال نیست. /carousel را بزن.")
         return
@@ -889,7 +913,7 @@ async def cmd_carousel_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update):
         await update.message.reply_text("⛔ دسترسی فقط برای مالک است.")
         return
-    session = _get_carousel_session(context)
+    session = _get_carousel_session(context, update)
     if not session or session["state"] != carousel_session.PREVIEW:
         await update.message.reply_text("اول کاروسل را بساز (پیش‌نمایش) تا بتوانی ویرایش کنی.")
         return
@@ -935,7 +959,7 @@ async def cmd_carousel_theme(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not is_owner(update):
         await update.message.reply_text("⛔ دسترسی فقط برای مالک است.")
         return
-    session = _get_carousel_session(context)
+    session = _get_carousel_session(context, update)
     if not session or session["state"] != carousel_session.PREVIEW:
         await update.message.reply_text("اول کاروسل را بساز (پیش‌نمایش) تا بتوانی قالب را عوض کنی.")
         return
@@ -975,7 +999,7 @@ async def cmd_carousel_layout(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not is_owner(update):
         await update.message.reply_text("⛔ دسترسی فقط برای مالک است.")
         return
-    session = _get_carousel_session(context)
+    session = _get_carousel_session(context, update)
     if not session:
         await update.message.reply_text("جلسه کاروسلی فعال نیست. /carousel را بزن.")
         return
@@ -1010,11 +1034,18 @@ async def cmd_carousel_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update):
         await update.message.reply_text("⛔ دسترسی فقط برای مالک است.")
         return
-    chat_id = getattr(context, "chat_id", None)
+    # M29A: draft ownership comes from the active Telegram chat id —
+    # never context.chat_id / OWNER_CHAT_ID env
+    chat_id = _effective_chat_id(update)
+    try:
+        owner_chat_id = carousel_session.normalize_owner_chat_id(chat_id)
+    except carousel_session.CarouselOwnerChatIdError:
+        await update.message.reply_text(carousel_session.OWNER_CHAT_ID_UNRESOLVED_FA)
+        return
 
     def run():
         from agents.db.supabase_client import ElinaDB
-        return carousel_session.list_carousels_fa(ElinaDB(), chat_id)
+        return carousel_session.list_carousels_fa(ElinaDB(), owner_chat_id)
 
     try:
         loop = asyncio.get_running_loop()
@@ -1037,13 +1068,19 @@ async def cmd_carousel_resume(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
     chat_data = _chat_data(context)
     custom_id = context.args[0].strip() if context.args else None
-    chat_id = getattr(context, "chat_id", None)
+    # M29A: draft ownership comes from the active Telegram chat id
+    chat_id = _effective_chat_id(update)
+    try:
+        owner_chat_id = carousel_session.normalize_owner_chat_id(chat_id)
+    except carousel_session.CarouselOwnerChatIdError:
+        await update.message.reply_text(carousel_session.OWNER_CHAT_ID_UNRESOLVED_FA)
+        return
 
     def run():
         from agents.db.supabase_client import ElinaDB
         from agents.storage.supabase_storage import ElinaStorage
         return carousel_session.resume_carousel_draft(
-            chat_data, ElinaDB(), ElinaStorage(), chat_id, custom_id)
+            chat_data, ElinaDB(), ElinaStorage(), owner_chat_id, custom_id)
 
     try:
         loop = asyncio.get_running_loop()
@@ -1124,7 +1161,7 @@ async def handle_studio_media(update: Update, context: ContextTypes.DEFAULT_TYPE
             # M18D: active carousel session intercepts plain text (mode
             # selection / slide texts / topic). Without a session the code
             # below is exactly the pre-M18D behavior.
-            session = _get_carousel_session(context)
+            session = _get_carousel_session(context, update)
             if session:
                 state = session["state"]
                 text = message.text or ""
@@ -1197,7 +1234,7 @@ async def handle_studio_media(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         # M18D: collect carousel images while a session is in COLLECT_IMAGES.
         # Without an active session the intake path below is unchanged.
-        carousel_session_active = _get_carousel_session(context)
+        carousel_session_active = _get_carousel_session(context, update)
 
         # M29: answering a «جایگزین» prompt — the replacement image arrives
         # as a plain photo/document during PREVIEW.
