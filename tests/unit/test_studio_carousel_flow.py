@@ -1,4 +1,5 @@
 import os
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -1012,4 +1013,472 @@ def test_M27B_text_scale_default_and_override(tmp_path):
     for i in (0, 1, 2):  # photo slides (cover + image_text)
         assert deck.slides[i].text_scale == 1.3
     assert deck.slides[3].text_scale is None  # cta untouched
+    cs.cleanup(session)
+
+
+# === M29: persistent draft, resume, reply re-register ===
+
+class FakeDraftDB:
+    """In-memory stand-in for the carousel_drafts Supabase table."""
+
+    def __init__(self):
+        self.drafts = {}
+        self.deleted = []
+
+    def upsert_carousel_draft(self, owner_chat_id, draft):
+        record = {
+            "id": "uuid-1",
+            "owner_chat_id": owner_chat_id,
+            "title": draft.get("title") or "",
+            "custom_id": draft.get("custom_id"),
+            "status": draft.get("status") or "draft",
+            "draft": {k: v for k, v in draft.items()
+                      if k not in ("title", "custom_id", "status")},
+            "updated_at": "2026-09-04T00:00:00+00:00",
+        }
+        self.drafts[owner_chat_id] = record
+        return [record]
+
+    def get_carousel_draft(self, owner_chat_id):
+        return self.drafts.get(owner_chat_id)
+
+    def list_carousel_drafts(self, limit=10):
+        return sorted(self.drafts.values(),
+                      key=lambda r: r["updated_at"], reverse=True)[:limit]
+
+    def delete_carousel_draft(self, owner_chat_id):
+        self.deleted.append(owner_chat_id)
+        self.drafts.pop(owner_chat_id, None)
+        return []
+
+
+class FakeMediaStorage:
+    """In-memory stand-in for Supabase storage (upload/download bytes)."""
+
+    def __init__(self):
+        self.files = {}
+        self.uploads = 0
+        self.downloads = 0
+
+    def upload_file(self, local, dest, content_type=None):
+        with open(local, "rb") as f:
+            self.files[dest] = f.read()
+        self.uploads += 1
+        return True
+
+    def download_file(self, storage_path, local_path):
+        data = self.files[storage_path]
+        os.makedirs(os.path.dirname(local_path) or ".", exist_ok=True)
+        with open(local_path, "wb") as f:
+            f.write(data)
+        self.downloads += 1
+        return local_path
+
+
+class FakeItemDB:
+    def __init__(self):
+        self.inserted = []
+
+    def insert_content(self, data):
+        self.inserted.append(data)
+        return [data]
+
+
+def _build_persisted_preview(tmp_path, db, storage, chat_id=12345,
+                             tag=""):
+    """Drive a text_overlay session to PREVIEW with persistence attached.
+    Returns the session (deck slide image paths point at real temp files)."""
+    cs = import_cs()
+    session = cs.new_session()
+    cs.attach_persistence(session, db, storage, chat_id)
+    assert cs.select_mode(session, "1") is not None
+    img1 = write_image(tmp_path, f"a{tag}.jpg", b"IMG1")
+    img2 = write_image(tmp_path, f"b{tag}.jpg", b"IMG2")
+    assert cs.add_image(session, img1) is None
+    assert cs.add_image(session, img2) is None
+    assert cs.finish_images(session) is not None
+    cs.add_text(session, "عنوان یک | بدنه یک")
+    cs.add_text(session, "عنوان دو")
+    assert cs.finish_texts(session) is None
+
+    from agents.carousel.schema import CarouselSlide
+    from agents.carousel.deck_renderer import CarouselDeck
+    from agents.carousel.planner import CarouselPlanResult
+    slides = [CarouselSlide(slide_type="cover", title="کاور",
+                            image_path=session["images"][0])]
+    slides.append(CarouselSlide(slide_type="image_text", title="تصویر ۱",
+                                image_path=session["images"][1],
+                                image_layout="auto"))
+    deck = CarouselDeck(title="دک تست", template="psychological_dark",
+                        slides=slides)
+    planner = MagicMock()
+    planner.plan.return_value = CarouselPlanResult(
+        deck=deck, caption="", hashtags=[], provider_used=None)
+    renderer = make_fake_renderer(tmp_path)
+    error = cs.build_deck(session, planner=planner, renderer=renderer)
+    assert error is None
+    assert session["state"] == cs.PREVIEW
+    return session
+
+
+def _fake_resume_renderer(tmp_path):
+    renderer = make_fake_renderer(tmp_path)
+    renderer.slide_renderer = MagicMock()
+    return renderer
+
+
+def test_M29_session_timeout_is_six_hours():
+    cs = import_cs()
+    assert cs.SESSION_TIMEOUT_MINUTES == 6 * 60
+    session = cs.new_session()
+    session["created_at"] = time.time() - 5 * 3600
+    assert not cs.session_expired(session)
+    session["created_at"] = time.time() - 7 * 3600
+    assert cs.session_expired(session)
+    cs.cleanup(session)
+
+
+def test_M29_draft_upserted_on_each_step(tmp_path):
+    cs = import_cs()
+    db, storage = FakeDraftDB(), FakeMediaStorage()
+    session = _build_persisted_preview(tmp_path, db, storage, tag="u")
+    record = db.get_carousel_draft(12345)
+    # mode / images / texts all persisted
+    assert record["draft"]["mode"] == "text_overlay"
+    assert len(record["draft"]["images_keys"]) == 2
+    assert storage.uploads == 2
+    assert record["draft"]["texts"][0] == {"title": "عنوان یک", "body": "بدنه یک"}
+    # preview built -> deck persisted
+    assert record["draft"]["deck"] is not None
+    assert len(record["draft"]["deck"]["slides"]) == 2
+    # edit applied -> draft follows
+    err, path = cs.edit_slide(session, 2, "عنوان ویرایش‌شده")
+    assert err is None
+    record = db.get_carousel_draft(12345)
+    assert record["draft"]["deck"]["slides"][1]["title"] == "عنوان ویرایش‌شده"
+    cs.cleanup(session)
+
+
+def test_M29_resume_latest_draft(tmp_path):
+    cs = import_cs()
+    db, storage = FakeDraftDB(), FakeMediaStorage()
+    session = _build_persisted_preview(tmp_path, db, storage, tag="r")
+    cs.cleanup(session)  # simulate bot restart: in-memory session gone
+
+    chat_data = {}
+    message, error = cs.resume_carousel_draft(
+        chat_data, db, storage, 12345, renderer=_fake_resume_renderer(tmp_path))
+    assert error is None
+    assert "بازیابی شد" in message
+    resumed = chat_data["carousel_session"]
+    assert resumed["state"] == cs.PREVIEW
+    assert len(resumed["images"]) == 2
+    assert all(os.path.exists(p) for p in resumed["images"])
+    assert resumed["deck"] is not None
+    assert len(resumed["slide_paths"]) == 2
+    # images came from storage, not the old local paths
+    assert storage.downloads == 2
+    assert resumed["mode"] == "text_overlay"
+    assert resumed["texts"][0] == {"title": "عنوان یک", "body": "بدنه یک"}
+    cs.cleanup(resumed)
+
+
+def test_M29_resume_then_edit_without_reupload(tmp_path):
+    cs = import_cs()
+    db, storage = FakeDraftDB(), FakeMediaStorage()
+    session = _build_persisted_preview(tmp_path, db, storage, tag="e")
+    cs.cleanup(session)
+
+    chat_data = {}
+    _, error = cs.resume_carousel_draft(
+        chat_data, db, storage, 12345, renderer=_fake_resume_renderer(tmp_path))
+    assert error is None
+    resumed = chat_data["carousel_session"]
+    uploads_after_resume = storage.uploads
+
+    err, path = cs.edit_slide(resumed, 2, "عنوان بعد از رزوم")
+    assert err is None
+    assert resumed["deck"].slides[1].title == "عنوان بعد از رزوم"
+    # no re-upload of the source images
+    assert storage.uploads == uploads_after_resume
+    cs.cleanup(resumed)
+
+
+def test_M29_resume_specific_custom_id(tmp_path):
+    cs = import_cs()
+    db, storage = FakeDraftDB(), FakeMediaStorage()
+
+    session = _build_persisted_preview(tmp_path, db, storage, tag="f")
+    renderer = make_fake_renderer(tmp_path)
+    renderer.upload_deck_to_storage = (
+        lambda paths, cid, storage: [f"carousel/{cid}/s{i}.png"
+                                     for i in range(len(paths))])
+    error, info = cs.finalize(session, storage, FakeItemDB(),
+                              custom_id="ELN-CAR-A", renderer=renderer)
+    assert error is None
+    assert info["custom_id"] == "ELN-CAR-A"
+    cs.cleanup(session)
+
+    # A second draft generation overwrites the CURRENT state...
+    session2 = _build_persisted_preview(tmp_path, db, storage, tag="g")
+    record = db.get_carousel_draft(12345)
+    assert record["custom_id"] is None
+    # ...but the history keeps the finalized version
+    assert [h["custom_id"] for h in record["draft"]["history"]] == ["ELN-CAR-A"]
+    cs.cleanup(session2)
+
+    chat_data = {}
+    message, error = cs.resume_carousel_draft(
+        chat_data, db, storage, 12345, "ELN-CAR-A",
+        renderer=_fake_resume_renderer(tmp_path))
+    assert error is None
+    resumed = chat_data["carousel_session"]
+    assert resumed["custom_id"] == "ELN-CAR-A"
+    assert resumed["state"] == cs.PREVIEW
+    cs.cleanup(resumed)
+
+    # Unknown id -> honest error
+    _, error = cs.resume_carousel_draft(
+        {}, db, storage, 12345, "ELN-CAR-NOPE",
+        renderer=_fake_resume_renderer(tmp_path))
+    assert error and "پیدا نشد" in error
+
+
+def test_M29_resume_expired_draft_rejected(tmp_path):
+    cs = import_cs()
+    db, storage = FakeDraftDB(), FakeMediaStorage()
+    session = _build_persisted_preview(tmp_path, db, storage, tag="x")
+    cs.cleanup(session)
+    # age the draft beyond the 30-day window
+    record = db.get_carousel_draft(12345)
+    record["updated_at"] = "2026-01-01T00:00:00+00:00"
+    _, error = cs.resume_carousel_draft(
+        {}, db, storage, 12345, renderer=_fake_resume_renderer(tmp_path))
+    assert error and "منقضی" in error
+
+
+def test_M29_resume_active_session_conflict(tmp_path):
+    cs = import_cs()
+    db, storage = FakeDraftDB(), FakeMediaStorage()
+    session = _build_persisted_preview(tmp_path, db, storage, tag="c")
+    chat_data = {"carousel_session": session}
+    _, error = cs.resume_carousel_draft(
+        chat_data, db, storage, 12345, renderer=_fake_resume_renderer(tmp_path))
+    assert error and "فعال است" in error
+    cs.cleanup(session)
+
+
+def test_M29_carousel_list_shows_recent(tmp_path):
+    cs = import_cs()
+    db, storage = FakeDraftDB(), FakeMediaStorage()
+    session = _build_persisted_preview(tmp_path, db, storage, tag="l")
+    renderer = make_fake_renderer(tmp_path)
+    renderer.upload_deck_to_storage = (
+        lambda paths, cid, storage: [f"carousel/{cid}/s{i}.png"
+                                     for i in range(len(paths))])
+    error, _ = cs.finalize(session, storage, FakeItemDB(),
+                           custom_id="ELN-CAR-A", renderer=renderer)
+    assert error is None
+    cs.cleanup(session)
+
+    reply = cs.list_carousels_fa(db, 12345)
+    assert "ELN-CAR-A" in reply
+    assert "دک تست" in reply
+    # no draft for another owner
+    empty = cs.list_carousels_fa(FakeDraftDB(), 99999)
+    assert "پیدا نشد" in empty
+
+
+@pytest.mark.asyncio
+async def test_M29_cancel_clears_persistent_draft(tmp_path):
+    bot = import_bot()
+    cs = import_cs()
+    update, context = make_mock_update(is_owner=True)
+    session = cs.new_session()
+    db, storage = FakeDraftDB(), FakeMediaStorage()
+    cs.attach_persistence(session, db, storage, 12345)
+    context.chat_data["carousel_session"] = session
+    with patch.object(bot, "OWNER_CHAT_ID", OWNER):
+        await bot.cmd_carousel_cancel(update, context)
+    assert context.chat_data["carousel_session"] is None
+    assert 12345 in db.deleted
+    assert "حذف شد" in update.message.reply_text.call_args[0][0]
+    cs.cleanup(session)
+
+
+@pytest.mark.asyncio
+async def test_M29_reply_add_readds_image(tmp_path):
+    bot = import_bot()
+    cs = import_cs()
+    update, context = make_mock_update(is_owner=True, text="ثبت")
+    session = cs.new_session()
+    session["state"] = cs.COLLECT_IMAGES
+    session["mode"] = "text_overlay"
+    context.chat_data["carousel_session"] = session
+    # a previously sent image message, now replied to
+    file_obj = MagicMock()
+    file_obj.download_to_drive = AsyncMock(
+        side_effect=lambda p: (open(p, "wb").write(b"REPLIED_IMG"), None)[1])
+    photo = MagicMock()
+    photo.get_file = AsyncMock(return_value=file_obj)
+    replied = MagicMock()
+    replied.photo = [photo]
+    replied.document = None
+    update.message.reply_to_message = replied
+    with patch.object(bot, "OWNER_CHAT_ID", OWNER):
+        await bot.handle_studio_media(update, context)
+    assert len(session["images"]) == 1
+    assert os.path.exists(session["images"][0])
+    reply = update.message.reply_text.call_args[0][0]
+    assert "دوباره ثبت شد" in reply
+    cs.cleanup(session)
+
+
+@pytest.mark.asyncio
+async def test_M29_reply_add_readds_text(tmp_path):
+    bot = import_bot()
+    cs = import_cs()
+    update, context = make_mock_update(is_owner=True, text="ثبت")
+    session = cs.new_session()
+    session["state"] = cs.COLLECT_TEXTS
+    session["mode"] = "text_overlay"
+    context.chat_data["carousel_session"] = session
+    replied = MagicMock()
+    replied.text = "عنوان قبلی | بدنه قبلی"
+    replied.photo = None
+    replied.document = None
+    replied.caption = None
+    update.message.reply_to_message = replied
+    with patch.object(bot, "OWNER_CHAT_ID", OWNER):
+        await bot.handle_studio_media(update, context)
+    assert session["texts"] == [{"title": "عنوان قبلی", "body": "بدنه قبلی"}]
+    reply = update.message.reply_text.call_args[0][0]
+    assert "دوباره ثبت شد" in reply
+    cs.cleanup(session)
+
+
+def _preview_session(tmp_path, n_slides=3):
+    cs = import_cs()
+    session = cs.new_session()
+    session["state"] = cs.PREVIEW
+    session["mode"] = "text_overlay"
+    from agents.carousel.schema import CarouselSlide
+    from agents.carousel.deck_renderer import CarouselDeck
+    slides = [CarouselSlide(slide_type="cover", title="کاور",
+                            image_path=f"/img/0.jpg")]
+    for i in range(1, n_slides):
+        slides.append(CarouselSlide(slide_type="image_text",
+                                    title=f"تصویر {i}",
+                                    image_path=f"/img/{i}.jpg"))
+    session["deck"] = CarouselDeck(title="دک", template="psychological_dark",
+                                   slides=slides)
+    session["slide_paths"] = [write_image(tmp_path, f"s{i}.png")
+                              for i in range(n_slides)]
+    renderer = MagicMock()
+    renderer.slide_renderer = MagicMock()
+    session["_renderer"] = renderer
+    session["preview_media_group_id"] = "group-1"
+    session["preview_first_message_id"] = 100
+    return session
+
+
+@pytest.mark.asyncio
+async def test_M29_reply_replace_pending_then_image(tmp_path):
+    bot = import_bot()
+    cs = import_cs()
+    session = _preview_session(tmp_path)
+    context = MagicMock()
+    context.chat_data = {"carousel_session": session}
+    context.chat_id = 12345
+
+    # «جایگزین» on slide 2's preview message (first_id + 1)
+    update, _ = make_mock_update(is_owner=True, text="جایگزین")
+    replied = MagicMock()
+    replied.message_id = 101
+    replied.media_group_id = "group-1"
+    update.message.reply_to_message = replied
+    with patch.object(bot, "OWNER_CHAT_ID", OWNER):
+        await bot.handle_studio_media(update, context)
+    assert session["pending_replace_slide"] == 2
+    reply = update.message.reply_text.call_args[0][0]
+    assert "جایگزین اسلاید 2" in reply
+
+    # the replacement image arrives as a plain photo
+    img_update, _ = make_mock_update(is_owner=True, with_photo=True)
+    img_update.message.photo[0].get_file.return_value.download_to_drive.side_effect = \
+        lambda p: (open(p, "wb").write(b"NEW_IMG"), None)[1]
+    with patch.object(bot, "OWNER_CHAT_ID", OWNER):
+        await bot.handle_studio_media(img_update, context)
+    assert session["pending_replace_slide"] is None
+    assert session["deck"].slides[1].image_path.endswith("replace_02.jpg")
+    caption = img_update.message.reply_photo.call_args.kwargs["caption"]
+    assert "جایگزین شد" in caption
+    cs.cleanup(session)
+
+
+@pytest.mark.asyncio
+async def test_M29_reply_replace_direct_with_image(tmp_path):
+    bot = import_bot()
+    cs = import_cs()
+    session = _preview_session(tmp_path)
+    context = MagicMock()
+    context.chat_data = {"carousel_session": session}
+    context.chat_id = 12345
+
+    # image + «جایگزین» caption in one reply to slide 3
+    update, _ = make_mock_update(is_owner=True, with_photo=True)
+    update.message.text = None
+    update.message.caption = "جایگزین"
+    update.message.photo[0].get_file.return_value.download_to_drive.side_effect = \
+        lambda p: (open(p, "wb").write(b"NEW_IMG_3"), None)[1]
+    replied = MagicMock()
+    replied.message_id = 102
+    replied.media_group_id = "group-1"
+    update.message.reply_to_message = replied
+    with patch.object(bot, "OWNER_CHAT_ID", OWNER):
+        await bot.handle_studio_media(update, context)
+    assert session["deck"].slides[2].image_path.endswith("replace_03.jpg")
+    caption = update.message.reply_photo.call_args.kwargs["caption"]
+    assert "جایگزین شد" in caption
+    cs.cleanup(session)
+
+
+@pytest.mark.asyncio
+async def test_M29_reply_replace_unknown_slide_clear_error(tmp_path):
+    bot = import_bot()
+    cs = import_cs()
+    session = _preview_session(tmp_path)
+    context = MagicMock()
+    context.chat_data = {"carousel_session": session}
+    context.chat_id = 12345
+
+    # replying to a message that is NOT part of the current preview group
+    update, _ = make_mock_update(is_owner=True, text="جایگزین")
+    replied = MagicMock()
+    replied.message_id = 42
+    replied.media_group_id = "other-group"
+    update.message.reply_to_message = replied
+    with patch.object(bot, "OWNER_CHAT_ID", OWNER):
+        await bot.handle_studio_media(update, context)
+    reply = update.message.reply_text.call_args[0][0]
+    assert "پیدا نکردم" in reply
+    assert session["pending_replace_slide"] is None
+    cs.cleanup(session)
+
+
+@pytest.mark.asyncio
+async def test_M29_normal_intake_unchanged_without_reply(tmp_path):
+    """A plain «ثبت» WITHOUT reply_to_message is normal text intake — no
+    session side effects (the shortcut only works on replies)."""
+    bot = import_bot()
+    cs = import_cs()
+    update, context = make_mock_update(is_owner=True, text="ثبت")
+    session = cs.new_session()
+    session["state"] = cs.COLLECT_TEXTS
+    context.chat_data["carousel_session"] = session
+    update.message.reply_to_message = None
+    with patch.object(bot, "OWNER_CHAT_ID", OWNER):
+        await bot.handle_studio_media(update, context)
+    # normal COLLECT_TEXTS handling: the text is added as a slide text
+    assert session["texts"] == [{"title": "ثبت", "body": ""}]
     cs.cleanup(session)

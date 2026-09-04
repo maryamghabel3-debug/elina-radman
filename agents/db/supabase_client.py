@@ -1,5 +1,6 @@
 import os
 import logging
+import datetime
 from supabase import create_client, Client
 
 logger = logging.getLogger(__name__)
@@ -119,4 +120,65 @@ class ElinaDB:
             "detail": detail,
         }
         response = self.client.table("content_events").insert(data).execute()
+        return response.data
+
+    # ------------------------------------------------------------------
+    # Carousel drafts (M29): one durable draft row per owner chat
+    # ------------------------------------------------------------------
+
+    def upsert_carousel_draft(self, owner_chat_id: int, draft: dict) -> list:
+        """Insert or update the owner's carousel draft row.
+
+        `draft` is the full draft dict; 'title'/'custom_id'/'status' are
+        promoted to top-level columns (used for listing), the rest is
+        stored in the draft JSONB column.
+        """
+        payload = {
+            "owner_chat_id": owner_chat_id,
+            "title": draft.get("title") or "",
+            "custom_id": draft.get("custom_id"),
+            "status": draft.get("status") or "draft",
+            "draft": {
+                k: v for k, v in draft.items()
+                if k not in ("title", "custom_id", "status")
+            },
+            "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        }
+        response = (
+            self.client.table("carousel_drafts")
+            .upsert(payload, on_conflict="owner_chat_id")
+            .execute()
+        )
+        return response.data
+
+    def get_carousel_draft(self, owner_chat_id: int) -> dict | None:
+        """Fetch the owner's carousel draft row (or None)."""
+        response = (
+            self.client.table("carousel_drafts")
+            .select("*")
+            .eq("owner_chat_id", owner_chat_id)
+            .limit(1)
+            .execute()
+        )
+        return response.data[0] if response.data else None
+
+    def list_carousel_drafts(self, limit: int = 10) -> list:
+        """Recent carousel drafts across owners (newest first)."""
+        response = (
+            self.client.table("carousel_drafts")
+            .select("*")
+            .order("updated_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return response.data
+
+    def delete_carousel_draft(self, owner_chat_id: int) -> list:
+        """Delete the owner's carousel draft row (cancel)."""
+        response = (
+            self.client.table("carousel_drafts")
+            .delete()
+            .eq("owner_chat_id", owner_chat_id)
+            .execute()
+        )
         return response.data
