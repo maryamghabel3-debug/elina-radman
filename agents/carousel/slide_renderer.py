@@ -893,14 +893,31 @@ class CarouselSlideRenderer:
         )
 
     def _resolve_part_zones(self, slide: CarouselSlide, source: Image.Image):
-        """Resolve the title/body zones for a composition slide (M25).
+        """Resolve the title/body zones for a composition slide (M25,
+        stacked default M27B).
 
-        Precedence: an explicit title_zone/body_zone wins for its part;
-        slide.text_zone is the fallback for both. When both parts fall
-        back to auto, two least-busy NON-ADJACENT grid cells are chosen
-        (the title gets the higher/more prominent one); a single part
-        falls back to a single auto-detected zone.
+        DEFAULT (M27B): when NEITHER title_zone NOR body_zone is set,
+        title and body render as ONE stacked block in a single zone —
+        the explicit text_zone when given, else the auto-detected best
+        zone. They move together and are never split automatically.
+
+        EXPLICIT split (M25, unchanged): when title_zone and/or
+        body_zone is set, an explicit zone wins for its part and
+        slide.text_zone is the fallback; when both parts still fall back
+        to auto, two least-busy NON-ADJACENT grid cells are chosen (the
+        title gets the higher/more prominent one). A single part falls
+        back to a single auto-detected zone.
         """
+        if slide.title_zone is None and slide.body_zone is None:
+            # Stacked mode: one zone for both parts (M27B default)
+            zone = slide.text_zone
+            if zone in (None, "auto"):
+                zone = find_best_text_zone(source)
+            t_z = zone if slide.title else None
+            b_z = zone if slide.body else None
+            return t_z, b_z
+
+        # Split mode (M25 behavior, unchanged)
         tz = slide.title_zone if slide.title_zone is not None else slide.text_zone
         bz = slide.body_zone if slide.body_zone is not None else slide.text_zone
         tz_auto = tz in (None, "auto")
