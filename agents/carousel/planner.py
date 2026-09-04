@@ -46,6 +46,9 @@ CAROUSEL_CHARACTER_ASSETS_UNAVAILABLE = "CAROUSEL_CHARACTER_ASSETS_UNAVAILABLE"
 
 SUPPORTED_GOALS = ("save_and_share", "follow", "reflect")
 SUPPORTED_MODES = ("ai_planned", "text_overlay", "image_deck")
+# M27B: text_overlay decks default to slightly smaller text so captions
+# are less dominant on user photos (operator can override with size=).
+TEXT_OVERLAY_DEFAULT_TEXT_SCALE = 0.85
 # Character hint used when enforcing character presence (ElinaOS universe)
 _CHARACTER_HINT = "elina"
 MIN_SLIDES = 3
@@ -327,6 +330,9 @@ class CarouselPlanner:
                     "image_path": img,
                     # M25: smart text placement for the cover too
                     "text_zone": "auto",
+                    # M27B: smaller text by default on user photos; the
+                    # operator can enlarge via /carousel_layout size=...
+                    "text_scale": TEXT_OVERLAY_DEFAULT_TEXT_SCALE,
                 }
             else:
                 # Non-cover slides always carry their paired image, so they
@@ -343,6 +349,8 @@ class CarouselPlanner:
                     "image_layout": "auto",
                     # M25: smart text placement (3x3 grid auto-detect)
                     "text_zone": "auto",
+                    # M27B: smaller text by default on user photos
+                    "text_scale": TEXT_OVERLAY_DEFAULT_TEXT_SCALE,
                 }
             try:
                 slides.append(parse_carousel_slide(raw_slide))

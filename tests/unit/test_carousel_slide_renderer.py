@@ -555,10 +555,10 @@ def test_O_full_bleed_caption_covers_full_canvas(tmp_path):
 
 @pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
 def test_O_full_bleed_caption_smaller_zone_without_body(tmp_path):
-    """M25: the readability patch is sized to the text block. With a body,
-    the title auto-splits to a top cell (its patch reaches the top region);
-    title-only falls back to a single bottom zone whose patch never
-    reaches the top — so the same top point is less darkened without body.
+    """M25/M27B: the readability patch is sized to the text block. Both
+    renders stack in the auto 'bottom' zone; WITH a body the stacked block
+    (and its patch) is taller, so a point inside the with-body patch but
+    above the title-only patch is less darkened without the body.
     """
     src = make_colored_source(str(tmp_path / "s.png"), (1600, 900), (30, 120, 220))
     renderer = make_renderer()
@@ -568,9 +568,12 @@ def test_O_full_bleed_caption_smaller_zone_without_body(tmp_path):
     renderer.render(dict(base, body="متن بدنه‌ای برای تست."), out_tb)
     out_t = str(tmp_path / "fb_t.png")
     renderer.render(base, out_t)
-    b_with_body = Image.open(out_tb).getpixel((540, 200))[2]
-    b_title_only = Image.open(out_t).getpixel((540, 200))[2]
-    assert b_title_only > b_with_body
+    # y=1100: inside both patches, but deeper into the taller with-body one
+    b_with_body = Image.open(out_tb).getpixel((540, 1100))[2]
+    b_title_only = Image.open(out_t).getpixel((540, 1100))[2]
+    assert b_with_body < b_title_only
+    # Above both patches: identical base photo
+    assert Image.open(out_tb).getpixel((540, 900)) == Image.open(out_t).getpixel((540, 900))
 
 
 @pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
@@ -801,11 +804,10 @@ def test_G_text_zone_none_triggers_auto_detection(tmp_path, monkeypatch):
 
 
 @pytest.mark.skipif(TEST_FONT_PATH is None, reason="No system font found")
-def test_P_auto_split_on_flat_source(tmp_path):
-    """M25: a flat source — single-zone auto still resolves to 'bottom'
-    (tie-break), and the title+body auto-split lands the two least-busy
-    non-adjacent cells (title top_center, body bottom_right): white title
-    in the top region, gray body in the bottom-right, mid-left untouched."""
+def test_default_stacked_on_flat_source(tmp_path):
+    """M27B: a flat source — the auto zone resolves to 'bottom' (tie-break)
+    and title+body stack TOGETHER in that single zone (no auto split):
+    white title + gray body in the bottom region, nothing in the top."""
     import agents.carousel.slide_renderer as sr
     src = make_colored_source(str(tmp_path / "s.png"), (1080, 1350), (30, 120, 220))
     assert sr.find_best_text_zone(Image.open(src)) == "bottom"
@@ -816,12 +818,15 @@ def test_P_auto_split_on_flat_source(tmp_path):
         "title": "تست", "body": "بدنه", "image_layout": "full_bleed_caption",
     }, out)
     img = Image.open(out)
-    # Title (bone_white) bright in the top-center region
-    assert img.crop((100, 50, 980, 420)).getextrema()[0][1] > 200
-    # Body (dawn_gray) present in the bottom-right region
-    assert img.crop((450, 1000, 1050, 1240)).getextrema()[0][1] > 150
-    # Mid-left region: no text, no patch
-    assert img.crop((90, 500, 450, 800)).getextrema()[0][1] < 200
+    # No text anywhere in the top half (previously the title auto-split there)
+    assert img.crop((0, 0, 1080, 675)).getextrema()[0][1] < 150
+    # Both parts in the bottom region: white title core...
+    assert img.crop((0, 900, 1080, 1240)).getextrema()[0][1] > 200
+    # ...and the gray body (dawn_gray ~L180) as well
+    import numpy as np
+    a = np.array(img.convert("L"))
+    body_mask = (a[900:1240] > 150) & (a[900:1240] < 210)
+    assert body_mask.sum() > 20
 
 
 # === Q. M25 text composition: split zones, side width, blend, scale ===
@@ -1178,3 +1183,165 @@ def test_R_rtl_styled_flow_right_to_left(tmp_path):
         positions[text] = x_cursor
     # RTL: later logical units are further LEFT (smaller x)
     assert positions["ب"] > positions["د"]
+
+
+# === S. M27B: stacked default composition + edge anchoring ===
+
+def _np(img):
+    import numpy as np
+    return np.array(img.convert("L")), np.array(img.convert("RGB")).astype(int)
+
+
+def test_S_default_stacked_title_above_body_in_top_zone(tmp_path):
+    """M27B default: title and body render as ONE stacked block in the
+    same zone — title above body, separated by the accent rule (pinned
+    to the top zone for determinism)."""
+    src = make_colored_source(str(tmp_path / "s.png"), (1080, 1350), (30, 120, 220))
+    renderer = make_renderer()
+    out = str(tmp_path / "stacked_top.png")
+    renderer.render({"slide_type": "image_text", "image_path": src,
+                     "title": "تست", "body": "بدنه",
+                     "image_layout": "full_bleed_caption",
+                     "text_zone": "top"}, out)
+    img = Image.open(out)
+    L, rgb = _np(img)
+    title_mask = L > 215                                   # bone_white core
+    rule_mask = (rgb[:, :, 0] > 120) & (rgb[:, :, 0] - rgb[:, :, 2] > 60) \
+        & (rgb[:, :, 1] > 120) & (rgb[:, :, 1] < 200)      # antique_gold rule
+    body_mask = (L > 150) & (L < 210)                      # dawn_gray body
+    ty = np_y(title_mask)
+    ry = np_y(rule_mask)
+    by = np_y(body_mask)
+    assert len(ty) > 0 and len(ry) > 0 and len(by) > 0
+    # Vertical order: title above the rule, body below it
+    assert ty.max() < ry.min() + 3
+    assert ry.max() < by.max() - 30
+    # All stacked in the top zone (y < 0.35H)
+    assert by.max() < 0.35 * 1350
+
+
+def np_y(mask):
+    import numpy as np
+    return np.argwhere(mask)[:, 0]
+
+
+def test_S_stacked_title_body_do_not_overlap(tmp_path):
+    """Stacked mode never overlaps title and body: the gap between the
+    title core and the rule holds no interleaved glyphs, and nothing
+    title-colored sits below the body."""
+    src = make_colored_source(str(tmp_path / "s.png"), (1080, 1350), (30, 120, 220))
+    renderer = make_renderer()
+    out = str(tmp_path / "stacked_no_overlap.png")
+    renderer.render({"slide_type": "image_text", "image_path": src,
+                     "title": "تست", "body": "بدنه",
+                     "image_layout": "full_bleed_caption",
+                     "text_zone": "top"}, out)
+    img = Image.open(out)
+    L, rgb = _np(img)
+    title_mask = L > 215
+    rule_mask = (rgb[:, :, 0] > 120) & (rgb[:, :, 0] - rgb[:, :, 2] > 60) \
+        & (rgb[:, :, 1] > 120) & (rgb[:, :, 1] < 200)
+    body_mask = (L > 150) & (L < 210)
+    ty = np_y(title_mask)
+    ry = np_y(rule_mask)
+    by = np_y(body_mask)
+    # Gap window between title core and rule: only anti-aliasing fringes
+    gap = L[ty.max() + 3: max(ty.max() + 4, ry.min() - 3), :]
+    assert (gap > 150).sum() < 20
+    # Nothing title-colored below the body
+    below = L[by.max() + 10: min(by.max() + 110, 600), :]
+    assert (below > 210).sum() == 0
+
+
+def test_S_explicit_split_zones_still_split(tmp_path):
+    """M25 split behavior is preserved when the operator sets explicit
+    per-part zones: title top_right, body bottom_left, separate patches."""
+    src = make_colored_source(str(tmp_path / "s.png"), (1080, 1350), (30, 120, 220))
+    renderer = make_renderer()
+    out = str(tmp_path / "split_explicit.png")
+    renderer.render({"slide_type": "image_text", "image_path": src,
+                     "title": "تست", "body": "بدنه",
+                     "image_layout": "full_bleed_caption",
+                     "title_zone": "top_right", "body_zone": "bottom_left"}, out)
+    img = Image.open(out)
+    L, _ = _np(img)
+    # Title core in the top-right quadrant
+    tr = L[0:450, 500:1080]
+    assert (tr > 215).sum() > 20
+    # Body (gray) in the bottom-left quadrant
+    bl = L[900:1240, 0:600]
+    assert ((bl > 150) & (bl < 210)).sum() > 20
+    # No title-colored pixels in the bottom half, no text in the top-left
+    assert (L[900:1350, :] > 215).sum() == 0
+    assert (L[0:450, 0:450] > 150).sum() == 0
+
+
+def test_S_left_zone_anchored_near_left_margin(tmp_path):
+    import numpy as np
+    """Side-zone anchoring: a left-zone block hugs the left safe margin —
+    the right-aligned text's right edge sits at margin + 45%W, clearly in
+    the left half of the canvas (not floating in the middle)."""
+    src = make_colored_source(str(tmp_path / "s.png"), (1080, 1350), (30, 120, 220))
+    renderer = make_renderer()
+    out = str(tmp_path / "left_zone.png")
+    renderer.render({"slide_type": "image_text", "image_path": src,
+                     "title": "تست", "image_layout": "full_bleed_caption",
+                     "text_zone": "middle_left"}, out)
+    L, _ = _np(Image.open(out))
+    xs = np.argwhere(L > 215)[:, 1]
+    assert len(xs) > 0
+    block_right = 90 + int(1080 * 0.45)  # left margin + 45% width
+    assert xs.max() <= block_right + 5
+    assert xs.max() < 0.55 * 1080        # stays in the left half
+    assert xs.min() > 90 - 5             # never left of the safe margin
+
+
+def test_S_right_zone_anchored_near_right_margin(tmp_path):
+    import numpy as np
+    """Side-zone anchoring: a right-zone block hugs the right safe margin."""
+    src = make_colored_source(str(tmp_path / "s.png"), (1080, 1350), (30, 120, 220))
+    renderer = make_renderer()
+    out = str(tmp_path / "right_zone.png")
+    renderer.render({"slide_type": "image_text", "image_path": src,
+                     "title": "تست", "image_layout": "full_bleed_caption",
+                     "text_zone": "middle_right"}, out)
+    L, _ = _np(Image.open(out))
+    xs = np.argwhere(L > 215)[:, 1]
+    assert len(xs) > 0
+    assert xs.max() >= 1080 - 90 - 5     # right edge at the right safe margin
+    assert xs.max() <= 1080 - 90 + 2
+    assert xs.min() > 0.45 * 1080        # stays in the right half
+
+
+def test_S_center_zone_horizontally_centered(tmp_path):
+    import numpy as np
+    """Center zones center the block horizontally."""
+    src = make_colored_source(str(tmp_path / "s.png"), (1080, 1350), (30, 120, 220))
+    renderer = make_renderer()
+    out = str(tmp_path / "center_zone.png")
+    renderer.render({"slide_type": "image_text", "image_path": src,
+                     "title": "تست", "image_layout": "full_bleed_caption",
+                     "text_zone": "middle"}, out)
+    L, _ = _np(Image.open(out))
+    xs = np.argwhere(L > 215)[:, 1]
+    assert len(xs) > 0
+    assert abs((xs.min() + xs.max()) / 2 - 540) <= 10
+
+
+def test_S_legacy_slide_without_new_fields_renders(tmp_path):
+    """A legacy slide dict (no M25/M26/M27 fields) parses and renders fine
+    under the new defaults: stacked auto zone (flat source -> bottom)."""
+    src = make_colored_source(str(tmp_path / "s.png"), (1080, 1350), (30, 120, 220))
+    slide = parse_carousel_slide({"slide_type": "image_text", "title": "تست",
+                                  "body": "بدنه", "image_path": src})
+    assert slide.text_zone is None
+    assert slide.title_zone is None and slide.body_zone is None
+    assert slide.text_scale is None
+    renderer = make_renderer()
+    out = str(tmp_path / "legacy.png")
+    renderer.render(slide, out)
+    img = Image.open(out)
+    assert img.size == (CANVAS_WIDTH, CANVAS_HEIGHT)
+    # Stacked in the quietest zone (bottom for a flat source)
+    assert img.crop((0, 900, 1080, 1240)).getextrema()[0][1] > 150
+    assert img.crop((0, 0, 1080, 675)).getextrema()[0][1] < 150

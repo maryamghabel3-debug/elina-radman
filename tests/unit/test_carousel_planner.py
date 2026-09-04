@@ -603,3 +603,29 @@ def test_local_character_asset_provider_missing_dir_never_raises():
     from agents.carousel import LocalCharacterAssetProvider
     provider = LocalCharacterAssetProvider(directory="/nonexistent/dir/xyz")
     assert provider.get_asset("elina", "", "cover", "x") is None
+
+
+# --- M27B: text_overlay default text_scale 0.85 ---
+
+def test_mode_text_overlay_default_text_scale_085(tmp_path):
+    images = make_image_files(tmp_path, 3)
+    texts = text_overlay_texts(3)
+    result = make_planner(FakeRouter([])).plan(
+        mode="text_overlay", image_paths=images, slide_texts=texts
+    )
+    # All slides (cover included) default to the smaller text scale
+    assert all(s.text_scale == 0.85 for s in result.deck.slides)
+    # Other M25 defaults untouched
+    assert result.deck.slides[0].text_zone == "auto"
+    assert result.deck.slides[1].text_zone == "auto"
+    assert result.deck.slides[1].image_layout == "auto"
+
+
+def test_mode_image_deck_keeps_default_text_scale(tmp_path):
+    """image_deck (and ai_planned) must keep text_scale=None (M27B only
+    changes text_overlay)."""
+    images = make_image_files(tmp_path, 3)
+    result = make_planner(FakeRouter([valid_deck_json(3)])).plan(
+        mode="image_deck", topic="موضوع", image_paths=images
+    )
+    assert all(s.text_scale is None for s in result.deck.slides)

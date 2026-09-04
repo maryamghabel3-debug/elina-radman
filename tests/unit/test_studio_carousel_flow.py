@@ -988,3 +988,28 @@ async def test_M27A_bot_edit_zone_token_regression(tmp_path):
     assert session["deck"].slides[2].text_zone == "top"
     update.message.reply_photo.assert_called_once()
     cs.cleanup(session)
+
+
+# === M27B — text_scale default override ===
+
+def test_M27B_text_scale_default_and_override(tmp_path):
+    cs = import_cs()
+    session = make_preview_session(tmp_path, n_slides=4)
+    deck = session["deck"]
+    # Planner default for text_overlay decks (M27B): photo slides only
+    for i in (0, 1, 2):
+        deck.slides[i].text_scale = 0.85
+    assert deck.slides[3].text_scale is None  # cta not set by the planner
+    # User override per slide via /carousel_edit size=
+    err, path = cs.edit_slide(session, 2, "size=1.0")
+    assert err is None
+    assert deck.slides[1].text_scale == 1.0
+    # Other slides keep the default
+    assert deck.slides[2].text_scale == 0.85
+    # ...and deck-wide via /carousel_layout size=
+    reply = cs.apply_layout(session, "size 1.3")
+    assert "✅" in reply
+    for i in (0, 1, 2):  # photo slides (cover + image_text)
+        assert deck.slides[i].text_scale == 1.3
+    assert deck.slides[3].text_scale is None  # cta untouched
+    cs.cleanup(session)
