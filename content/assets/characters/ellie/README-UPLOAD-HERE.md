@@ -21,3 +21,8 @@
 PRIVATE_ASSET_PENDING
 
 هیچ credential، URL امضاشده یا کلید دسترسی در این فایل ثبت نشود.
+
+## مستندات بصری (Visual Documentation)
+
+- [Ellie Visual Lock — مشخصات بصری تأییدشده توسط مالک (owner-confirmed textual specification)](metadata/ellie_visual_lock.md)
+- [Ellie Reference-Image Usage Policy — سیاست استفاده از رفرنس‌های تصویری](metadata/ellie_reference_usage.md)

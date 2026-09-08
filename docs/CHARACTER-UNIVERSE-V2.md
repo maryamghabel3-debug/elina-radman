@@ -19,6 +19,8 @@ document:
 
 تا زمان ثبت رفرنس‌های نهایی در فضای خصوصی، هیچ ایجنتی حق ندارد ظاهر الی یا ویژگی‌های بصری تأییدنشده او را قطعی فرض کند.
 
+**به‌روزرسانی (2026-09-09):** مشخصات بصری **متنی** الی توسط مالک پروژه **تأیید و ثبت** شده است (وضعیت: OWNER_CONFIRMED — فقط متن؛ بازبینی تصویر NOT_PERFORMED و turnaround/expression-sheet NOT_VERIFIED). این ثبت صرفاً یک **توضیح متنی** است؛ تصویر اصلی در این handoff دریافت یا بازبینی **نشده** و Golden Reference set همچنان **NOT_REGISTERED** است. جزئیات در [Ellie Visual Lock](../content/assets/characters/ellie/metadata/ellie_visual_lock.md).
+
 ۱. مقدمه (The Universe)
 
 محتوای الینا رادمان تنها یک مونولوگ رو به دوربین نیست. این فضا یک «جهان روانی-سینمایی» است که در آن، بخش‌های مختلف روان انسان به شکل کاراکترهای مستقل نمود پیدا می‌کنند. این کاراکترها استعاره‌هایی زنده برای توضیح مفاهیم پیچیده (مثل کودک درون، تروما، و اضطراب) هستند.
@@ -45,6 +47,9 @@ document:
   - با دو دست کوچک به لباس الینا می‌چسبد.
   - وقتی احساس امنیت می‌کند، در کف دست الینا می‌نشیند.
 - محل ذخیره رفرنس‌های تصویری: content/assets/characters/ellie/
+- مستندات بصری (owner-confirmed textual specification; image validation still pending):
+  - [Ellie Visual Lock — مشخصات بصری تأییدشده توسط مالک](../content/assets/characters/ellie/metadata/ellie_visual_lock.md)
+  - [Ellie Reference-Image Usage Policy — سیاست استفاده از رفرنس‌های تصویری](../content/assets/characters/ellie/metadata/ellie_reference_usage.md)
 
 ۴. دینامیک تعامل (Elina × Ellie)
 
@@ -82,6 +87,7 @@ document:
 
 - Elina reference assets: PRIVATE_ASSET_PENDING
 - Ellie reference assets: PRIVATE_ASSET_PENDING
+- Ellie textual visual spec: OWNER_CONFIRMED (text only; image inspection NOT_PERFORMED)
 - Elina golden reference set: NOT_REGISTERED
 - Ellie golden reference set: NOT_REGISTERED
 - Character consistency validation: NOT_STARTED
