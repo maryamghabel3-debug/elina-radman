@@ -22,6 +22,12 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 from agents.studio.approval import ApprovalManager
 from agents.editing.persian_edit_interpreter import PersianEditInterpreter, format_plan_preview_fa
+from agents.editing.still_image_clip import (
+    StillImageClipBuilder,
+    StillImageClipError,
+    VALID_FITS as IMAGECLIP_VALID_FITS,
+    VALID_MOTIONS as IMAGECLIP_VALID_MOTIONS,
+)
 from agents.studio.bundle_ids import normalize_bundle_custom_id
 import agents.studio.carousel_session as carousel_session
 
@@ -255,6 +261,13 @@ async def cmd_start_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Reply به یک عکس/متن قبلی + «ثبت» — ثبت دوباره‌ی همان عکس/متن\n"
         "Reply به یک اسلایدِ پیش‌نمایش + «جایگزین» — تعویض تصویر همان اسلاید\n"
         "پیش‌نمایش‌ها به‌صورت خودکار ذخیره می‌شوند و تا ۶ ساعت (جلسه) / ۳۰ روز (پیش‌نمایش) ماندگارند.\n\n"
+        "۱۲) تبدیل عکس به کلیپ ویدیویی (ریل)\n"
+        "/imageclip ELN-RAW-عکس [مدت-ثانیه] [حرکت] [نمایش]\n"
+        "یک عکسِ آپلودشده را به کلیپ ویدیویی عمودی با زوم آرام تبدیل می‌کند.\n"
+        "حرکت: none | zoom_in | zoom_out — نمایش: contain | cover — پیش‌فرض: 3 ثانیه، zoom_in، contain\n"
+        "مثال:\n"
+        "/imageclip ELN-RAW-20260910-abc123 3 zoom_in contain\n"
+        "خروجی یک شناسه ELN-RAW ویدیویی جدید می‌شود که می‌توانی در /bundle استفاده کنی.\n\n"
         "نکته:\n"
         "هیچ محتوایی بدون تأیید و زمان‌بندی شما منتشر نمی‌شود."
     )
@@ -1133,6 +1146,174 @@ async def cmd_carousel_ok(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.edit_text(carousel_session.confirm_message(info))
 
 
+# ---------------------------------------------------------------------------
+# M30 — /imageclip: uploaded image -> vertical MP4 reel segment
+# ---------------------------------------------------------------------------
+
+IMAGECLIP_USAGE_FA = (
+    "استفاده: /imageclip ELN-RAW-عکس [مدت-ثانیه] [حرکت] [نمایش]\n"
+    "یک عکسِ آپلودشده را به کلیپ ویدیویی عمودی (۱۰۸۰×۱۹۲۰) با زوم آرام تبدیل می‌کند.\n"
+    "مدت: عدد بر حسب ثانیه (پیش‌فرض 3)\n"
+    "حرکت: none | zoom_in | zoom_out (پیش‌فرض zoom_in)\n"
+    "نمایش: contain | cover (پیش‌فرض contain)\n"
+    "مثال:\n"
+    "/imageclip ELN-RAW-20260910-abc123 3 zoom_in contain"
+)
+
+
+def _build_imageclip(
+    source_id: str,
+    duration_sec: float,
+    motion: str,
+    fit: str,
+    telegram_message_id: str,
+    sender_name: str,
+) -> Dict:
+    """M30 blocking pipeline (runs in an executor thread).
+
+    Looks up the source image content item by custom_id, requires
+    content_type=single_post with an image media key, downloads it, builds
+    the vertical MP4 with StillImageClipBuilder, and registers the result
+    as a new reel ELN-RAW item via IntakeProcessor (file_ext=".mp4").
+
+    Raises StillImageClipError with a clear Persian message on any failure.
+    """
+    import shutil
+    import tempfile
+
+    from agents.db.supabase_client import ElinaDB
+    from agents.storage.supabase_storage import ElinaStorage
+    from agents.intake.telegram_intake import IntakeProcessor
+
+    item = ElinaDB().get_content_by_custom_id(source_id)
+    if not item:
+        raise StillImageClipError(f"محتوای {source_id} پیدا نشد.")
+
+    if (item.get("content_type") or "") != "single_post":
+        raise StillImageClipError(
+            "فقط یک عکسِ تک‌تکه (single_post) را می‌توان به کلیپ تبدیل کرد. "
+            f"نوع این محتوا: {item.get('content_type') or 'نامشخص'}"
+        )
+
+    media_keys = item.get("media_keys") or []
+    if not media_keys:
+        raise StillImageClipError("این محتوا هیچ فایلی ندارد.")
+
+    media_key = str(media_keys[0])
+    if not StillImageClipBuilder.is_image_media_key(media_key):
+        raise StillImageClipError("فایل این محتوا یک تصویر نیست؛ لطفاً یک عکس انتخاب کن.")
+
+    tmpdir = tempfile.mkdtemp(prefix="elina_imageclip_")
+    try:
+        image_ext = os.path.splitext(media_key)[1].lower() or ".jpg"
+        image_path = os.path.join(tmpdir, f"source{image_ext}")
+        ElinaStorage().download_file(media_key, image_path)
+        if not os.path.isfile(image_path):
+            raise StillImageClipError("دریافت تصویر از استودیو ناموفق بود.")
+
+        output_path = os.path.join(tmpdir, "imageclip.mp4")
+        StillImageClipBuilder().build(
+            image_path,
+            output_path,
+            duration_sec=duration_sec,
+            motion=motion,
+            fit=fit,
+        )
+
+        result = IntakeProcessor().process_incoming_media(
+            local_file_path=output_path,
+            file_ext=".mp4",
+            caption=f"کلیپ ویدیویی از {source_id}",
+            telegram_message_id=telegram_message_id,
+            sender_name=sender_name,
+            source="imageclip",
+        )
+        return {
+            "custom_id": result.get("custom_id"),
+            "status": result.get("status", "RAW_RECEIVED"),
+        }
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+@record_update_decorator
+async def cmd_imageclip(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """M30: /imageclip <ELN-RAW image id> [seconds] [motion] [fit].
+
+    Converts an uploaded image content item into a standard vertical MP4
+    (1080x1920, 30fps, H.264 + silent AAC) and registers it as a new reel
+    ELN-RAW item, so it can be used in an ordinary video bundle.
+    """
+    if not is_owner(update):
+        await update.message.reply_text("⛔ دسترسی فقط برای مالک است.")
+        return
+
+    args = [a for a in (context.args or []) if a.strip()]
+    if not args or len(args) > 4:
+        await update.message.reply_text("❌ دستور نامعتبر است.\n" + IMAGECLIP_USAGE_FA)
+        return
+
+    source_id = args[0]
+    duration_str = (
+        args[1].strip().translate(carousel_session.PERSIAN_DIGITS)
+        if len(args) > 1 else "3"
+    )
+    motion = args[2].strip().lower() if len(args) > 2 else "zoom_in"
+    fit = args[3].strip().lower() if len(args) > 3 else "contain"
+
+    try:
+        duration_sec = float(duration_str)
+    except (TypeError, ValueError):
+        await update.message.reply_text(
+            "❌ مدت زمان باید یک عدد باشد (مثلاً 3 یا 2.5)."
+        )
+        return
+    if motion not in IMAGECLIP_VALID_MOTIONS:
+        await update.message.reply_text(
+            "❌ حرکت نامعتبر است. گزینه‌ها: none | zoom_in | zoom_out"
+        )
+        return
+    if fit not in IMAGECLIP_VALID_FITS:
+        await update.message.reply_text(
+            "❌ حالت نمایش نامعتبر است. گزینه‌ها: contain | cover"
+        )
+        return
+
+    msg = await update.message.reply_text("⏳ در حال ساخت کلیپ ویدیویی از عکس...")
+
+    def run():
+        return _build_imageclip(
+            source_id=source_id,
+            duration_sec=duration_sec,
+            motion=motion,
+            fit=fit,
+            telegram_message_id=str(update.message.message_id),
+            sender_name=actor_name(update),
+        )
+
+    try:
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(None, run)
+    except StillImageClipError as exc:
+        await msg.edit_text(f"❌ خطا در ساخت کلیپ:\n{exc}")
+        return
+    except Exception as exc:
+        logger.exception("ImageClip command failed")
+        await msg.edit_text(
+            f"❌ خطای سیستمی در ساخت کلیپ:\n{type(exc).__name__}: {str(exc)[:200]}"
+        )
+        return
+
+    await msg.edit_text(
+        "✅ کلیپ ویدیویی از عکس ساخته شد.\n"
+        f"شناسه ویدیو: {result.get('custom_id')}\n"
+        f"وضعیت: {result.get('status', 'RAW_RECEIVED')}\n"
+        f"مدت: {duration_sec:g} ثانیه | حرکت: {motion} | نمایش: {fit}\n\n"
+        "حالا می‌توانی این ویدیو را در یک بسته استفاده کنی:\n"
+        f"/bundle نام-پروژه {result.get('custom_id')} ELN-RAW-..."
+    )
+
+
 @record_update_decorator
 async def handle_studio_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update):
@@ -1417,6 +1598,7 @@ def main():
     app.add_handler(CommandHandler("carousel_edit", cmd_carousel_edit))
     app.add_handler(CommandHandler("carousel_theme", cmd_carousel_theme))
     app.add_handler(CommandHandler("carousel_layout", cmd_carousel_layout))
+    app.add_handler(CommandHandler("imageclip", cmd_imageclip))
     app.add_handler(CommandHandler("done", cmd_done))
 
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_studio_media))
