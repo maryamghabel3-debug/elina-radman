@@ -116,6 +116,34 @@ class RenderJobManager:
         logger.warning(f"No job could be claimed after {max_candidates} candidates")
         return None
 
+    def get_render_job_by_id(self, job_id: str) -> Optional[dict]:
+        """Return a single render job by its UUID, or None if not found."""
+        res = (
+            self.db.client.table("render_jobs")
+            .select("*")
+            .eq("id", job_id)
+            .limit(1)
+            .execute()
+        )
+        return res.data[0] if res.data else None
+
+    def get_latest_completed_render_for_content(self, content_id: str) -> Optional[dict]:
+        """Return the most recent COMPLETED render job for a content_id.
+
+        Ordered by completed_at (newest first); None when the content has
+        no completed render yet. Read-only — never mutates render state.
+        """
+        res = (
+            self.db.client.table("render_jobs")
+            .select("*")
+            .eq("content_id", content_id)
+            .eq("status", "COMPLETED")
+            .order("completed_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return res.data[0] if res.data else None
+
     def mark_completed(self, job_id: str, output_key: str) -> dict:
         """
         Set status COMPLETED, output_key, completed_at.

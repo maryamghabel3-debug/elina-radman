@@ -268,6 +268,10 @@ async def cmd_start_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "مثال:\n"
         "/imageclip ELN-RAW-20260910-abc123 3 zoom_in contain\n"
         "خروجی یک شناسه ELN-RAW ویدیویی جدید می‌شود که می‌توانی در /bundle استفاده کنی.\n\n"
+        "۱۳) دریافت خروجی رندر\n"
+        "/result ELN-BUNDLE-... یا ELN-RAW-... یا uuid رندر\n"
+        "لینک دانلود تازه (۲۴ ساعت معتبر) از آخرین خروجی رندر می‌دهد.\n"
+        "/download — همان /result\n\n"
         "نکته:\n"
         "هیچ محتوایی بدون تأیید و زمان‌بندی شما منتشر نمی‌شود."
     )
@@ -1314,6 +1318,193 @@ async def cmd_imageclip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+# ---------------------------------------------------------------------------
+# M32A — /result & /download: retrieve rendered outputs with fresh signed
+# links (signed URLs for Telegram delivery expire after 1 hour; this
+# command mints a fresh 24-hour link on demand from the private bucket).
+# ---------------------------------------------------------------------------
+
+RESULT_SIGNED_URL_TTL_SECONDS = 24 * 60 * 60  # 24 hours
+
+RESULT_USAGE_FA = (
+    "استفاده: /result ELN-BUNDLE-... یا ELN-RAW-... یا uuid رندر\n"
+    "لینک دانلود تازه (۲۴ ساعت معتبر) از خروجی رندر می‌دهد.\n"
+    "/download — همان /result"
+)
+
+# Exact fallback note when Telegram refuses to deliver the video directly
+# (long files exceed Telegram's direct-upload limits).
+RESULT_VIDEO_TOO_BIG_FA = (
+    "فایل احتمالاً برای ارسال مستقیم تلگرام بزرگ است؛ از لینک دانلود استفاده کن."
+)
+
+
+def _is_uuid(value: str) -> bool:
+    import uuid as _uuid
+
+    try:
+        _uuid.UUID(str(value).strip())
+        return True
+    except (ValueError, AttributeError, TypeError):
+        return False
+
+
+def _make_result_signed_url(storage, output_key: str) -> str:
+    """Fresh 24h signed URL for a storage key ('' on failure).
+
+    The bucket stays private — only temporary signed links are minted.
+    """
+    try:
+        return (
+            storage.create_signed_url(output_key, RESULT_SIGNED_URL_TTL_SECONDS) or ""
+        )
+    except Exception as exc:
+        logger.error("create_signed_url failed for %s: %s", output_key, exc)
+        return ""
+
+
+def _resolve_render_result(target: str) -> Dict:
+    """M32A blocking resolver (runs in an executor thread).
+
+    UUID     -> render_jobs.id, must be COMPLETED with an output_key.
+    content  -> latest COMPLETED render job for that content_id, else
+                content_items.edited_media_key (the last render output).
+
+    Returns {"error": <Persian message>} on failure, else
+    {"content_id", "job_id", "output_key", "signed_url"}.
+    """
+    from agents.db.supabase_client import ElinaDB
+    from agents.rendering.job_manager import RenderJobManager
+    from agents.storage.supabase_storage import ElinaStorage
+
+    db = ElinaDB()
+    storage = ElinaStorage()
+
+    if _is_uuid(target):
+        job = RenderJobManager(db=db).get_render_job_by_id(target)
+        if not job:
+            return {"error": f"❌ رندر با شناسه {target} پیدا نشد."}
+        if job.get("status") != "COMPLETED":
+            return {
+                "error": (
+                    "❌ این رندر هنوز کامل نشده است. "
+                    f"وضعیت فعلی: {job.get('status') or 'نامشخص'}\n"
+                    "وقتی رندر تمام شد دوباره /result را بزن."
+                )
+            }
+        content_id = job.get("content_id")
+        output_key = job.get("output_key")
+        job_id = job.get("id")
+    else:
+        job_id = None
+        canonical = normalize_bundle_custom_id(target)
+        jobs = RenderJobManager(db=db)
+        job = jobs.get_latest_completed_render_for_content(target)
+        if not job and canonical != target:
+            job = jobs.get_latest_completed_render_for_content(canonical)
+
+        if job:
+            content_id = job.get("content_id")
+            output_key = job.get("output_key")
+            job_id = job.get("id")
+        else:
+            item = db.get_content_by_custom_id(target)
+            if not item and canonical != target:
+                item = db.get_content_by_custom_id(canonical)
+            if not item:
+                return {"error": f"❌ محتوای {target} پیدا نشد."}
+            content_id = item.get("custom_id", target)
+            output_key = item.get("edited_media_key")
+            if not output_key:
+                return {
+                    "error": (
+                        "❌ خروجی رندر کامل‌شده‌ای برای این محتوا پیدا نشد.\n"
+                        "اگر رندر در حال انجام است، بعد از پیام تکمیل دوباره /result را بزن."
+                    )
+                }
+
+    if not output_key:
+        return {"error": "❌ این رندر خروجی ذخیره‌شده ندارد (output_key خالی است)."}
+
+    signed_url = _make_result_signed_url(storage, output_key)
+    if not signed_url:
+        return {"error": "❌ ساخت لینک موقت ناموفق بود؛ چند دقیقه دیگر دوباره امتحان کن."}
+
+    return {
+        "content_id": content_id,
+        "job_id": job_id,
+        "output_key": output_key,
+        "signed_url": signed_url,
+    }
+
+
+def _result_details_fa(resolved: Dict) -> str:
+    lines = ["🎬 خروجی رندر پیدا شد.", f"محتوا: {resolved.get('content_id') or '—'}"]
+    if resolved.get("job_id"):
+        lines.append(f"رندر: {resolved['job_id']}")
+    lines.append(f"فایل: {resolved.get('output_key')}")
+    lines.append("🔗 لینک دانلود تازه (معتبر تا ۲۴ ساعت):")
+    lines.append(resolved["signed_url"])
+    return "\n".join(lines)
+
+
+async def _handle_render_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Shared logic for /result and its /download alias."""
+    if not is_owner(update):
+        await update.message.reply_text("⛔ دسترسی فقط برای مالک است.")
+        return
+
+    args = [a for a in (context.args or []) if a.strip()]
+    if len(args) != 1:
+        await update.message.reply_text("❌ دستور نامعتبر است.\n" + RESULT_USAGE_FA)
+        return
+    target = args[0]
+
+    def run():
+        return _resolve_render_result(target)
+
+    try:
+        loop = asyncio.get_running_loop()
+        resolved = await loop.run_in_executor(None, run)
+    except Exception as exc:
+        logger.exception("Result command failed")
+        await update.message.reply_text(
+            f"❌ خطای سیستمی در پیدا کردن خروجی رندر:\n{type(exc).__name__}: {str(exc)[:200]}"
+        )
+        return
+
+    if resolved.get("error"):
+        await update.message.reply_text(resolved["error"])
+        return
+
+    details = _result_details_fa(resolved)
+    await update.message.reply_text(details)
+
+    # Try to deliver the video directly (Telegram sendVideo with the
+    # signed URL). A long file may exceed Telegram's limits — the command
+    # must NOT fail in that case: the signed URL above remains available.
+    try:
+        await update.message.reply_video(
+            video=resolved["signed_url"],
+            caption="🎬 خروجی رندر",
+        )
+    except Exception as exc:
+        logger.warning("sendVideo failed, signed URL remains available: %s", exc)
+        await update.message.reply_text(RESULT_VIDEO_TOO_BIG_FA)
+
+
+@record_update_decorator
+async def cmd_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """M32A: /result <ELN-BUNDLE|ELN-RAW|ELN-CAR|render_job_uuid>."""
+    await _handle_render_result(update, context)
+
+
+@record_update_decorator
+async def cmd_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """M32A: /download — alias for /result."""
+    await _handle_render_result(update, context)
+
+
 @record_update_decorator
 async def handle_studio_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update):
@@ -1599,6 +1790,8 @@ def main():
     app.add_handler(CommandHandler("carousel_theme", cmd_carousel_theme))
     app.add_handler(CommandHandler("carousel_layout", cmd_carousel_layout))
     app.add_handler(CommandHandler("imageclip", cmd_imageclip))
+    app.add_handler(CommandHandler("result", cmd_result))
+    app.add_handler(CommandHandler("download", cmd_download))
     app.add_handler(CommandHandler("done", cmd_done))
 
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_studio_media))
