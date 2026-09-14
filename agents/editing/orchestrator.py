@@ -13,6 +13,7 @@ from agents.editing.recipe_schema import EditRecipe, VideoSegmentConfig
 from agents.editing.typography_engine import TypographyEngine
 from agents.editing.media_assembly import MediaAssemblyEngine, run_qc_checks
 from agents.editing.concatenator import VideoConcatenator, get_video_properties
+from agents.studio.bundle_ids import normalize_bundle_custom_id
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +81,49 @@ class EditOrchestrator:
         self.storage = storage or ElinaStorage()
         self.typography = typography
         self.assembler = assembler or MediaAssemblyEngine()
+
+    def _resolve_uploaded_sfx_content(self, ref_custom_id: str, sfx_idx: int, tmp: Path) -> str:
+        """M33: resolve an uploaded audio content item to a local file.
+
+        Looks the content item up by custom_id, takes its first media key
+        and downloads it from storage. Freesound is NEVER called on this
+        path — uploaded audio beds are production-grade and must not
+        depend on a live provider.
+
+        Raises:
+            SFX_ASSET_NOT_FOUND       — no such content item, or no media_keys
+            SFX_ASSET_DOWNLOAD_FAILED — storage download failed / empty file
+        """
+        ref_item = self.db.get_content_by_custom_id(ref_custom_id)
+        if not ref_item:
+            # Tolerate double-prefixed bundle ids the way the render worker does.
+            canonical = normalize_bundle_custom_id(ref_custom_id)
+            if canonical != ref_custom_id:
+                ref_item = self.db.get_content_by_custom_id(canonical)
+        if not ref_item:
+            raise RuntimeError(f"SFX_ASSET_NOT_FOUND: no content item {ref_custom_id}")
+
+        media_keys = ref_item.get("media_keys") or []
+        if not media_keys:
+            raise RuntimeError(
+                f"SFX_ASSET_NOT_FOUND: content item {ref_custom_id} has no media_keys"
+            )
+
+        media_key = str(media_keys[0])
+        ext = os.path.splitext(media_key)[1] or ".mp3"
+        local_path = str(tmp / f"plan_sfx_{sfx_idx}{ext}")
+        try:
+            self.storage.download_file(media_key, local_path)
+        except Exception as exc:
+            raise RuntimeError(f"SFX_ASSET_DOWNLOAD_FAILED: {media_key}: {exc}") from exc
+        if not os.path.isfile(local_path) or os.path.getsize(local_path) == 0:
+            raise RuntimeError(f"SFX_ASSET_DOWNLOAD_FAILED: empty download for {media_key}")
+
+        logger.info(
+            "M33: using uploaded audio %s (%s) as SFX/bed (Freesound bypassed)",
+            ref_custom_id, media_key,
+        )
+        return local_path
 
     def build_recipe_from_item(self, item: Dict[str, Any], hook_text: Optional[str] = None) -> EditRecipe:
         media_keys = item.get("media_keys") or []
@@ -406,50 +450,109 @@ class EditOrchestrator:
                             "background_bed": sfx.get("background_bed", False),
                         })
 
-                # Resolve SFX requested by the Persian edit plan (query -> sound
-                # file). Never silently skip: if the SFX provider is not
-                # configured or no sound matches, fail with a typed error.
+                # Resolve SFX requested by the Persian edit plan.
+                # M33: entries may reference uploaded audio directly:
+                #   - content_id: an uploaded audio content item (ELN-RAW-...)
+                #   - asset_key:  a direct storage key
+                # Both bypass Freesound entirely. Otherwise the legacy
+                # query -> pinned SFX -> Freesound resolution applies.
+                # Never silently skip: fail with a typed error when an
+                # asset cannot be resolved.
                 if plan_sfx:
-                    try:
-                        from agents.audio.sfx_fetcher import SFXFetcher
-                        fetcher = SFXFetcher()
-                    except ValueError as exc:
-                        raise RuntimeError(f"SFX_PROVIDER_NOT_CONFIGURED: {exc}")
-                    # M20A: deterministic SFX pinning — reuse the pinned asset
-                    # for this content_id + query; only hit Freesound on a miss.
-                    from agents.audio.asset_pinner import AssetPinner
-                    pinner = AssetPinner(self.storage)
+                    # M33: lazy — the Freesound fetcher/pinner are only
+                    # constructed when a query-based entry actually needs
+                    # them, so uploaded-audio plans never touch Freesound
+                    # (even when FREESOUND_API_KEY is unset).
+                    fetcher = None
+                    pinner = None
 
                     for sfx_idx, sfx in enumerate(plan_sfx):
                         if not isinstance(sfx, dict):
                             raise RuntimeError(f"SFX_INVALID_PLAN_ENTRY: {sfx!r}")
-                        query = (sfx.get("query") or "").strip()
-                        if not query:
-                            raise RuntimeError("SFX_INVALID_PLAN_ENTRY: empty query")
 
-                        local_path = str(tmp / f"plan_sfx_{sfx_idx}.mp3")
-                        fetched = None
-                        pinned_path = pinner.get_pinned_sfx(custom_id, query)
-                        if pinned_path is not None:
-                            # Re-render: reuse the pinned file and SKIP the
-                            # Freesound search entirely (deterministic reuse).
-                            shutil.copyfile(pinned_path, local_path)
-                            sfx_path = local_path
-                            logger.info(
-                                "Reusing pinned SFX for query %r (content %s)",
-                                query, custom_id,
+                        query = (sfx.get("query") or "").strip()
+                        content_ref = str(sfx.get("content_id") or "").strip()
+                        asset_key_ref = str(sfx.get("asset_key") or "").strip()
+
+                        # M33: explicit asset references are mutually
+                        # exclusive — mixing one with a query (or with
+                        # each other) is an invalid plan.
+                        if content_ref and query:
+                            raise RuntimeError(
+                                "SFX_INVALID_CONFIG: SFX entry sets both content_id and query; "
+                                "use content_id for uploaded audio or query for Freesound"
                             )
-                        else:
+                        if asset_key_ref and query:
+                            raise RuntimeError(
+                                "SFX_INVALID_CONFIG: SFX entry sets both asset_key and query; "
+                                "use asset_key for uploaded audio or query for Freesound"
+                            )
+                        if content_ref and asset_key_ref:
+                            raise RuntimeError(
+                                "SFX_INVALID_CONFIG: SFX entry sets both content_id and asset_key; "
+                                "pick one reference"
+                            )
+
+                        fetched = None
+                        if content_ref:
+                            # M33: uploaded audio content item -> local
+                            # file. Freesound is never called on this path.
+                            sfx_path = self._resolve_uploaded_sfx_content(content_ref, sfx_idx, tmp)
+                        elif asset_key_ref:
+                            # M33: direct storage key -> local file.
+                            ext = os.path.splitext(asset_key_ref)[1] or ".mp3"
+                            local_path = str(tmp / f"plan_sfx_{sfx_idx}{ext}")
                             try:
-                                fetched = fetcher.fetch_best_match(query, local_path)
+                                self.storage.download_file(asset_key_ref, local_path)
                             except Exception as exc:
-                                raise RuntimeError(f"SFX_FETCH_FAILED: {exc}") from exc
-                            if fetched is None:
-                                raise RuntimeError(f"SFX_FETCH_FAILED: no match for '{query}'")
-                            # Pin the freshly resolved asset for future re-renders
-                            # (soft: failures are logged, never fatal).
-                            pinner.pin_sfx(custom_id, query, fetched.local_path)
-                            sfx_path = fetched.local_path
+                                raise RuntimeError(
+                                    f"SFX_ASSET_DOWNLOAD_FAILED: {asset_key_ref}: {exc}"
+                                ) from exc
+                            if not os.path.isfile(local_path) or os.path.getsize(local_path) == 0:
+                                raise RuntimeError(
+                                    f"SFX_ASSET_DOWNLOAD_FAILED: empty download for {asset_key_ref}"
+                                )
+                            sfx_path = local_path
+                        else:
+                            if not query:
+                                raise RuntimeError("SFX_INVALID_PLAN_ENTRY: empty query")
+
+                            # M33: lazy init — only the first query-based
+                            # entry constructs the provider machinery.
+                            if fetcher is None:
+                                try:
+                                    from agents.audio.sfx_fetcher import SFXFetcher
+                                    fetcher = SFXFetcher()
+                                except ValueError as exc:
+                                    raise RuntimeError(f"SFX_PROVIDER_NOT_CONFIGURED: {exc}")
+                                from agents.audio.asset_pinner import AssetPinner
+                                pinner = AssetPinner(self.storage)
+
+                            # M20A: deterministic SFX pinning — reuse the
+                            # pinned asset for this content_id + query;
+                            # only hit Freesound on a miss.
+                            local_path = str(tmp / f"plan_sfx_{sfx_idx}.mp3")
+                            pinned_path = pinner.get_pinned_sfx(custom_id, query)
+                            if pinned_path is not None:
+                                # Re-render: reuse the pinned file and SKIP the
+                                # Freesound search entirely (deterministic reuse).
+                                shutil.copyfile(pinned_path, local_path)
+                                sfx_path = local_path
+                                logger.info(
+                                    "Reusing pinned SFX for query %r (content %s)",
+                                    query, custom_id,
+                                )
+                            else:
+                                try:
+                                    fetched = fetcher.fetch_best_match(query, local_path)
+                                except Exception as exc:
+                                    raise RuntimeError(f"SFX_FETCH_FAILED: {exc}") from exc
+                                if fetched is None:
+                                    raise RuntimeError(f"SFX_FETCH_FAILED: no match for '{query}'")
+                                # Pin the freshly resolved asset for future re-renders
+                                # (soft: failures are logged, never fatal).
+                                pinner.pin_sfx(custom_id, query, fetched.local_path)
+                                sfx_path = fetched.local_path
 
                         sfx_items.append({
                             "path": sfx_path,

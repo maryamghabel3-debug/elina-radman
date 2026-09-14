@@ -219,6 +219,8 @@ def process_job(job) -> bool:
                 or "SFX_PROVIDER_NOT_CONFIGURED" in err_msg
                 or "SFX_FETCH_FAILED" in err_msg
                 or "SFX_INVALID_PLAN_ENTRY" in err_msg
+                or "SFX_ASSET_NOT_FOUND" in err_msg
+                or "SFX_INVALID_CONFIG" in err_msg
                 or "MUSIC_PROVIDER_NOT_CONFIGURED" in err_msg
                 or "SHOT_INDEX_OUT_OF_RANGE" in err_msg
                 or "PLAN_ALL_SHOTS_REMOVED" in err_msg

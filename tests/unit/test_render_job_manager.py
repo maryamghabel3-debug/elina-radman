@@ -186,3 +186,37 @@ def test_mark_failed_music_error_is_terminal():
 
     update_call = mock_query.update.call_args[0][0]
     assert update_call["status"] == "FAILED"
+
+
+def test_mark_failed_m33_uploaded_audio_errors():
+    """M33: SFX_ASSET_NOT_FOUND and SFX_INVALID_CONFIG are terminal (FAILED);
+    SFX_ASSET_DOWNLOAD_FAILED is transient and gets requeued (QUEUED)."""
+    mock_db = MagicMock()
+    mock_query = MagicMock()
+    mock_db.client.table.return_value = mock_query
+    mock_query.update.return_value = mock_query
+    mock_query.eq.return_value = mock_query
+    mock_query.select.return_value = mock_query
+
+    mock_result = MagicMock()
+    mock_result.data = [{"id": "job-1", "attempts": 0, "max_attempts": 3}]
+
+    manager = RenderJobManager(db=mock_db)
+
+    for error, expected_status in [
+        ("SFX_ASSET_NOT_FOUND: no content item ELN-RAW-20260910-bed", "FAILED"),
+        ("SFX_ASSET_NOT_FOUND: content item ELN-RAW-x has no media_keys", "FAILED"),
+        ("SFX_INVALID_CONFIG: SFX entry sets both content_id and query; pick one", "FAILED"),
+        ("SFX_ASSET_DOWNLOAD_FAILED: storage 503", "QUEUED"),
+    ]:
+        mock_result.data = [{"id": "job-1", "attempts": 0, "max_attempts": 3}]
+        mock_query.reset_mock()
+        mock_query.update.return_value = mock_query
+        mock_query.eq.return_value = mock_query
+        mock_query.select.return_value = mock_query
+        mock_query.execute.return_value = mock_result
+
+        manager.mark_failed("job-1", error)
+
+        update_call = mock_query.update.call_args[0][0]
+        assert update_call["status"] == expected_status, f"{error} -> {update_call['status']}"

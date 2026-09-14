@@ -1662,3 +1662,328 @@ def test_M17_invalid_auto_config_is_typed(monkeypatch):
         assert FakeTimingVoiceGenerator.calls == []  # no generation attempted
     statuses = [s[0] for s in db.status_updates]
     assert "EDIT_FAILED" in statuses
+
+
+# ---------------------------------------------------------------------------
+# M33 — plan_sfx items referencing uploaded audio (content_id / asset_key)
+# ---------------------------------------------------------------------------
+
+M33_AUDIO_ITEM = {
+    "id": "uuid-audio-1",
+    "custom_id": "ELN-RAW-20260910-bed",
+    "content_type": "single_post",
+    "media_keys": ["intake/20260910/ELN-RAW-20260910-bed.mp3"],
+    "status": "RAW_RECEIVED",
+}
+
+
+class M33FakeDB(FakeDB):
+    """FakeDB that can also serve an uploaded-audio content item."""
+
+    def __init__(self, audio_item=None):
+        super().__init__()
+        self.audio_item = audio_item
+
+    def get_content_by_custom_id(self, custom_id):
+        if self.audio_item and custom_id == self.audio_item["custom_id"]:
+            return dict(self.audio_item)
+        return super().get_content_by_custom_id(custom_id)
+
+
+def _m33_orchestrator(db, storage):
+    assembler = FakeAssembler()
+    o = EditOrchestrator(db=db, storage=storage, typography=FakeTypography(), assembler=assembler)
+    return o, assembler
+
+
+def _no_freesound(monkeypatch):
+    """Fail loudly if the orchestrator touches the Freesound machinery."""
+    import agents.audio.sfx_fetcher as sfx_fetcher_mod
+    import agents.audio.asset_pinner as asset_pinner_mod
+
+    def _explode(*args, **kwargs):
+        raise AssertionError("Freesound/SFXFetcher must not be touched for uploaded audio")
+
+    monkeypatch.setattr(sfx_fetcher_mod, "SFXFetcher", _explode)
+    monkeypatch.setattr(asset_pinner_mod, "AssetPinner", _explode)
+
+
+def test_m33_plan_sfx_content_id_downloads_and_skips_freesound(monkeypatch):
+    """content_id entry: storage media is downloaded, Freesound untouched,
+    and background_bed fields are preserved (task A + F)."""
+    _mock_concat(monkeypatch)
+    _no_freesound(monkeypatch)
+
+    db = M33FakeDB(audio_item=M33_AUDIO_ITEM)
+    storage = FakeStorage()
+    o, assembler = _m33_orchestrator(db, storage)
+
+    result = o.render_content(
+        "ELN-RAW-TEST",
+        actor="tester",
+        plan_sfx=[{
+            "content_id": "ELN-RAW-20260910-bed",
+            "background_bed": True,
+            "normalize_loudness": True,
+            "gain_db": -22,
+            "fade_in_sec": 2.0,
+            "fade_out_sec": 3.0,
+        }],
+    )
+
+    assert result["ok"] is True
+    # the uploaded content's first media key was downloaded from storage
+    # (alongside the base video segment download)
+    downloaded_keys = [d[0] for d in storage.downloads]
+    assert "intake/20260910/ELN-RAW-20260910-bed.mp3" in downloaded_keys
+
+    # the SFX item points at the file the fake storage "downloaded"
+    # (the orchestrator's job temp dir is cleaned up after render_content
+    # returns, so we assert on the recorded download, not a live file)
+    local_paths = [d[1] for d in storage.downloads]
+    sfx0 = assembler.calls[0]["sfx_items"][0]
+    assert sfx0["path"] in local_paths
+    assert sfx0["background_bed"] is True
+    assert sfx0["normalize_loudness"] is True
+    assert sfx0["gain_db"] == -22
+    assert sfx0["fade_in_sec"] == 2.0
+    assert sfx0["fade_out_sec"] == 3.0
+
+
+def test_m33_plan_sfx_asset_key_downloads_and_skips_freesound(monkeypatch):
+    """asset_key entry: the storage key is downloaded directly, no Freesound."""
+    _mock_concat(monkeypatch)
+    _no_freesound(monkeypatch)
+
+    db = M33FakeDB()
+    storage = FakeStorage()
+    o, assembler = _m33_orchestrator(db, storage)
+
+    result = o.render_content(
+        "ELN-RAW-TEST",
+        actor="tester",
+        plan_sfx=[{
+            "asset_key": "uploads/ambience_deep.mp3",
+            "background_bed": True,
+            "normalize_loudness": False,
+            "gain_db": -20,
+            "fade_in_sec": 1.0,
+            "fade_out_sec": 2.5,
+        }],
+    )
+
+    assert result["ok"] is True
+    downloaded_keys = [d[0] for d in storage.downloads]
+    assert "uploads/ambience_deep.mp3" in downloaded_keys
+
+    sfx0 = assembler.calls[0]["sfx_items"][0]
+    assert sfx0["path"] in [d[1] for d in storage.downloads]
+    assert sfx0["background_bed"] is True
+    assert sfx0["normalize_loudness"] is False
+    assert sfx0["gain_db"] == -20
+    assert sfx0["fade_in_sec"] == 1.0
+    assert sfx0["fade_out_sec"] == 2.5
+
+
+def test_m33_content_id_and_query_raises_invalid_config(monkeypatch):
+    """content_id + query on one entry is a contradictory plan (task C)."""
+    _mock_concat(monkeypatch)
+    _no_freesound(monkeypatch)
+
+    db = M33FakeDB(audio_item=M33_AUDIO_ITEM)
+    o, assembler = _m33_orchestrator(db, FakeStorage())
+
+    result = o.render_content(
+        "ELN-RAW-TEST",
+        actor="tester",
+        plan_sfx=[{"content_id": "ELN-RAW-20260910-bed", "query": "صدای کلید"}],
+    )
+
+    assert result["ok"] is False
+    assert "SFX_INVALID_CONFIG" in result["error"]
+    assert assembler.calls == []
+
+
+def test_m33_asset_key_and_query_raises_invalid_config(monkeypatch):
+    _mock_concat(monkeypatch)
+    _no_freesound(monkeypatch)
+
+    db = M33FakeDB()
+    o, assembler = _m33_orchestrator(db, FakeStorage())
+
+    result = o.render_content(
+        "ELN-RAW-TEST",
+        actor="tester",
+        plan_sfx=[{"asset_key": "uploads/x.mp3", "query": "صدای کلید"}],
+    )
+
+    assert result["ok"] is False
+    assert "SFX_INVALID_CONFIG" in result["error"]
+    assert assembler.calls == []
+
+
+def test_m33_content_id_and_asset_key_raises_invalid_config(monkeypatch):
+    _mock_concat(monkeypatch)
+    _no_freesound(monkeypatch)
+
+    db = M33FakeDB(audio_item=M33_AUDIO_ITEM)
+    o, assembler = _m33_orchestrator(db, FakeStorage())
+
+    result = o.render_content(
+        "ELN-RAW-TEST",
+        actor="tester",
+        plan_sfx=[{"content_id": "ELN-RAW-20260910-bed", "asset_key": "uploads/x.mp3"}],
+    )
+
+    assert result["ok"] is False
+    assert "SFX_INVALID_CONFIG" in result["error"]
+    assert assembler.calls == []
+
+
+def test_m33_missing_content_item_raises_not_found(monkeypatch):
+    """Unknown content_id -> SFX_ASSET_NOT_FOUND (task D)."""
+    _mock_concat(monkeypatch)
+    _no_freesound(monkeypatch)
+
+    db = M33FakeDB()  # no uploaded audio item registered
+    o, assembler = _m33_orchestrator(db, FakeStorage())
+
+    result = o.render_content(
+        "ELN-RAW-TEST",
+        actor="tester",
+        plan_sfx=[{"content_id": "ELN-RAW-20260910-ghost"}],
+    )
+
+    assert result["ok"] is False
+    assert "SFX_ASSET_NOT_FOUND" in result["error"]
+    assert assembler.calls == []
+
+
+def test_m33_content_item_without_media_keys_raises_not_found(monkeypatch):
+    """Content item with no media_keys -> SFX_ASSET_NOT_FOUND (task E)."""
+    empty_item = {
+        "id": "uuid-audio-2",
+        "custom_id": "ELN-RAW-20260910-nomedia",
+        "content_type": "single_post",
+        "media_keys": [],
+        "status": "RAW_RECEIVED",
+    }
+    _mock_concat(monkeypatch)
+    _no_freesound(monkeypatch)
+
+    db = M33FakeDB(audio_item=empty_item)
+    o, assembler = _m33_orchestrator(db, FakeStorage())
+
+    result = o.render_content(
+        "ELN-RAW-TEST",
+        actor="tester",
+        plan_sfx=[{"content_id": "ELN-RAW-20260910-nomedia"}],
+    )
+
+    assert result["ok"] is False
+    assert "SFX_ASSET_NOT_FOUND" in result["error"]
+    assert assembler.calls == []
+
+
+def test_m33_storage_download_failure_raises_download_failed(monkeypatch):
+    """A failing storage download -> SFX_ASSET_DOWNLOAD_FAILED (retryable)."""
+    class BoomStorage(FakeStorage):
+        def download_file(self, storage_path, local_path):
+            # break only the uploaded-audio download (the base video
+            # segment must download fine to reach SFX resolution)
+            if "ELN-RAW-20260910-bed" in str(storage_path):
+                raise ConnectionError("storage 503")
+            return super().download_file(storage_path, local_path)
+
+    _mock_concat(monkeypatch)
+    _no_freesound(monkeypatch)
+
+    db = M33FakeDB(audio_item=M33_AUDIO_ITEM)
+    o, assembler = _m33_orchestrator(db, BoomStorage())
+
+    result = o.render_content(
+        "ELN-RAW-TEST",
+        actor="tester",
+        plan_sfx=[{"content_id": "ELN-RAW-20260910-bed"}],
+    )
+
+    assert result["ok"] is False
+    assert "SFX_ASSET_DOWNLOAD_FAILED" in result["error"]
+    assert assembler.calls == []
+
+
+def test_m33_uploaded_audio_non_bed_timing_reaches_assembler(monkeypatch):
+    """Non-bed uploaded SFX keeps start_sec/gain/fades for media_assembly (task H)."""
+    _mock_concat(monkeypatch)
+    _no_freesound(monkeypatch)
+
+    db = M33FakeDB(audio_item=M33_AUDIO_ITEM)
+    o, assembler = _m33_orchestrator(db, FakeStorage())
+
+    result = o.render_content(
+        "ELN-RAW-TEST",
+        actor="tester",
+        plan_sfx=[{
+            "content_id": "ELN-RAW-20260910-bed",
+            "start_sec": 1.5,
+            "gain_db": -6,
+            "fade_in_sec": 0.1,
+            "fade_out_sec": 0.3,
+        }],
+    )
+
+    assert result["ok"] is True
+    sfx0 = assembler.calls[0]["sfx_items"][0]
+    assert sfx0["start_sec"] == 1.5
+    assert sfx0["gain_db"] == -6
+    assert sfx0["fade_in_sec"] == 0.1
+    assert sfx0["fade_out_sec"] == 0.3
+    assert sfx0["background_bed"] is False
+
+
+def test_m33_mixed_plan_uploaded_and_query(monkeypatch):
+    """A plan mixing uploaded audio + Freesound queries: the query entry
+    still resolves via Freesound (task G), the uploaded entry via storage."""
+    from agents.audio.base_provider import SoundResult
+
+    _mock_concat(monkeypatch)
+
+    fetched_sound = type("Fetched", (), {
+        "local_path": "/tmp/m33_fetched_sfx.mp3",
+        "metadata": SoundResult(
+            provider="freesound", external_id="42", name="key click",
+            license="Creative Commons 0", attribution=None,
+            duration_sec=1.2, download_url="", preview_url="http://x/preview.mp3",
+        ),
+    })
+
+    with patch("agents.audio.sfx_fetcher.SFXFetcher") as MockFetcher, \
+         patch("agents.audio.asset_pinner.AssetPinner") as MockPinner:
+        instance = MockFetcher.return_value
+        instance.fetch_best_match.return_value = fetched_sound
+        MockPinner.return_value.get_pinned_sfx.return_value = None
+
+        db = M33FakeDB(audio_item=M33_AUDIO_ITEM)
+        storage = FakeStorage()
+        o, assembler = _m33_orchestrator(db, storage)
+
+        result = o.render_content(
+            "ELN-RAW-TEST",
+            actor="tester",
+            plan_sfx=[
+                {"content_id": "ELN-RAW-20260910-bed", "background_bed": True, "gain_db": -22},
+                {"query": "صدای کلید", "start_sec": 1.0, "gain_db": -6},
+            ],
+        )
+
+    assert result["ok"] is True
+    # only the query entry touched Freesound
+    instance.fetch_best_match.assert_called_once()
+    assert "intake/20260910/ELN-RAW-20260910-bed.mp3" in [d[0] for d in storage.downloads]
+
+    passed = assembler.calls[0]["sfx_items"]
+    assert len(passed) == 2
+    assert passed[0]["background_bed"] is True
+    assert passed[0]["gain_db"] == -22
+    assert passed[1]["path"] == "/tmp/m33_fetched_sfx.mp3"
+    assert passed[1]["start_sec"] == 1.0
