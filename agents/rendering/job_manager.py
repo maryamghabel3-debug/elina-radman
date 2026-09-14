@@ -22,6 +22,12 @@ TERMINAL_ERROR_CODES = (
     "SFX_ANCHOR_OUT_OF_RANGE",
     "SFX_AUTH_FAILED",
     "SFX_SEARCH_REQUEST_INVALID",
+    # M33: uploaded-audio SFX references. SFX_ASSET_NOT_FOUND and
+    # SFX_INVALID_CONFIG are terminal (a missing asset / contradictory
+    # plan never fixes itself by retrying). SFX_ASSET_DOWNLOAD_FAILED is
+    # intentionally NOT terminal: storage/network can be transient.
+    "SFX_ASSET_NOT_FOUND",
+    "SFX_INVALID_CONFIG",
     # Voice generation: plan-data/validation errors are terminal.
     "VOICE_TEXT_EMPTY",
     "VOICE_TEXT_TOO_LONG",

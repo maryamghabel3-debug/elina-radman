@@ -71,3 +71,28 @@ WHERE status = 'IN_PROGRESS'
 
 Or trigger the worker immediately: **Actions → Render Worker → Run workflow**
 (recovery runs at the start of every run).
+
+## Audio / SFX (M33)
+
+- **Freesound is optional.** It is only used for *query-based* SFX plan
+  entries (`plan_sfx: [{query: "..."}]`). Long renders should not depend on
+  the live Freesound service.
+- **Uploaded audio beds are preferred for final production renders.**
+  Upload an audio file to the Studio Bot (any ELN-RAW audio content item)
+  and reference it directly in the edit plan:
+
+  ```json
+  {"content_id": "ELN-RAW-...", "background_bed": true,
+   "normalize_loudness": true, "gain_db": -22,
+   "fade_in_sec": 2.0, "fade_out_sec": 3.0}
+  ```
+
+  or by raw storage key: `{"asset_key": "uploads/ambience.mp3", ...}`.
+  These entries are downloaded from Supabase Storage and **bypass
+  Freesound entirely** (no API key needed, no live search, deterministic).
+  All timing/gain/fade/`background_bed`/`normalize_loudness` fields work
+  exactly as for query-based SFX.
+- **Error codes.** `SFX_ASSET_NOT_FOUND` (missing content item / no
+  media_keys) and `SFX_INVALID_CONFIG` (e.g. `content_id` + `query` on one
+  entry) are **terminal** — retrying will not help.
+  `SFX_ASSET_DOWNLOAD_FAILED` (transient storage/network) is **retryable**.
