@@ -1,7 +1,7 @@
-"""TrendHunter Agent — Finds REAL, currently-trending fashion content.
+"""TrendHunter Agent — Finds REAL, currently-trending psychology content.
 
 Data sources (all free, no API key required):
-  * Reddit "top of week/month" fashion feeds  -> real posts ranked by upvotes
+  * Reddit "top of week/month" psychology feeds  -> real posts ranked by upvotes
     (a strong proxy for views/engagement) INCLUDING the post image URL, so Elina
     can see exactly which photos are pulling the most views right now.
   * Google Trends RSS                          -> trending search queries.
@@ -27,21 +27,26 @@ _ATOM = "http://www.w3.org/2005/Atom"
 _MRSS = "http://search.yahoo.com/mrss/"
 
 # A descriptive User-Agent is required by Reddit; generic ones get 429/403.
-_UA = "ElinaOS/1.0 (fashion trend hunter; +https://github.com/maryamghabel3-debug/elina-radman)"
+_UA = "ElinaOS/1.0 (psychology trend hunter; +https://github.com/maryamghabel3-debug/elina-radman)"
 
-# Subreddits that best match Elina's niche (petite / quiet luxury / women's fashion)
-_FASHION_SUBS = [
-    "femalefashionadvice",
-    "petitefashionadvice",
-    "womensstreetwear",
-    "streetwear",
+# Subreddits that match the psychology niche
+_PSY_SUBS = [
+    "psychology",
+    "askpsychology",
+    "mentalhealth",
+    "CPTSD",
+    "burnout",
+    "therapy",
 ]
 
-# Fashion search terms used to find trending YouTube videos in Elina's niche.
+# Search terms used to find trending psychology YouTube videos.
 _YT_QUERIES = [
-    "petite fashion outfit ideas",
-    "quiet luxury outfits",
-    "capsule wardrobe",
+    "burnout recovery",
+    "anxiety explained",
+    "attachment styles explained",
+    "depression signs",
+    "trauma healing",
+    "psychology of shame",
 ]
 
 # How long a cached trend result stays fresh (seconds). Reduces load on Reddit
@@ -52,7 +57,7 @@ _CACHE_PATH = "content/trends_cache.json"
 
 class TrendHunter(Agent):
     def __init__(self):
-        super().__init__("TrendHunter", "Scans for viral fashion trends across platforms")
+        super().__init__("TrendHunter", "Scans for viral psychology / mental-health trends across platforms")
         self.trends = []
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": _UA})
@@ -139,12 +144,12 @@ class TrendHunter(Agent):
     # Sources
     # ------------------------------------------------------------------ #
     def get_reddit_trends(self, subs=None, period="week", per_sub=4):
-        """Real trending fashion posts ranked by upvotes, with image URLs.
+        """Real trending psychology posts ranked by upvotes, with image URLs.
 
         Reddit's Atom feed returns posts already sorted by score (top), so the
         first items are the highest-engagement / most-viewed posts of the period.
         """
-        subs = subs or _FASHION_SUBS
+        subs = subs or _PSY_SUBS
         trends = []
         for sub in subs:
             url = f"https://www.reddit.com/r/{sub}/top/.rss?t={period}&limit={per_sub}"
@@ -183,8 +188,8 @@ class TrendHunter(Agent):
 
         return trends
 
-    def get_google_trends(self, geo="US", limit=8, fashion_only=True):
-        """Trending Google search queries (optionally filtered to fashion terms)."""
+    def get_google_trends(self, geo="US", limit=8, psych_only=True):
+        """Trending Google search queries (optionally filtered to mental-health terms)."""
         url = f"https://trends.google.com/trending/rss?geo={geo}"
         r = self._get(url, retries=1)
         if r is None:
@@ -196,8 +201,8 @@ class TrendHunter(Agent):
             return []
 
         keywords = (
-            "fashion", "style", "outfit", "dress", "wear", "trend", "clothes",
-            "shoe", "bag", "jean", "denim", "skirt", "coat", "aesthetic", "petite",
+            "anxiety", "depress", "burnout", "trauma", "therapy", "loneliness",
+            "stress", "grief", "attachment", "shame", "sleep", "boundar", "healing",
         )
         trends = []
         ns = {"ht": "https://trends.google.com/trending/rss"}
@@ -206,7 +211,7 @@ class TrendHunter(Agent):
             title = (title_el.text or "").strip() if title_el is not None else ""
             if not title:
                 continue
-            if fashion_only and not any(k in title.lower() for k in keywords):
+            if psych_only and not any(k in title.lower() for k in keywords):
                 continue
             traffic_el = item.find("ht:approx_traffic", ns)
             pic_el = item.find("ht:picture", ns)
@@ -224,7 +229,7 @@ class TrendHunter(Agent):
         return trends[:limit]
 
     def get_youtube_trends(self, queries=None, per_query=3):
-        """Real trending fashion videos via the YouTube Data API v3.
+        """Real trending psychology videos via the YouTube Data API v3.
 
         Requires a free YOUTUBE_API_KEY (10,000 requests/day quota). Returns
         videos ordered by view count with real view/like counts and thumbnails.
@@ -310,7 +315,7 @@ class TrendHunter(Agent):
             {"name": "GRWM Storytime", "platform": "tiktok+ig", "format": "video", "effort": "medium", "curated": True},
             {"name": "Outfit transition / 3 ways to style", "platform": "tiktok+ig", "format": "short-video", "effort": "medium", "curated": True},
             {"name": "Photo carousel: 'looks expensive on a budget'", "platform": "instagram", "format": "carousel", "effort": "low", "curated": True},
-            {"name": "Day-in-the-life petite vlog", "platform": "youtube", "format": "long-form", "effort": "high", "curated": True},
+            {"name": "Day-in-the-life psychologist vlog", "platform": "youtube", "format": "long-form", "effort": "high", "curated": True},
         ]
 
     # ------------------------------------------------------------------ #
@@ -360,7 +365,7 @@ class TrendHunter(Agent):
             self.log("All live trend sources unavailable; using mock data", "info")
             live = [
                 {
-                    "name": "Quiet luxury capsule wardrobe (mock)",
+                    "name": "Burnout recovery explainer (mock)",
                     "platform": "reddit",
                     "format": "image/discussion",
                     "effort": "low",

@@ -51,7 +51,6 @@ To ensure strict verification, every agent and capability is evaluated against f
 | 05 | **Trend Video Analyzer** | MERGED | WIRED_TO_V2_ENTRYPOINT | COMMAND_TRIGGERED | TEST_VERIFIED_ONLY | `agents/trend_video_analyzer.py` |
 | 06 | **Trend Visual Analyzer** | MERGED | WIRED_TO_V2_ENTRYPOINT | COMMAND_TRIGGERED | TEST_VERIFIED_ONLY | `agents/trend_visual_analyzer.py` |
 | 07 | **Performance Analyzer** | MERGED | WIRED_TO_V2_ENTRYPOINT | COMMAND_TRIGGERED | TEST_VERIFIED_ONLY | `agents/performance_analyzer.py` |
-| 08 | **Product Hunter** | MERGED | WIRED_TO_V2_ENTRYPOINT | COMMAND_TRIGGERED | TEST_VERIFIED_ONLY | `agents/product_hunter.py` |
 | 09 | **Prompt Engineer** | MERGED | WIRED_TO_V2_ENTRYPOINT | COMMAND_TRIGGERED | TEST_VERIFIED_ONLY | `agents/prompt_engineer.py` |
 | 10 | **Edit Orchestrator** | MERGED | WIRED_TO_V2_ENTRYPOINT | COMMAND_TRIGGERED | TEST_VERIFIED_ONLY | `agents/editing/orchestrator.py` |
 | 11 | **Persian Edit Interpreter** | MERGED | WIRED_TO_V2_ENTRYPOINT | COMMAND_TRIGGERED | TEST_VERIFIED_ONLY | `agents/editing/persian_edit_interpreter.py` |
@@ -75,7 +74,6 @@ To ensure strict verification, every agent and capability is evaluated against f
 | 29 | **Publisher Zernio** | MERGED | NOT_WIRED | NO_TRIGGER | TEST_VERIFIED_ONLY | `agents/publisher_zernio.py` |
 | 30 | **Faceless Studio** | MERGED | STANDALONE_ONLY | NO_TRIGGER | TEST_VERIFIED_ONLY | `agents/faceless_studio.py` |
 | 31 | **Lip Sync Studio** | MERGED | STANDALONE_ONLY | NO_TRIGGER | TEST_VERIFIED_ONLY | `agents/lip_sync_studio.py` |
-| 32 | **Fashion Stylist** | MERGED | STANDALONE_ONLY | COMMAND_TRIGGERED | TEST_VERIFIED_ONLY | `agents/fashion_stylist.py` |
 | 33 | **Vision Agent** | MERGED | STANDALONE_ONLY | NO_TRIGGER | TEST_VERIFIED_ONLY | `agents/vision.py` |
 | 34 | **Memory Engine** | MERGED | STANDALONE_ONLY | NO_TRIGGER | TEST_VERIFIED_ONLY | `agents/memory_engine.py` |
 | 35 | **Elina Bot (Legacy)** | LEGACY | WIRED_TO_LEGACY_ONLY | COMMAND_TRIGGERED | TEST_VERIFIED_ONLY | `scripts/elina_bot.py` |
@@ -101,7 +99,6 @@ These are real, active Python classes linked to active workflows or bots:
 ## 6. Manual-Trigger / Test-Verified Agents
 *   **Daily Content Generation (`scripts/generate.py`)**: Mapped to `daily-content.yml`. However, the workflow's cron is currently **commented out** (`# schedule: [{cron: '0 23 * * *'}]`), meaning content generation is strictly **manual-trigger only** (`workflow_dispatch`).
 *   **Trend Hunter (`agents/trend_hunter.py`)**: Scrapes Reddit Atom and Google Trends RSS. Gracefully degrades to static mocks on rate-limiting.
-*   **Product Hunter (`agents/product_hunter.py`)**: Mapped to `generate.py`. Generates affiliate search URLs (Amazon, ShopStyle, LTK). However, product discovery uses simulated scraping (`simulate_web_scraping()`), not a real product catalog lookup.
 *   **Performance Analyzer (`agents/performance_analyzer.py`)**: Mapped to `generate.py`. Includes real fetchers for Instagram Insights and YouTube view statistics, but reverts to simulated random metrics by default if environment variables are missing.
 
 ---

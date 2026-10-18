@@ -76,7 +76,7 @@ class VisualCreatorAgent:
             return "mock_face.jpg"
             
         character_prompt = (
-            f"Elina Radman, 24yo Iranian woman, petite, highly detailed, photorealistic, 8k, {prompt}"
+            f"Minimal editorial illustration, warm cream palette, soft grain, {prompt}"
         )
         
         output_path = os.path.join(self.output_dir, f"elina_{os.urandom(4).hex()}.jpg")

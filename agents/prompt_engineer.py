@@ -13,7 +13,7 @@ class PromptEngineerAgent(Agent):
         super().__init__("PromptEngineer", "Expert Prompt Engineer for Midjourney V6/V7, Kling, and Google Flow")
         # Base Subject lock
         self.base_subject = (
-            "A 25-year-old petite Iranian female clinical psychologist and digital artist, "
+            "An illustrated, minimal editorial character for a psychology brand, "
             "dark wavy hair, deep dark eyes, calm but emotionally resonant expression"
         )
 
@@ -50,7 +50,7 @@ class PromptEngineerAgent(Agent):
         )
         return prompt
 
-    def generate_5_shot_carousel_prompts(self, base_concept, styling_logic="", tone="Quiet Luxury") -> list:
+    def generate_5_shot_carousel_prompts(self, base_concept, styling_logic="", tone="Minimal Editorial") -> list:
         # Fallback to keep compatibility with existing generate.py logic
         return [{"title_fa": "Main Shot", "prompt": self.generate_photo_prompt(base_concept)}]
 

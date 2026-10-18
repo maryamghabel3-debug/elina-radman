@@ -1,6 +1,6 @@
 """TrendVisualAnalyzer Agent — Learns the *look* of what's going viral.
 
-Downloads the top trending fashion photos (from TrendHunter.top_images), then
+Downloads the top trending psychology reference photos (from TrendHunter.top_images), then
 extracts a dominant colour palette and simple visual signals from each one.
 The aggregated palette is fed to the PromptEngineer so Elina's generated photos
 visually echo whatever aesthetic is pulling the most views right now.
@@ -97,7 +97,7 @@ class TrendVisualAnalyzer(Agent):
         ]
 
     def _deep_analyze(self, image_bytes, url):
-        """Use Gemini Vision to reverse-engineer a trending fashion photo:
+        """Use Gemini Vision to reverse-engineer a trending visual:
         outfit/products, pose, camera angle, lighting, setting, composition,
         mood, and WHY it likely performs well. Returns {} if vision unavailable.
         """
@@ -107,12 +107,12 @@ class TrendVisualAnalyzer(Agent):
             return {}
 
         prompt = (
-            "You are an elite fashion photography director and visual analyst. "
-            "Reverse-engineer this trending fashion photo so it can be recreated. "
+            "You are an art director for editorial psychology illustration. "
+            "Reverse-engineer this trending visual so its emotional register can be reused. "
             "Respond ONLY with a JSON object using EXACTLY these keys:\n"
             "{\n"
             '  "outfit": {"items": ["each garment with color/material/fit"], '
-            '"style_aesthetic": "e.g. quiet luxury, streetwear", "standout_piece": "the hero product"},\n'
+            '"style_aesthetic": "e.g. minimal editorial, soft grain", "emotion": "the feeling it carries"},\n'
             '  "pose": "body position, hands, gaze, expression, energy",\n'
             '  "camera": {"angle": "eye-level/low/high/dutch", "shot_size": "close-up/medium/full", '
             '"lens_look": "wide/portrait/telephoto feel", "depth_of_field": "shallow/deep"},\n'
@@ -121,7 +121,7 @@ class TrendVisualAnalyzer(Agent):
             '  "composition": "framing, rule-of-thirds, negative space, symmetry",\n'
             '  "color_mood": "overall color grading feel",\n'
             '  "why_it_works": "concise reason this image likely gets high engagement",\n'
-            '  "recreate_prompt": "a single vivid text-to-image prompt to recreate this look for a petite influencer"\n'
+            '  "recreate_prompt": "a single vivid text-to-image prompt to recreate this emotional register"\n'
             "}"
         )
         result = vision.analyze_image(url, prompt, image_bytes=image_bytes)

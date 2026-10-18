@@ -35,11 +35,11 @@ def test_fallback_for_valid_pillar_returns_real_caption():
         assert caption.strip() != ""
 
 
-def test_fallback_for_invalid_pillar_returns_default_mindful_lifestyle():
+def test_fallback_for_invalid_pillar_returns_default_pain_naming():
     from agents.content_config import fallback_for, FALLBACK_CAPTIONS
 
-    # Failure / edge path: invalid pillar falls back to mindful_lifestyle
-    default_caption = FALLBACK_CAPTIONS["mindful_lifestyle"]
+    # Failure / edge path: invalid pillar falls back to the safest default
+    default_caption = FALLBACK_CAPTIONS["pain_naming"]
     assert fallback_for("invalid_pillar") == default_caption
     assert fallback_for("") == default_caption
     assert fallback_for("unknown") == default_caption
@@ -50,10 +50,10 @@ def test_pillars_and_brand_constants_are_sane():
 
     # Behavioral check: core constants exist and are non-empty, prevents regression
     # if someone accidentally deletes or empties them
-    assert isinstance(BRAND, str) and BRAND.strip() == "Elina Radman"
-    assert isinstance(PILLARS, list) and len(PILLARS) == 4
-    assert "psychology_insights" in PILLARS
-    assert "ai_art_therapy" in PILLARS
-    assert isinstance(NICHE, str) and "Psychology" in NICHE
+    assert isinstance(BRAND, str) and "Maryam" in BRAND
+    assert isinstance(PILLARS, list) and len(PILLARS) == 5
+    assert "pain_naming" in PILLARS
+    assert "mechanism" in PILLARS
+    assert isinstance(NICHE, str) and "psychology" in NICHE.lower()
     assert isinstance(TONE, str) and len(TONE) > 10
-    assert isinstance(BASE_TAGS, str) and "#ElinaRadman" in BASE_TAGS
+    assert isinstance(BASE_TAGS, str) and "#روانشناسی" in BASE_TAGS
