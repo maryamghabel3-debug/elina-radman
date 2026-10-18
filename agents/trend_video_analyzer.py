@@ -1,6 +1,6 @@
 """TrendVideoAnalyzer Agent — Reverse-engineers WHY trending videos go viral.
 
-For each trending fashion video it:
+For each trending psychology video it:
   1. Pulls rich metadata from the YouTube Data API (title, description, tags,
      view/like/comment counts, duration) plus the TOP comments (how people
      actually react).
@@ -28,7 +28,7 @@ _OUT_PATH = "content/trend_videos.json"
 
 class TrendVideoAnalyzer(Agent):
     def __init__(self):
-        super().__init__("TrendVideoAnalyzer", "Reverse-engineers viral fashion videos")
+        super().__init__("TrendVideoAnalyzer", "Reverse-engineers viral psychology videos")
         self.session = requests.Session()
         self.youtube_api_key = os.environ.get("YOUTUBE_API_KEY", "")
 
@@ -122,7 +122,7 @@ class TrendVideoAnalyzer(Agent):
         comment_block = "\n".join(f"- ({c['likes']}👍) {c['text']}" for c in comments[:12]) or "N/A"
         prompt = (
             "You are a viral short-form video strategist and cinematographer. "
-            "Reverse-engineer this trending fashion video from its metadata and top "
+            "Reverse-engineer this trending psychology video from its metadata and top "
             "comments. Deduce filming/editing even though you only see metadata. "
             "Respond ONLY with JSON using EXACTLY these keys:\n"
             "{\n"

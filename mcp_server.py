@@ -24,14 +24,14 @@ async def handle_list_tools() -> list[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "pillar": {"type": "string", "description": "e.g., 'petite_styling', 'psychology_of_style'"},
+                    "pillar": {"type": "string", "description": "e.g., 'pain_naming', 'mechanism', 'first_step'"},
                 },
                 "required": ["pillar"]
             }
         ),
         types.Tool(
             name="get_current_trends",
-            description="Fetch current fashion trends from Elina's TrendHunter agent.",
+            description="Fetch current psychology trends from the TrendHunter agent.",
             inputSchema={
                 "type": "object",
                 "properties": {},
@@ -59,8 +59,8 @@ async def handle_call_tool(
     if name == "generate_caption":
         from agents.content_creator import ContentCreator
         cc = ContentCreator()
-        pillar = arguments.get("pillar", "ootd")
-        products = cc.load_affiliate_products()
+        pillar = arguments.get("pillar", "pain_naming")
+        products = []
         caption = cc.generate_dynamic_caption(pillar, products)
         return [types.TextContent(type="text", text=caption)]
 

@@ -18,7 +18,7 @@ def test_photo_prompt_contains_face_reference_instruction():
     # Must contain strict face reference instruction
     assert "STRICT INSTRUCTION: USE EXACT FACE FROM ATTACHED REFERENCE" in prompt
     # Must contain base subject identity
-    assert "25-year-old" in prompt or "Iranian" in prompt or "clinical psychologist" in prompt
+    assert "editorial" in prompt.lower() or "illustration" in prompt.lower() or "psycholog" in prompt.lower()
 
 
 def test_photo_prompt_reflects_v2_psychology_identity():
@@ -34,10 +34,9 @@ def test_photo_prompt_reflects_v2_psychology_identity():
 
     # Must reflect V2 psychology-cinematic identity
     has_psychology_identity = (
-        "clinical psychologist" in prompt_lower
-        or "25-year-old petite iranian" in prompt_lower
-        or "psychological fine art photography" in prompt_lower
-        or "iranian female" in prompt_lower
+        "psycholog" in prompt_lower
+        or "editorial" in prompt_lower
+        or "illustration" in prompt_lower
     )
     assert has_psychology_identity, f"Prompt should contain V2 psychology identity, got: {prompt[:200]}"
 

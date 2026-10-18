@@ -14,12 +14,6 @@ class ContentCreator(Agent):
         # In a real setup, this would connect to the LLMRouter
         # self.llm = LLMRouter()
 
-    def load_affiliate_products(self) -> list:
-        db_path = "content/affiliate_products.json"
-        if os.path.exists(db_path):
-            with open(db_path, "r") as f:
-                return json.load(f)
-        return []
 
     def load_diary_feeling(self) -> str:
         """Reads Elina's current emotional state from her diary"""
@@ -36,7 +30,7 @@ class ContentCreator(Agent):
     FALLBACK_CAPTIONS = cfg.FALLBACK_CAPTIONS
 
     def load_current_trends(self, limit: int = 6) -> List[str]:
-        """Fetch the top current fashion trend topics from TrendHunter.
+        """Fetch the top current psychology trend topics from TrendHunter.
 
         Cached inside TrendHunter (6h), so this is cheap to call. Returns an
         empty list on any failure so caption generation never breaks.
@@ -120,7 +114,7 @@ class ContentCreator(Agent):
         """
         Calls the LLMRouter (e.g., Claude or Gemini) to generate a fresh,
         context-aware caption. Uses Elina's Daily Diary to color the tone and
-        the current fashion trends to keep content timely.
+        the current psychology topics to keep content timely.
         Falls back to a curated per-pillar caption when no API key is available,
         so the pipeline never emits placeholder text.
         """
@@ -129,19 +123,19 @@ class ContentCreator(Agent):
         trend_line = ""
         if trends:
             trend_line = (
-                f"Currently trending in fashion right now: {', '.join(trends[:5])}. "
+                f"Currently trending psychology topics right now: {', '.join(trends[:5])}. "
                 f"Naturally weave ONE relevant trend into the caption if it fits the pillar. "
             )
 
         prompt = (
-            f"Write a short, original Instagram caption (3-4 lines) for Elina Radman, "
-            f"a petite quiet-luxury fashion influencer. Content pillar: {pillar}. "
-            f"Voice: warm, confident, explorer, psychologist. "
+            f"Write a short, original Instagram caption (3-4 lines) for a clinical psychologist brand, "
+            f"built around ONE invisible pain. Content pillar: {pillar}. "
+            f"Voice: precise, calm, human — clinical without being cold. "
             f"{trend_line}"
             f"Let this private mood gently color the WORDING only — do NOT state or "
             f"quote it: '{current_feeling}'. "
-            f"Give concrete outfit/styling detail, use at most 2 emojis, end with an "
-            f"engaging question, and do NOT include hashtags or any preamble. "
+            f"Name the pain before any suggestion. Use at most 1 emoji, end with one "
+            f"safe realistic next step (never a cure, never toxic positivity), and do NOT include hashtags or any preamble. "
             f"Output ONLY the caption text."
         )
 
@@ -152,7 +146,9 @@ class ContentCreator(Agent):
             result = router.smart_generate(
                 prompt,
                 task_type="creative_writing",
-                system_prompt="You are Elina Radman, an authentic petite fashion influencer and psychologist.",
+                system_prompt="You are Maryam, a clinical psychologist. You name invisible pain with precision. "
+                "You never diagnose, never promise a cure, never use toxic positivity. "
+                "One pain per post. Always end with one safe, realistic next step.",
             )
             text = (result or {}).get("response", "") or ""
             # Ignore simulation/error stubs from the router
@@ -164,19 +160,9 @@ class ContentCreator(Agent):
         if not generated_caption:
             generated_caption = self.FALLBACK_CAPTIONS.get(
                 pillar,
-                self.FALLBACK_CAPTIONS["mindful_lifestyle"],
+                self.FALLBACK_CAPTIONS["pain_naming"],
             )
         
-        # Smart Monetization Injection - V2: adapted to psychology pillars
-        # TODO: Needs PM decision if affiliate logic still relevant for psychology content
-        if pillar in ["psychology_insights", "ai_art_therapy", "mindful_lifestyle"] and products:
-            prod = random.choice(products)
-            affiliate_section = (
-                f"\n\n✨ Found the perfect {prod['name']} from {prod['brand']} "
-                f"({prod['why_it_fits']})! \n"
-                f"🛒 Shop here: {prod['affiliate_link']}"
-            )
-            generated_caption += affiliate_section
             
         return generated_caption
 
@@ -185,9 +171,7 @@ class ContentCreator(Agent):
         self.last_run = datetime.now().isoformat()
         # Pillars/tags come from the shared content_config (single source of truth)
         pillars = pillars or cfg.PILLARS
-
-        # Load dynamic products found by ProductHunter
-        products = self.load_affiliate_products()
+        products = []  # affiliate layer removed in the fashion-cleanup pass
 
         # Fetch trending topics once and feed them into every caption
         trends = self.load_current_trends() if use_trends else []
@@ -203,17 +187,13 @@ class ContentCreator(Agent):
             caption_text = self.generate_dynamic_caption(p, products, trends=trends)
 
             # Smart targeting for monetization platforms
-            target_platforms = ["instagram", "tiktok"]
-            if p == "ai_tech_hacks":
-                target_platforms.extend(["youtube", "threads"])
-            elif p in ["psychology_insights", "mindful_lifestyle"]:
-                target_platforms.extend(["pinterest", "lemon8"])
+            target_platforms = ["instagram", "youtube_shorts"]
 
             piece = {
                 "id": pid,
                 "pillar": p,
                 "caption": caption_text,
-                "hashtags": f"{cfg.tags_for(p)} #ElinaRadman #AIInfluencer",
+                "hashtags": f"{cfg.tags_for(p)}",
                 "platforms": target_platforms,
                 "trends_used": trends[:5],
                 "status": "pending_approval",

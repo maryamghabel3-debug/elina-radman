@@ -5,11 +5,11 @@ pytestmark = pytest.mark.unit
 
 def test_fallback_does_not_raise_keyerror_when_llm_unavailable(tmp_path, monkeypatch):
     """
-    Regression test for KeyError: 'ootd' bug.
+    Regression test for unknown-pillar fallback.
     When LLM is unavailable, ContentCreator should fallback to a valid caption
     without raising KeyError, even for unknown pillars.
-    Before fix: raises KeyError: 'ootd' because FALLBACK_CAPTIONS["ootd"] does not exist in V2.
-    After fix: should return a valid caption from mindful_lifestyle or similar.
+    Before fix: raises KeyError for unknown pillars.
+    After fix: should return a valid caption from the default fallback.
     """
     # Isolate filesystem - run in tmp_path
     monkeypatch.chdir(tmp_path)
@@ -28,7 +28,7 @@ def test_fallback_does_not_raise_keyerror_when_llm_unavailable(tmp_path, monkeyp
     monkeypatch.setattr(llm_router, "LLMRouter", lambda: FakeRouter())
 
     # This should NOT raise KeyError even for unknown pillar
-    # Before fix, it raises KeyError: 'ootd' when fallback tries to use FALLBACK_CAPTIONS["ootd"]
+    # Before fix, it raised KeyError when the fallback looked up an unknown pillar
     try:
         caption = cc.generate_dynamic_caption("unknown_pillar_xyz", products=[])
     except KeyError as e:
@@ -44,7 +44,7 @@ def test_fallback_uses_valid_pillar_key(tmp_path, monkeypatch):
     Ensure fallback uses a valid key from current FALLBACK_CAPTIONS,
     not legacy keys like 'ootd', 'petite_styling', 'smart_shopping'.
     Before fix: fallback default is FALLBACK_CAPTIONS["ootd"] which is invalid.
-    After fix: should use a valid key like 'mindful_lifestyle'.
+    After fix: should use a valid key from the current PILLARS list.
     """
     monkeypatch.chdir(tmp_path)
 
@@ -54,10 +54,10 @@ def test_fallback_uses_valid_pillar_key(tmp_path, monkeypatch):
 
     # Verify current valid keys
     valid_keys = set(FALLBACK_CAPTIONS.keys())
-    assert "ootd" not in valid_keys, "ootd should not be in V2 FALLBACK_CAPTIONS"
+    assert "ootd" not in valid_keys, "fashion-era key must not return"
     assert "petite_styling" not in valid_keys
     assert "smart_shopping" not in valid_keys
-    assert "mindful_lifestyle" in valid_keys
+    assert "pain_naming" in valid_keys
 
     cc = ContentCreator()
 
@@ -69,11 +69,11 @@ def test_fallback_uses_valid_pillar_key(tmp_path, monkeypatch):
     monkeypatch.setattr(llm_router, "LLMRouter", lambda: FakeRouter())
 
     # Test with a valid V2 pillar - should use that pillar's caption
-    caption_valid = cc.generate_dynamic_caption("psychology_insights", products=[])
+    caption_valid = cc.generate_dynamic_caption("pain_naming", products=[])
     assert isinstance(caption_valid, str)
     assert len(caption_valid) > 10
     # Should be exactly the fallback for that pillar (since LLM mocked)
-    assert caption_valid == FALLBACK_CAPTIONS["psychology_insights"]
+    assert caption_valid == FALLBACK_CAPTIONS["pain_naming"]
 
     # Test with invalid pillar - should fallback to a valid default, not legacy ootd
     caption_invalid = cc.generate_dynamic_caption("totally_unknown_pillar", products=[])

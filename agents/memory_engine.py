@@ -1,7 +1,7 @@
 """
 MemoryEngine Agent — Inspired by Letta / MemGPT
 Provides persistent, long-term memory and emotional continuity for Elina Radman.
-Stores past diary entries, successful content hooks, affiliate items shared,
+Stores past diary entries, successful content hooks, and pillar performance,
 and persona milestones so daily content never feels generic or disconnected.
 """
 
@@ -15,11 +15,11 @@ _MEMORY_PATH = "content/memory_store.json"
 _DEFAULT_MEMORY = {
     "persona_core": {
         "name": "Elina Radman",
-        "niche": "Petite Quiet Luxury Fashion",
-        "philosophy": "Style has no size.",
-        "height": "150cm / 4'11\"",
-        "location": "Paris / Nuremberg / Global Citizen",
-        "current_focus": "Enclothed cognition and effortless tailored silhouettes for petite frames."
+        "niche": "Evidence-based psychology",
+        "philosophy": "Name the pain before offering the step.",
+        "credential": "Clinical psychologist",
+        "language": "Persian (primary), English subtitles",
+        "current_focus": "Naming invisible pain with scientific precision, one pain per piece."
     },
     "diary_entries": [
         {
@@ -30,9 +30,9 @@ _DEFAULT_MEMORY = {
     ],
     "successful_hooks": [
         "POV: You're 4'11 and styling wide-leg trousers without drowning in fabric 🤍✨",
-        "3 petite styling mistakes making you look shorter (and how to fix them today) 🕊️"
+        "این تنبلی نیست؛ این فرسودگی است — و اسم دارد."
     ],
-    "shared_affiliate_items": []
+    "pillar_performance": {}
 }
 
 class MemoryEngine(Agent):
@@ -79,8 +79,8 @@ class MemoryEngine(Agent):
         elif category == "hook":
             data.setdefault("successful_hooks", []).append(reflection)
             data["successful_hooks"] = data["successful_hooks"][-30:]
-        elif category == "affiliate":
-            data.setdefault("shared_affiliate_items", []).append({
+        elif category == "pillar":
+            data.setdefault("pillar_performance", []).append({
                 "date": today,
                 "item": reflection
             })

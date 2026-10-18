@@ -6,7 +6,7 @@ Design goals (fixing the earlier random-portrait problem):
      reference images and keeps the SAME face across generations.
   2. GEMINI IS PRIMARY — Pollinations is only an emergency fallback, because it
      cannot honor a reference face. If Gemini has no key, we say so clearly.
-  3. FULL EDITORIAL FASHION — the prompt asks for a full-body / 3-4 look styled
+  3. FULL EDITORIAL — the prompt asks for a full-body styled composition
      shot (outfit, pose, setting, camera, lighting), not a face close-up.
   4. TREND-DRIVEN — pulls the latest reverse-engineered trend signals
      (content/trend_visuals.json) so the outfit/pose/palette match what's going
@@ -34,7 +34,7 @@ _DEFAULT_MODEL = "gemini-2.5-flash-image"
 _IDENTITY = (
     "Elina Radman, a 24-year-old Iranian woman with warm wheat skin, thick dark "
     "eyebrows, soft dark brown eyes, long wavy near-black hair, full lips with "
-    "subtle nude lip color, petite 150cm frame"
+    "minimal line-art features, warm sand tones"
 )
 
 
@@ -64,7 +64,7 @@ class ImageStudio(Agent):
     # ------------------------------------------------------------------ #
     # Prompt building (trend-aware, full editorial)
     # ------------------------------------------------------------------ #
-    def build_prompt(self, concept: str, tone: str = "Quiet Luxury") -> str:
+    def build_prompt(self, concept: str, tone: str = "Minimal Editorial") -> str:
         """Rich editorial prompt via PromptEngineer with live trend signals,
         forced to ultra-photorealistic candid lifestyle photography."""
         base = ""
@@ -73,11 +73,11 @@ class ImageStudio(Agent):
             base = PromptEngineerAgent().generate_photo_prompt(concept, tone=tone)
         except Exception as e:
             self.log(f"PromptEngineer unavailable ({e}); basic prompt", "error")
-            base = f"{_IDENTITY}, {concept}, editorial fashion photography, quiet luxury"
+            base = f"{_IDENTITY}, {concept}, minimal editorial illustration, warm cream palette"
 
         # Force wide head-to-toe full-body framing showing shoes and trousers completely
         framing = (
-            "Wide-angle Full-body candid fashion photograph shot from head to toe, showing the complete styled outfit "
+            "Full-frame editorial illustration, single focal subject, generous negative space "
             "including trousers length and shoes on the ground without cropping. Realistic location atmosphere, natural sunlight, "
             "Kodak Portra 400 film grain, ultra realistic detailed skin texture, Vogue editorial quality."
         )
@@ -278,7 +278,7 @@ class ImageStudio(Agent):
             from gradio_client import Client, handle_file
             client = Client("yanze/PuLID-FLUX", token=hf_token)
             res = client.predict(
-                f"candid 35mm editorial fashion photo of Elina Radman, 24yo woman, {prompt}",
+                f"candid 35mm editorial illustration, soft grain, warm cream palette, {prompt}",
                 handle_file(refs[0]),
                 0, 4.0, "-1", 1.0, 896, 1152, 28, 1.0,
                 "bad quality, worst quality, extra limbs, CGI, 3d render, illustration, plastic skin, different face", 1, 512,
@@ -336,7 +336,7 @@ class ImageStudio(Agent):
             "Content-Type": "application/json",
         }
         payload = {
-            "prompt": f"Elina Radman, 24yo Iranian woman, petite frame, warm wheat skin, {prompt}",
+            "prompt": f"minimal editorial illustration, warm sand and cream palette, {prompt}",
             "negative_prompt": "deformed, bad anatomy, anime, cartoon, blurry, low resolution, different face",
             "samples": 1,
             "steps": 30,
@@ -416,7 +416,7 @@ class ImageStudio(Agent):
     # ------------------------------------------------------------------ #
     # Public API
     # ------------------------------------------------------------------ #
-    def generate(self, concept: str = None, tone: str = "Quiet Luxury",
+    def generate(self, concept: str = None, tone: str = "Minimal Editorial",
                  prefer: str = "auto", **kwargs) -> dict:
         """Generate one on-brand, face-consistent photo of Elina.
 
@@ -489,7 +489,7 @@ class ImageStudio(Agent):
             "prompt": prompt,
         }
 
-    def run(self, concept: str = None, tone: str = "Quiet Luxury", prefer: str = "auto") -> dict:
+    def run(self, concept: str = None, tone: str = "Minimal Editorial", prefer: str = "auto") -> dict:
         return self.generate(concept, tone=tone, prefer=prefer)
 
 

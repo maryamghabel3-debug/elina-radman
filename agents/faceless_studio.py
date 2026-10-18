@@ -1,6 +1,6 @@
 """
 FacelessStudio Agent — Inspired by MoneyPrinterV2 & Open-AI-Design-Agent
-Autonomous video production engine that turns a single keyword or fashion tip
+Autonomous video production engine that turns a single keyword or psychology topic
 into a complete, viral 9:16 short video (script -> TTS -> visuals -> subtitle overlay).
 """
 
@@ -20,24 +20,25 @@ class FacelessStudio(Agent):
     def generate_short_script(self, topic: str) -> list:
         """Generates a 3-part viral script for a short video."""
         self.log(f"Drafting 3-part viral script for topic: '{topic}'...")
+        # hook (name the pain) -> mechanism (why it makes sense) -> step (safe, small)
         return [
-            {"scene": 1, "text": f"POV: You're 4'11 and styling {topic}.", "duration": 2.5},
-            {"scene": 2, "text": "Pro secret: Focus on vertical lines and monochrome layering to elongate your frame.", "duration": 3.0},
-            {"scene": 3, "text": "Save this petite fashion tip and tap link in bio for exact pieces 🤍✨", "duration": 2.5}
+            {"scene": 1, "text": f"اگه فکر می‌کنی فقط تنبلی، این ویدیو برای توست: {topic}", "duration": 2.5},
+            {"scene": 2, "text": "وقتی استرس طولانی می‌شود، مغز سیستم پاداش را کم‌فعال می‌کند. این ضعف اراده نیست.", "duration": 4.0},
+            {"scene": 3, "text": "قدم صفر: بنویس چه چیزی بیشتر از همه انرژی‌ات را می‌برد.", "duration": 3.5}
         ]
 
     def _render_tts(self, text: str, output_audio: str) -> bool:
         """Synthesizes natural voiceover using edge-tts if installed."""
         try:
             import edge_tts
-            communicate = edge_tts.Communicate(text, "en-US-JennyNeural")
+            communicate = edge_tts.Communicate(text, "fa-IR-DilaraNeural")
             asyncio.run(communicate.save(output_audio))
             return os.path.exists(output_audio)
         except Exception as e:
             self.log(f"edge-tts voiceover skipped ({e})", "warning")
             return False
 
-    def create_faceless_short(self, topic: str = "Quiet Luxury Basics") -> dict:
+    def create_faceless_short(self, topic: str = "Burnout vs. Laziness") -> dict:
         """
         Executes end-to-end video production: creates script, renders visual slides
         using Elina's reference photos, applies dynamic text overlay, and writes MP4.
@@ -119,5 +120,5 @@ class FacelessStudio(Agent):
             self.log(f"FacelessStudio rendering error: {e}", "error")
             return {"error": str(e)}
 
-    def run(self, topic: str = "Quiet Luxury Basics") -> dict:
+    def run(self, topic: str = "Burnout vs. Laziness") -> dict:
         return self.create_faceless_short(topic)

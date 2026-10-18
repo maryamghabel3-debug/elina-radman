@@ -15,7 +15,7 @@ def test_safe_import_content_config_and_base():
     assert hasattr(cc, "PILLARS")
     assert hasattr(cc, "tags_for")
     assert hasattr(cc, "fallback_for")
-    assert cc.BRAND == "Elina Radman"
+    assert "Maryam" in cc.BRAND
 
     # Import base agent - pure class, no side effects
     from agents.base import Agent

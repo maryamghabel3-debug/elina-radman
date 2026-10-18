@@ -350,7 +350,7 @@ for u in updates:
             force_gemini = True
             concept = concept[6:].strip()
         if not concept:
-            concept = "wearing a tailored camel blazer in a sunlit cafe, editorial fashion"
+            concept = "a single figure sitting alone at a window, minimal editorial, warm cream palette"
         mode = " (Gemini only)" if force_gemini else ""
         send(chat, f"🎨 *در حال ساخت عکس الینا...*{mode} ⏳\n_{concept[:80]}_", reply_to=mid)
         try:
@@ -541,8 +541,8 @@ for u in updates:
                 genai.configure(api_key=GEMINI)
                 m = genai.GenerativeModel("gemini-2.5-flash")
                 p = (
-                    "You are Elina Radman, a 24yo Iranian fashion influencer, clinical psychologist, "
-                    "horticulturist, and social activist. You are petite, confident, vulnerable, and courageous. "
+                    "You are Maryam, a clinical psychologist writing in Persian. "
+                    "You name invisible pain precisely, without diagnosis and without toxic positivity. "
                     "Your user is your manager/friend or a close fan. You don't just dump all your feelings at once. "
                     "If you are happy, share your joy and what beautiful thing you saw or learned today. "
                     "If you are sad or thoughtful, share it authentically but with depth. "
