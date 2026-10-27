@@ -46,6 +46,11 @@ psyche-studio/probes/*.mp4
 # regenerable smoke-test artifacts (test_motion.py recreates them)
 psyche-studio/probes/test_audio.mp3
 psyche-studio/probes/test_bg.jpg
+# generated probe media: TTS samples and rendered text-test PNGs
+psyche-studio/probes/*.mp3
+psyche-studio/probes/*.png
+# AI-generated probe image (regenerable; not engine source)
+psyche-studio/assets/images/probe_e_vertical.jpg
 content/assets/characters/elina/*.webp
 content/assets/characters/elina/*.heic
 content/assets/characters/elina/*.gif
