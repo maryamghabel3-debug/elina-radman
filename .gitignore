@@ -41,7 +41,11 @@ content/assets/characters/elina/*.png
 
 # psyche-studio — local virtualenv, rendered media, and probe videos
 psyche-studio/.venv/
-psyche-studio/output/
+psyche-studio/output/*
+# but keep the required per-scene QA frame deliverables
+!psyche-studio/output/qa_frames_v2/
+# streaming intermediate; the muxed bashe_v2.mp4 is the deliverable
+psyche-studio/content/bashe_project/bashe_v2.silent.mp4
 psyche-studio/probes/*.mp4
 # regenerable smoke-test artifacts (test_motion.py recreates them)
 psyche-studio/probes/test_audio.mp3

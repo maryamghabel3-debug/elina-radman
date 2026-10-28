@@ -1,0 +1,153 @@
+{
+  "scenes": [
+    {
+      "scene": 1,
+      "chapter": "شروع",
+      "global_start": 0.0,
+      "duration": 6.33,
+      "beat_count": 6,
+      "mean_interval": 0.9,
+      "max_static": 1.56,
+      "impact_count": 1,
+      "active_layers": 6,
+      "ambient_layers": [
+        "parallax",
+        "particles",
+        "glow pulse",
+        "breathing dots"
+      ],
+      "passes_pacing": true,
+      "passes_impact": true,
+      "passes_layers": true
+    },
+    {
+      "scene": 2,
+      "chapter": "طوفان ذهن",
+      "global_start": 6.33,
+      "duration": 16.02,
+      "beat_count": 11,
+      "mean_interval": 1.33,
+      "max_static": 2.47,
+      "impact_count": 5,
+      "active_layers": 6,
+      "ambient_layers": [
+        "parallax",
+        "particles",
+        "orbit float",
+        "breathing center",
+        "reinforcement pulses"
+      ],
+      "passes_pacing": true,
+      "passes_impact": true,
+      "passes_layers": true
+    },
+    {
+      "scene": 3,
+      "chapter": "پیام و حضور",
+      "global_start": 22.35,
+      "duration": 17.28,
+      "beat_count": 15,
+      "mean_interval": 1.08,
+      "max_static": 2.04,
+      "impact_count": 3,
+      "active_layers": 6,
+      "ambient_layers": [
+        "parallax",
+        "particles",
+        "stroke reveals",
+        "staggered nodes"
+      ],
+      "passes_pacing": true,
+      "passes_impact": true,
+      "passes_layers": true
+    },
+    {
+      "scene": 4,
+      "chapter": "شاید",
+      "global_start": 39.63,
+      "duration": 14.43,
+      "beat_count": 9,
+      "mean_interval": 1.44,
+      "max_static": 2.35,
+      "impact_count": 6,
+      "active_layers": 6,
+      "ambient_layers": [
+        "parallax",
+        "particles",
+        "orbit float",
+        "breathing center",
+        "reinforcement pulses"
+      ],
+      "passes_pacing": true,
+      "passes_impact": true,
+      "passes_layers": true
+    },
+    {
+      "scene": 5,
+      "chapter": "واقعیت و تفسیر",
+      "global_start": 54.06,
+      "duration": 19.34,
+      "beat_count": 13,
+      "mean_interval": 1.38,
+      "max_static": 2.17,
+      "impact_count": 4,
+      "active_layers": 7,
+      "ambient_layers": [
+        "parallax",
+        "particles",
+        "path travel",
+        "phase flash",
+        "stroke reveals"
+      ],
+      "passes_pacing": true,
+      "passes_impact": true,
+      "passes_layers": true
+    },
+    {
+      "scene": 6,
+      "chapter": "سه قدم",
+      "global_start": 73.4,
+      "duration": 23.23,
+      "beat_count": 17,
+      "mean_interval": 1.29,
+      "max_static": 2.49,
+      "impact_count": 3,
+      "active_layers": 6,
+      "ambient_layers": [
+        "parallax",
+        "particles",
+        "chapter scale-cut",
+        "stroke reveals",
+        "mini-dock"
+      ],
+      "passes_pacing": true,
+      "passes_impact": true,
+      "passes_layers": true
+    },
+    {
+      "scene": 7,
+      "chapter": "جمع‌بندی",
+      "global_start": 96.63,
+      "duration": 11.47,
+      "beat_count": 10,
+      "mean_interval": 1.04,
+      "max_static": 1.38,
+      "impact_count": 1,
+      "active_layers": 5,
+      "ambient_layers": [
+        "parallax",
+        "particles",
+        "icon fly-in",
+        "badge draw",
+        "breathing headline"
+      ],
+      "passes_pacing": true,
+      "passes_impact": true,
+      "passes_layers": true
+    }
+  ],
+  "gap": 0.35,
+  "total_render_seconds": 108.1,
+  "total_audio_seconds": 107.91,
+  "subtitle_cues": 60
+}

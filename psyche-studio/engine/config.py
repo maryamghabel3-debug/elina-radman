@@ -27,23 +27,30 @@ FONT_BOLD = FONT_DIR / "Vazirmatn-Bold.ttf"
 FONT_BLACK = FONT_DIR / "Vazirmatn-Black.ttf"
 
 # --- Dark psychology palette (RGB) -----------------------------------------
+# V2 brand palette (exact hex brief): violet/navy identity.
 COLORS = {
     # Backgrounds: deep navy -> indigo
-    "background": (14, 18, 38),
+    "background": (14, 18, 38),        # #0E1226
     "background_alt": (24, 26, 58),
     # Foreground: warm cream / white
-    "text": (240, 236, 228),
+    "text": (245, 240, 232),           # #F5F0E8
     "text_dim": (178, 180, 205),
     # Single accent: violet
-    "accent": (139, 124, 255),
+    "accent": (139, 124, 255),         # #8B7CFF
+    "violet": (139, 124, 255),
     "accent_soft": (104, 92, 200),
+    # Gold: trigger / key-concept emphasis
+    "highlight": (240, 200, 120),      # #F0C878
+    "gold": (240, 200, 120),
     # Cards
-    "card_bg": (28, 32, 60),
+    "card_bg": (28, 32, 60),           # #1C203C
+    "card": (28, 32, 60),
     "card_border": (92, 98, 158),
     # Semantic highlights
-    "highlight": (240, 200, 120),
-    "danger": (220, 90, 110),
-    "success": (80, 190, 150),
+    "danger": (255, 107, 107),         # #FF6B6B negative thoughts
+    "success": (94, 214, 162),         # #5ED6A2 reality / healthy action
+    # V2 semantic aliases
+    "bg": (14, 18, 38),
 }
 
 # --- Subtitle style (bottom safe area, burned into frames) ----------------

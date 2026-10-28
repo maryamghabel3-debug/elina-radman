@@ -1,0 +1,257 @@
+{
+  "scene_01": {
+    "original_start_trimmed": 0.366,
+    "original_end_trimmed": 0.0,
+    "trimmed_duration": 5.946,
+    "final_duration": 5.98,
+    "original_duration": 9.961,
+    "noise_floor_db": -35.96,
+    "gate_db": -31.5,
+    "room_gate_db": -29.96,
+    "pause_removals": [
+      {
+        "from_trimmed_t": 8.396,
+        "to_trimmed_t": 9.482,
+        "removed_seconds": 1.086,
+        "room_tone_evidence": {
+          "median_rms_db": -37.1,
+          "max_peak_db": -21.9,
+          "frac_windows_above_-30dB": 0.0
+        }
+      },
+      {
+        "from_trimmed_t": 6.908,
+        "to_trimmed_t": 8.019,
+        "removed_seconds": 1.111,
+        "room_tone_evidence": {
+          "median_rms_db": -37.1,
+          "max_peak_db": -25.5,
+          "frac_windows_above_-30dB": 0.0
+        }
+      },
+      {
+        "from_trimmed_t": 0.899,
+        "to_trimmed_t": 2.351,
+        "removed_seconds": 1.452,
+        "room_tone_evidence": {
+          "median_rms_db": -36.6,
+          "max_peak_db": -23.1,
+          "frac_windows_above_-30dB": 0.0
+        }
+      }
+    ],
+    "click_treatments": [
+      {
+        "original_t": 2.9,
+        "trimmed_t": 2.548,
+        "applied": true,
+        "kind": "asymmetric 10ms de-click fade (gain 0->0.35->1)",
+        "crest_before_db": 7.88,
+        "crest_after_db": 5.4,
+        "span_peak_before_db": -11.64,
+        "span_peak_after_db": -14.13
+      },
+      {
+        "original_t": 3.08,
+        "trimmed_t": 2.655,
+        "applied": true,
+        "kind": "asymmetric 10ms de-click fade (gain 0->0.35->1)",
+        "crest_before_db": 7.54,
+        "crest_after_db": 4.61,
+        "span_peak_before_db": -13.43,
+        "span_peak_after_db": -16.36
+      }
+    ]
+  },
+  "scene_02": {
+    "original_start_trimmed": 2.012,
+    "original_end_trimmed": 3.913,
+    "trimmed_duration": 15.646,
+    "final_duration": 15.67,
+    "original_duration": 21.571,
+    "noise_floor_db": -36.9,
+    "gate_db": -31.5,
+    "room_gate_db": -30.9,
+    "pause_removals": [],
+    "click_treatments": [
+      {
+        "original_t": 2.2,
+        "trimmed_t": 0.211,
+        "applied": true,
+        "kind": "asymmetric 10ms de-click fade (gain 0->0.35->1)",
+        "crest_before_db": 10.11,
+        "crest_after_db": 7.72,
+        "span_peak_before_db": -3.43,
+        "span_peak_after_db": -5.82
+      }
+    ]
+  },
+  "scene_03": {
+    "original_start_trimmed": 2.43,
+    "original_end_trimmed": 0.662,
+    "trimmed_duration": 16.9,
+    "final_duration": 16.93,
+    "original_duration": 19.992,
+    "noise_floor_db": -36.3,
+    "gate_db": -31.5,
+    "room_gate_db": -30.3,
+    "pause_removals": [],
+    "click_treatments": [
+      {
+        "original_t": 2.61,
+        "trimmed_t": 0.227,
+        "applied": true,
+        "kind": "asymmetric 10ms de-click fade (gain 0->0.35->1)",
+        "crest_before_db": 8.82,
+        "crest_after_db": 5.25,
+        "span_peak_before_db": -5.78,
+        "span_peak_after_db": -9.36
+      }
+    ]
+  },
+  "scene_04": {
+    "original_start_trimmed": 2.43,
+    "original_end_trimmed": 0.0,
+    "trimmed_duration": 14.029,
+    "final_duration": 14.08,
+    "original_duration": 18.669,
+    "noise_floor_db": -36.72,
+    "gate_db": -31.5,
+    "room_gate_db": -30.72,
+    "pause_removals": [
+      {
+        "from_trimmed_t": 13.856,
+        "to_trimmed_t": 16.066,
+        "removed_seconds": 2.21,
+        "room_tone_evidence": {
+          "median_rms_db": -36.5,
+          "max_peak_db": -25.1,
+          "frac_windows_above_-30dB": 0.0
+        }
+      }
+    ],
+    "click_treatments": [
+      {
+        "original_t": 2.56,
+        "trimmed_t": 0.184,
+        "applied": true,
+        "kind": "asymmetric 10ms de-click fade (gain 0->0.35->1)",
+        "crest_before_db": 8.29,
+        "crest_after_db": 7.52,
+        "span_peak_before_db": -5.18,
+        "span_peak_after_db": -5.95
+      }
+    ]
+  },
+  "scene_05": {
+    "original_start_trimmed": 2.665,
+    "original_end_trimmed": 0.0,
+    "trimmed_duration": 18.962,
+    "final_duration": 18.99,
+    "original_duration": 23.94,
+    "noise_floor_db": -36.22,
+    "gate_db": -31.5,
+    "room_gate_db": -30.22,
+    "pause_removals": [
+      {
+        "from_trimmed_t": 18.794,
+        "to_trimmed_t": 21.107,
+        "removed_seconds": 2.313,
+        "room_tone_evidence": {
+          "median_rms_db": -37.0,
+          "max_peak_db": -21.9,
+          "frac_windows_above_-30dB": 0.0
+        }
+      }
+    ],
+    "click_treatments": [
+      {
+        "original_t": 2.8,
+        "trimmed_t": 0.147,
+        "applied": true,
+        "kind": "asymmetric 10ms de-click fade (gain 0->0.35->1)",
+        "crest_before_db": 6.55,
+        "crest_after_db": 4.17,
+        "span_peak_before_db": -8.52,
+        "span_peak_after_db": -10.91
+      }
+    ]
+  },
+  "scene_06": {
+    "original_start_trimmed": 0.236,
+    "original_end_trimmed": 1.591,
+    "trimmed_duration": 22.856,
+    "final_duration": 22.88,
+    "original_duration": 24.683,
+    "noise_floor_db": -35.82,
+    "gate_db": -31.5,
+    "room_gate_db": -29.82,
+    "pause_removals": [],
+    "click_treatments": [
+      {
+        "original_t": 1.78,
+        "trimmed_t": 1.576,
+        "applied": true,
+        "kind": "asymmetric 10ms de-click fade (gain 0->0.35->1)",
+        "crest_before_db": 10.57,
+        "crest_after_db": 9.76,
+        "span_peak_before_db": -2.62,
+        "span_peak_after_db": -3.44
+      }
+    ]
+  },
+  "scene_07": {
+    "original_start_trimmed": 0.0,
+    "original_end_trimmed": 0.0,
+    "trimmed_duration": 11.429,
+    "final_duration": 11.47,
+    "original_duration": 13.653,
+    "noise_floor_db": -35.85,
+    "gate_db": -31.5,
+    "room_gate_db": -29.85,
+    "pause_removals": [
+      {
+        "from_trimmed_t": 11.347,
+        "to_trimmed_t": 12.957,
+        "removed_seconds": 1.609,
+        "room_tone_evidence": {
+          "median_rms_db": -36.9,
+          "max_peak_db": -26.2,
+          "frac_windows_above_-30dB": 0.0
+        }
+      },
+      {
+        "from_trimmed_t": 4.975,
+        "to_trimmed_t": 5.59,
+        "removed_seconds": 0.615,
+        "room_tone_evidence": {
+          "median_rms_db": -36.1,
+          "max_peak_db": -24.0,
+          "frac_windows_above_-30dB": 0.0
+        }
+      }
+    ],
+    "click_treatments": [
+      {
+        "original_t": 1.39,
+        "trimmed_t": 1.393,
+        "applied": true,
+        "kind": "asymmetric 10ms de-click fade (gain 0->0.35->1)",
+        "crest_before_db": 7.03,
+        "crest_after_db": 4.98,
+        "span_peak_before_db": -1.4,
+        "span_peak_after_db": -3.45
+      },
+      {
+        "original_t": 12.15,
+        "trimmed_t": 12.114,
+        "applied": true,
+        "kind": "symmetric 10ms cosine de-click dip (floor 0.35)",
+        "crest_before_db": 7.82,
+        "crest_after_db": 6.36,
+        "span_peak_before_db": -28.69,
+        "span_peak_after_db": -30.15
+      }
+    ]
+  }
+}
