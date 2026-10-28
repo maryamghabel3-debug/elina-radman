@@ -1,0 +1,419 @@
+{
+  "atempo": 1.12,
+  "pause_limit_s": 0.75,
+  "pause_kept_s": 0.25,
+  "pad_s": 0.12,
+  "stems": [
+    {
+      "name": "cleaned_s1",
+      "src": "/home/user/elina-radman/psyche-studio/content/my_voice_v2/s01.mp3",
+      "original_duration_s": 70.687,
+      "cleaned_duration_s": 49.732,
+      "lead_removed_s": 0.72,
+      "trail_removed_s": 0.0,
+      "pauses_compressed": [
+        {
+          "orig_start_s": 0.72,
+          "orig_length_s": 0.84,
+          "kept_s": 0.25,
+          "removed_s": 0.59
+        },
+        {
+          "orig_start_s": 5.2,
+          "orig_length_s": 1.48,
+          "kept_s": 0.25,
+          "removed_s": 1.23
+        },
+        {
+          "orig_start_s": 8.86,
+          "orig_length_s": 0.8,
+          "kept_s": 0.25,
+          "removed_s": 0.55
+        },
+        {
+          "orig_start_s": 12.8,
+          "orig_length_s": 0.76,
+          "kept_s": 0.25,
+          "removed_s": 0.51
+        },
+        {
+          "orig_start_s": 27.5,
+          "orig_length_s": 0.84,
+          "kept_s": 0.25,
+          "removed_s": 0.59
+        },
+        {
+          "orig_start_s": 29.14,
+          "orig_length_s": 1.12,
+          "kept_s": 0.25,
+          "removed_s": 0.87
+        },
+        {
+          "orig_start_s": 30.46,
+          "orig_length_s": 0.82,
+          "kept_s": 0.25,
+          "removed_s": 0.57
+        },
+        {
+          "orig_start_s": 31.4,
+          "orig_length_s": 1.02,
+          "kept_s": 0.25,
+          "removed_s": 0.77
+        },
+        {
+          "orig_start_s": 33.4,
+          "orig_length_s": 0.92,
+          "kept_s": 0.25,
+          "removed_s": 0.67
+        },
+        {
+          "orig_start_s": 35.46,
+          "orig_length_s": 1.26,
+          "kept_s": 0.25,
+          "removed_s": 1.01
+        },
+        {
+          "orig_start_s": 37.46,
+          "orig_length_s": 1.16,
+          "kept_s": 0.25,
+          "removed_s": 0.91
+        },
+        {
+          "orig_start_s": 38.96,
+          "orig_length_s": 1.42,
+          "kept_s": 0.25,
+          "removed_s": 1.17
+        },
+        {
+          "orig_start_s": 41.8,
+          "orig_length_s": 2.0,
+          "kept_s": 0.25,
+          "removed_s": 1.75
+        },
+        {
+          "orig_start_s": 46.72,
+          "orig_length_s": 0.76,
+          "kept_s": 0.25,
+          "removed_s": 0.51
+        },
+        {
+          "orig_start_s": 51.52,
+          "orig_length_s": 1.18,
+          "kept_s": 0.25,
+          "removed_s": 0.93
+        },
+        {
+          "orig_start_s": 54.86,
+          "orig_length_s": 0.84,
+          "kept_s": 0.25,
+          "removed_s": 0.59
+        },
+        {
+          "orig_start_s": 66.98,
+          "orig_length_s": 1.04,
+          "kept_s": 0.25,
+          "removed_s": 0.79
+        }
+      ],
+      "clicks": [],
+      "risky_cuts": [
+        "borderline pause 0.84s at orig ~0.72s (within 0.10s of the 0.75s threshold)",
+        "borderline pause 0.80s at orig ~8.86s (within 0.10s of the 0.75s threshold)",
+        "borderline pause 0.76s at orig ~12.80s (within 0.10s of the 0.75s threshold)",
+        "borderline pause 0.84s at orig ~27.50s (within 0.10s of the 0.75s threshold)",
+        "borderline pause 0.82s at orig ~30.46s (within 0.10s of the 0.75s threshold)",
+        "borderline pause 0.76s at orig ~46.72s (within 0.10s of the 0.75s threshold)",
+        "borderline pause 0.84s at orig ~54.86s (within 0.10s of the 0.75s threshold)"
+      ],
+      "gate_dbfs": -40.0,
+      "noise_floor_dbfs": -77.42,
+      "time_map": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          2.28,
+          0.866
+        ],
+        [
+          7.4,
+          4.339
+        ],
+        [
+          10.38,
+          6.509
+        ],
+        [
+          14.28,
+          9.536
+        ],
+        [
+          29.06,
+          22.205
+        ],
+        [
+          30.98,
+          23.143
+        ],
+        [
+          32.0,
+          23.545
+        ],
+        [
+          33.14,
+          23.875
+        ],
+        [
+          35.04,
+          24.973
+        ],
+        [
+          37.44,
+          26.214
+        ],
+        [
+          39.34,
+          27.098
+        ],
+        [
+          41.1,
+          27.625
+        ],
+        [
+          44.52,
+          29.116
+        ],
+        [
+          48.2,
+          31.946
+        ],
+        [
+          53.42,
+          35.777
+        ],
+        [
+          56.42,
+          37.929
+        ],
+        [
+          68.74,
+          48.223
+        ],
+        [
+          70.687,
+          49.962
+        ]
+      ],
+      "loudness_before_lufs": -31.4,
+      "loudness_after_lufs": -17.4,
+      "true_peak_after_dbtp": -2.0,
+      "edge_artifact_handling": {
+        "known_t0_blip": "4-sample encoder transient documented in TRANSCRIPT_REPORT.md",
+        "max_sample_jump_fs": 0.0842,
+        "impulses_surviving_decode": 0,
+        "mitigation": "6 ms cosine head fade + 8 ms tail fade + VAD head trim"
+      },
+      "time_saved_s": 20.955
+    },
+    {
+      "name": "cleaned_s2",
+      "src": "/home/user/elina-radman/psyche-studio/content/my_voice_v2/s02.mp3",
+      "original_duration_s": 36.153,
+      "cleaned_duration_s": 26.939,
+      "lead_removed_s": 0.74,
+      "trail_removed_s": 0.0,
+      "pauses_compressed": [
+        {
+          "orig_start_s": 0.74,
+          "orig_length_s": 0.86,
+          "kept_s": 0.25,
+          "removed_s": 0.61
+        },
+        {
+          "orig_start_s": 5.76,
+          "orig_length_s": 1.46,
+          "kept_s": 0.25,
+          "removed_s": 1.21
+        },
+        {
+          "orig_start_s": 12.4,
+          "orig_length_s": 1.2,
+          "kept_s": 0.25,
+          "removed_s": 0.95
+        },
+        {
+          "orig_start_s": 25.44,
+          "orig_length_s": 0.92,
+          "kept_s": 0.25,
+          "removed_s": 0.67
+        },
+        {
+          "orig_start_s": 34.16,
+          "orig_length_s": 1.98,
+          "kept_s": 0.25,
+          "removed_s": 1.73
+        }
+      ],
+      "clicks": [],
+      "risky_cuts": [],
+      "gate_dbfs": -40.0,
+      "noise_floor_dbfs": -76.68,
+      "time_map": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          2.34,
+          0.884
+        ],
+        [
+          7.96,
+          4.821
+        ],
+        [
+          14.34,
+          9.67
+        ],
+        [
+          27.1,
+          20.464
+        ],
+        [
+          36.88,
+          27.652
+        ],
+        [
+          36.153,
+          27.003
+        ]
+      ],
+      "loudness_before_lufs": -25.0,
+      "loudness_after_lufs": -16.1,
+      "true_peak_after_dbtp": -2.0,
+      "edge_artifact_handling": {
+        "known_t0_blip": "4-sample encoder transient documented in TRANSCRIPT_REPORT.md",
+        "max_sample_jump_fs": 0.0634,
+        "impulses_surviving_decode": 0,
+        "mitigation": "6 ms cosine head fade + 8 ms tail fade + VAD head trim"
+      },
+      "time_saved_s": 9.214
+    },
+    {
+      "name": "cleaned_s3",
+      "src": "/home/user/elina-radman/psyche-studio/content/my_voice_v2/s03.mp3",
+      "original_duration_s": 36.441,
+      "cleaned_duration_s": 29.39,
+      "lead_removed_s": 0.98,
+      "trail_removed_s": 0.221,
+      "pauses_compressed": [
+        {
+          "orig_start_s": 0.98,
+          "orig_length_s": 1.1,
+          "kept_s": 0.25,
+          "removed_s": 0.85
+        },
+        {
+          "orig_start_s": 8.5,
+          "orig_length_s": 0.78,
+          "kept_s": 0.25,
+          "removed_s": 0.53
+        },
+        {
+          "orig_start_s": 17.9,
+          "orig_length_s": 1.16,
+          "kept_s": 0.25,
+          "removed_s": 0.91
+        }
+      ],
+      "clicks": [],
+      "risky_cuts": [
+        "borderline pause 0.78s at orig ~8.50s (within 0.10s of the 0.75s threshold)"
+      ],
+      "gate_dbfs": -40.0,
+      "noise_floor_dbfs": -76.08,
+      "time_map": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          3.06,
+          1.098
+        ],
+        [
+          10.26,
+          7.054
+        ],
+        [
+          20.04,
+          14.973
+        ],
+        [
+          36.441,
+          29.42
+        ]
+      ],
+      "loudness_before_lufs": -23.1,
+      "loudness_after_lufs": -16.0,
+      "true_peak_after_dbtp": -2.0,
+      "edge_artifact_handling": {
+        "known_t0_blip": "4-sample encoder transient documented in TRANSCRIPT_REPORT.md",
+        "max_sample_jump_fs": 0.0673,
+        "impulses_surviving_decode": 0,
+        "mitigation": "6 ms cosine head fade + 8 ms tail fade + VAD head trim"
+      },
+      "time_saved_s": 7.051
+    },
+    {
+      "name": "cleaned_s4",
+      "src": "/home/user/elina-radman/psyche-studio/content/my_voice_v2/s04.mp3",
+      "original_duration_s": 12.147,
+      "cleaned_duration_s": 7.964,
+      "lead_removed_s": 1.14,
+      "trail_removed_s": 1.067,
+      "pauses_compressed": [
+        {
+          "orig_start_s": 1.14,
+          "orig_length_s": 1.26,
+          "kept_s": 0.25,
+          "removed_s": 1.01
+        }
+      ],
+      "clicks": [],
+      "risky_cuts": [],
+      "gate_dbfs": -40.0,
+      "noise_floor_dbfs": -77.33,
+      "time_map": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          3.54,
+          1.241
+        ],
+        [
+          12.147,
+          7.973
+        ]
+      ],
+      "loudness_before_lufs": -25.6,
+      "loudness_after_lufs": -16.0,
+      "true_peak_after_dbtp": -2.0,
+      "edge_artifact_handling": {
+        "known_t0_blip": "4-sample encoder transient documented in TRANSCRIPT_REPORT.md",
+        "max_sample_jump_fs": 0.054,
+        "impulses_surviving_decode": 0,
+        "mitigation": "6 ms cosine head fade + 8 ms tail fade + VAD head trim"
+      },
+      "time_saved_s": 4.183
+    }
+  ],
+  "full_voice": {
+    "gap_s": 0.3,
+    "integrated_lufs": -17.0,
+    "true_peak_dbtp": -2.4
+  }
+}

@@ -1,0 +1,48 @@
+{
+ "papercut": {
+  "duration_s": 40.0,
+  "size_mib": 6.59,
+  "decode_errors": 0,
+  "frozen_ratio": 0.0,
+  "longest_freezedetect_s": 0.0,
+  "scheduled_max_gap_s": 1.15,
+  "scheduled_mean_gap_s": 0.905,
+  "impact_word_events": 3,
+  "key_phrase_events": 9,
+  "active_layers": "7-9: paper sheets+grain, confetti floaters, progress chrome, dots, subtitle, phrase chip/cloud, word chips, paper phone (t<14.5s)",
+  "sync": {
+   "checked": 22,
+   "within_3_frames": 22,
+   "misses": [],
+   "pass": true
+  },
+  "loudness": {
+   "I": -15.9,
+   "TP": -2.1,
+   "sample_peak_dbfs": null
+  }
+ },
+ "glass": {
+  "duration_s": 40.0,
+  "size_mib": 5.37,
+  "decode_errors": 0,
+  "frozen_ratio": 0.0,
+  "longest_freezedetect_s": 0.0,
+  "scheduled_max_gap_s": 1.15,
+  "scheduled_mean_gap_s": 0.905,
+  "impact_word_events": 3,
+  "key_phrase_events": 9,
+  "active_layers": "8-10: gradient+grain, orange bloom, floor grid, center scrim, particles, RTL progress, dots, subtitle, glass panel, stamp text+glow",
+  "sync": {
+   "checked": 22,
+   "within_3_frames": 22,
+   "misses": [],
+   "pass": true
+  },
+  "loudness": {
+   "I": -15.9,
+   "TP": -2.1,
+   "sample_peak_dbfs": null
+  }
+ }
+}

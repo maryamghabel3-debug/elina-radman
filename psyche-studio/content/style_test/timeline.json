@@ -1,0 +1,3914 @@
+{
+ "version": 3,
+ "atempo": 1.12,
+ "pause_rule": "pauses > 0.75s -> 0.25s",
+ "color_roles": {
+  "trigger": "gold/mustard - trigger word (باشه/کوتاه)",
+  "negative": "coral/red - negative thought",
+  "reality": "mint/green - reality/question",
+  "structure": "indigo/violet - structural heading",
+  "ambient": "no text - visual-only beat"
+ },
+ "test_window_s": 40.0,
+ "stems": [
+  {
+   "stem": "cleaned_s1",
+   "source_file": "s01.mp3",
+   "cleaned_duration_s": 49.732,
+   "weak_region_original_s": [
+    27.0,
+    57.5
+   ],
+   "events": [
+    {
+     "phrase_id": 1,
+     "type": "phrase",
+     "t": 0.334,
+     "end": 2.575,
+     "text": "یه پیام ساده یک کوچیک چطور میتونه حال ما رو تغییر بده؟",
+     "role": null,
+     "reliability": "high",
+     "is_key": false,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 0.251,
+       "end": 0.387,
+       "text": "یه",
+       "role": null,
+       "reliability": "low",
+       "is_key": false
+      },
+      {
+       "t": 0.387,
+       "end": 0.532,
+       "text": "پیام",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 0.532,
+       "end": 0.722,
+       "text": "ساده",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 0.722,
+       "end": 0.79,
+       "text": "یک",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 0.79,
+       "end": 0.947,
+       "text": "کوچیک",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 0.947,
+       "end": 1.314,
+       "text": "چطور",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 1.314,
+       "end": 1.626,
+       "text": "میتونه",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 1.626,
+       "end": 1.87,
+       "text": "حال",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 1.87,
+       "end": 2.006,
+       "text": "ما",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 2.006,
+       "end": 2.114,
+       "text": "رو",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 2.114,
+       "end": 2.467,
+       "text": "تغییر",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 2.467,
+       "end": 2.711,
+       "text": "بده؟",
+       "role": null,
+       "reliability": "low",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 1.434,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 2.534,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 2,
+     "type": "phrase",
+     "t": 3.376,
+     "end": 5.125,
+     "text": "خب، تا حالا برا تون پیش اومد حتماً",
+     "role": null,
+     "reliability": "high",
+     "is_key": false,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 3.376,
+       "end": 3.864,
+       "text": "خب،",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 3.864,
+       "end": 4.0,
+       "text": "تا",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 4.0,
+       "end": 4.068,
+       "text": "حالا",
+       "role": null,
+       "reliability": "low",
+       "is_key": false
+      },
+      {
+       "t": 4.068,
+       "end": 4.244,
+       "text": "برا",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 4.244,
+       "end": 4.339,
+       "text": "تون",
+       "role": null,
+       "reliability": "low",
+       "is_key": false
+      },
+      {
+       "t": 4.339,
+       "end": 4.572,
+       "text": "پیش",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 4.572,
+       "end": 4.747,
+       "text": "اومد",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 4.747,
+       "end": 5.125,
+       "text": "حتماً",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 4.476,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 3,
+     "type": "phrase",
+     "t": 5.519,
+     "end": 8.325,
+     "text": "که به یکی پیام میدادین و اون برگشت گفته باشه",
+     "role": "trigger",
+     "reliability": "high",
+     "is_key": true,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 5.519,
+       "end": 5.679,
+       "text": "که",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 5.679,
+       "end": 5.839,
+       "text": "به",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 5.839,
+       "end": 6.058,
+       "text": "یکی",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 6.058,
+       "end": 6.218,
+       "text": "پیام",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 6.218,
+       "end": 6.68,
+       "text": "میدادین",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 6.68,
+       "end": 6.928,
+       "text": "و",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 6.928,
+       "end": 7.021,
+       "text": "اون",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 7.021,
+       "end": 7.378,
+       "text": "برگشت",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 7.378,
+       "end": 7.689,
+       "text": "گفته",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 7.689,
+       "end": 8.325,
+       "text": "باشه",
+       "role": "trigger",
+       "reliability": "high",
+       "is_key": true
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 6.619,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 7.719,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 4,
+     "type": "phrase",
+     "t": 8.325,
+     "end": 10.033,
+     "text": "یه جواب خیلی کوتاه داده",
+     "role": "trigger",
+     "reliability": "high",
+     "is_key": true,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 8.325,
+       "end": 8.605,
+       "text": "یه",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 8.605,
+       "end": 8.931,
+       "text": "جواب",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 8.931,
+       "end": 9.117,
+       "text": "خد",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 9.117,
+       "end": 9.489,
+       "text": "کوتاه",
+       "role": "trigger",
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 9.489,
+       "end": 10.033,
+       "text": "داده",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 9.425,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 5,
+     "type": "phrase",
+     "t": 10.033,
+     "end": 11.662,
+     "text": "و چه اتفاقی گفته داده؟",
+     "role": null,
+     "reliability": "high",
+     "is_key": false,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 10.033,
+       "end": 10.256,
+       "text": "و",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 10.256,
+       "end": 10.393,
+       "text": "چه",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 10.393,
+       "end": 10.822,
+       "text": "اتفاقی",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 10.822,
+       "end": 11.147,
+       "text": "گفته",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 11.147,
+       "end": 11.662,
+       "text": "داده؟",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 11.133,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 6,
+     "type": "phrase",
+     "t": 11.662,
+     "end": 12.656,
+     "text": "یهو!",
+     "role": null,
+     "reliability": "high",
+     "is_key": false,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 11.662,
+       "end": 12.656,
+       "text": "یهو!",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "phrase_id": 7,
+     "type": "phrase",
+     "t": 12.81,
+     "end": 14.336,
+     "text": "ما میریم توی یه فازه دیگه",
+     "role": null,
+     "reliability": "high",
+     "is_key": false,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 12.81,
+       "end": 12.93,
+       "text": "ما",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 12.93,
+       "end": 13.239,
+       "text": "میریم",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 13.239,
+       "end": 13.393,
+       "text": "توی",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 13.393,
+       "end": 13.496,
+       "text": "یه",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 13.496,
+       "end": 13.908,
+       "text": "فازه",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 13.908,
+       "end": 14.336,
+       "text": "دیگه",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 13.91,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 8,
+     "type": "phrase",
+     "t": 14.336,
+     "end": 15.759,
+     "text": "به خودمون میگیم",
+     "role": null,
+     "reliability": "high",
+     "is_key": false,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 14.336,
+       "end": 14.628,
+       "text": "به",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 14.628,
+       "end": 14.988,
+       "text": "خودمون",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 14.988,
+       "end": 15.759,
+       "text": "میگیم",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 15.436,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 9,
+     "type": "phrase",
+     "t": 15.759,
+     "end": 16.239,
+     "text": "اه!",
+     "role": null,
+     "reliability": "high",
+     "is_key": false,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 15.759,
+       "end": 16.239,
+       "text": "اه!",
+       "role": null,
+       "reliability": "low",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "phrase_id": 10,
+     "type": "phrase",
+     "t": 16.411,
+     "end": 17.113,
+     "text": "چی شد؟",
+     "role": "structure",
+     "reliability": "high",
+     "is_key": true,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 16.411,
+       "end": 16.582,
+       "text": "چی",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 16.582,
+       "end": 17.113,
+       "text": "شد؟",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "phrase_id": 11,
+     "type": "phrase",
+     "t": 17.113,
+     "end": 18.211,
+     "text": "چرا این‌طوری شد؟",
+     "role": null,
+     "reliability": "high",
+     "is_key": false,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 17.113,
+       "end": 17.336,
+       "text": "چرا",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 17.336,
+       "end": 17.645,
+       "text": "این‌طوری",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 17.645,
+       "end": 18.211,
+       "text": "شد؟",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "phrase_id": 12,
+     "type": "phrase",
+     "t": 18.211,
+     "end": 19.222,
+     "text": "چقدر کوتاه جواب داد",
+     "role": "trigger",
+     "reliability": "high",
+     "is_key": true,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 18.211,
+       "end": 18.399,
+       "text": "چقدر",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 18.399,
+       "end": 18.725,
+       "text": "کوتاه",
+       "role": "trigger",
+       "reliability": "high",
+       "is_key": true
+      },
+      {
+       "t": 18.725,
+       "end": 19.068,
+       "text": "جواب",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 19.068,
+       "end": 19.222,
+       "text": "داد",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 19.311,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 13,
+     "type": "phrase",
+     "t": 20.011,
+     "end": 22.996,
+     "text": "باشه. فکر میکنم ناراحت شده. شاید از اصلا عصبانییم.",
+     "role": "trigger",
+     "reliability": "medium",
+     "is_key": true,
+     "word_level_impact_allowed": false,
+     "words": [
+      {
+       "t": 20.011,
+       "end": 20.234,
+       "text": "باشه.",
+       "role": "trigger",
+       "reliability": "high",
+       "is_key": true
+      },
+      {
+       "t": 20.525,
+       "end": 21.074,
+       "text": "فکر",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 21.074,
+       "end": 21.451,
+       "text": "میکنم",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 21.451,
+       "end": 21.776,
+       "text": "ناراحت",
+       "role": "negative",
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 21.776,
+       "end": 22.034,
+       "text": "شده.",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 22.171,
+       "end": 22.498,
+       "text": "شاید",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 22.498,
+       "end": 22.557,
+       "text": "از",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 22.557,
+       "end": 22.654,
+       "text": "اصلا",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 22.654,
+       "end": 22.996,
+       "text": "عصبانییم.",
+       "role": "negative",
+       "reliability": "medium",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 21.111,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 22.211,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 23.311,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 14,
+     "type": "phrase",
+     "t": 23.58,
+     "end": 24.927,
+     "text": "نمیدونم. شاید اصلا برای شما هم نیستم.",
+     "role": null,
+     "reliability": "medium",
+     "is_key": false,
+     "word_level_impact_allowed": false,
+     "words": [
+      {
+       "t": 23.58,
+       "end": 23.765,
+       "text": "نمیدونم.",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 23.869,
+       "end": 24.233,
+       "text": "شاید",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 24.233,
+       "end": 24.395,
+       "text": "اصلا",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 24.395,
+       "end": 24.557,
+       "text": "برای",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 24.557,
+       "end": 24.638,
+       "text": "شما",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 24.638,
+       "end": 24.742,
+       "text": "هم",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 24.742,
+       "end": 24.927,
+       "text": "نیستم.",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 24.68,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 15,
+     "type": "phrase",
+     "t": 25.138,
+     "end": 26.912,
+     "text": "اصلا با من اهمیت نمیدونیم. حتما دوستم نداره.",
+     "role": "negative",
+     "reliability": "medium",
+     "is_key": true,
+     "word_level_impact_allowed": false,
+     "words": [
+      {
+       "t": 25.138,
+       "end": 25.469,
+       "text": "اصلا",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 25.469,
+       "end": 25.573,
+       "text": "با",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 25.573,
+       "end": 25.625,
+       "text": "من",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 25.625,
+       "end": 25.842,
+       "text": "اهمیت",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 25.842,
+       "end": 26.08,
+       "text": "نمیدونیم.",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 26.307,
+       "end": 26.512,
+       "text": "حتما",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 26.512,
+       "end": 26.707,
+       "text": "دوستم",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 26.707,
+       "end": 26.912,
+       "text": "نداره.",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 26.238,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 16,
+     "type": "phrase",
+     "t": 27.042,
+     "end": 27.974,
+     "text": "به خاطر این که دوستم نداره اینطوری جواب داده.",
+     "role": "negative",
+     "reliability": "medium",
+     "is_key": true,
+     "word_level_impact_allowed": false,
+     "words": [
+      {
+       "t": 27.042,
+       "end": 27.188,
+       "text": "به",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 27.188,
+       "end": 27.266,
+       "text": "خاطر",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 27.266,
+       "end": 27.332,
+       "text": "این",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 27.332,
+       "end": 27.356,
+       "text": "که",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 27.356,
+       "end": 27.451,
+       "text": "دوستم",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 27.451,
+       "end": 27.559,
+       "text": "نداره",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 27.559,
+       "end": 27.677,
+       "text": "اینطوری",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 27.677,
+       "end": 27.86,
+       "text": "جواب",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 27.86,
+       "end": 27.974,
+       "text": "داده.",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "phrase_id": 17,
+     "type": "phrase",
+     "t": 28.192,
+     "end": 30.162,
+     "text": "و این فکر را اینقدر ادامه پیدا میکنن",
+     "role": null,
+     "reliability": "medium",
+     "is_key": false,
+     "word_level_impact_allowed": false,
+     "words": [
+      {
+       "t": 28.192,
+       "end": 28.471,
+       "text": "و",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 28.471,
+       "end": 28.898,
+       "text": "این",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 28.898,
+       "end": 28.994,
+       "text": "فکر",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 28.994,
+       "end": 29.055,
+       "text": "را",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 29.055,
+       "end": 29.316,
+       "text": "اینقدر",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 29.316,
+       "end": 29.547,
+       "text": "ادامه",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 29.547,
+       "end": 29.747,
+       "text": "پیدا",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 29.747,
+       "end": 30.162,
+       "text": "میکنن",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 29.292,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 18,
+     "type": "phrase",
+     "t": 30.162,
+     "end": 34.206,
+     "text": "که یه خودتون میانید و ببینید حالتون هم عوض شده.",
+     "role": null,
+     "reliability": "medium",
+     "is_key": false,
+     "word_level_impact_allowed": false,
+     "words": [
+      {
+       "t": 30.162,
+       "end": 31.085,
+       "text": "که",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 31.085,
+       "end": 31.485,
+       "text": "یه",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 31.485,
+       "end": 32.151,
+       "text": "خودتون",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 32.151,
+       "end": 32.401,
+       "text": "میانید",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 32.401,
+       "end": 32.445,
+       "text": "و",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 32.445,
+       "end": 32.827,
+       "text": "ببینید",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 32.827,
+       "end": 33.59,
+       "text": "حالتون",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 33.59,
+       "end": 33.737,
+       "text": "هم",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 33.737,
+       "end": 33.957,
+       "text": "عوض",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 33.957,
+       "end": 34.206,
+       "text": "شده.",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 31.262,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 32.362,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 33.462,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 19,
+     "type": "phrase",
+     "t": 34.383,
+     "end": 36.451,
+     "text": "یعنی دیگه اون آدم یه ساعت قبل نیستیم.",
+     "role": null,
+     "reliability": "medium",
+     "is_key": false,
+     "word_level_impact_allowed": false,
+     "words": [
+      {
+       "t": 34.383,
+       "end": 34.852,
+       "text": "یعنی",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 34.852,
+       "end": 35.102,
+       "text": "دیگه",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 35.102,
+       "end": 35.249,
+       "text": "اون",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 35.249,
+       "end": 35.483,
+       "text": "آدم",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 35.483,
+       "end": 35.704,
+       "text": "یه",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 35.704,
+       "end": 35.906,
+       "text": "ساعت",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 35.906,
+       "end": 36.15,
+       "text": "قبل",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 36.15,
+       "end": 36.451,
+       "text": "نیستیم.",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 35.483,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 20,
+     "type": "phrase",
+     "t": 36.451,
+     "end": 37.714,
+     "text": "الان عصبانی نیترین",
+     "role": "negative",
+     "reliability": "medium",
+     "is_key": true,
+     "word_level_impact_allowed": false,
+     "words": [
+      {
+       "t": 36.451,
+       "end": 37.068,
+       "text": "الان",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 37.068,
+       "end": 37.283,
+       "text": "عصبانی",
+       "role": "negative",
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 37.283,
+       "end": 37.714,
+       "text": "نیترین",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 37.551,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 21,
+     "type": "phrase",
+     "t": 37.714,
+     "end": 38.714,
+     "text": "الان ناراحت",
+     "role": "negative",
+     "reliability": "medium",
+     "is_key": true,
+     "word_level_impact_allowed": false,
+     "words": [
+      {
+       "t": 37.714,
+       "end": 38.363,
+       "text": "الان",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 38.363,
+       "end": 38.714,
+       "text": "ناراحت",
+       "role": "negative",
+       "reliability": "medium",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 38.814,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 22,
+     "type": "phrase",
+     "t": 39.232,
+     "end": 40.92,
+     "text": "و حالا حالتون خرابه",
+     "role": null,
+     "reliability": "high",
+     "is_key": false,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 39.232,
+       "end": 39.684,
+       "text": "و",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 39.684,
+       "end": 39.918,
+       "text": "حالا",
+       "role": null,
+       "reliability": "low",
+       "is_key": false
+      },
+      {
+       "t": 39.918,
+       "end": 40.319,
+       "text": "حالتون",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 40.319,
+       "end": 40.92,
+       "text": "خرابه",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 40.332,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 23,
+     "type": "phrase",
+     "t": 40.92,
+     "end": 42.458,
+     "text": "دوست دارین باشته او کنین",
+     "role": null,
+     "reliability": "high",
+     "is_key": false,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 40.92,
+       "end": 41.422,
+       "text": "دوست دارین",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 41.422,
+       "end": 41.789,
+       "text": "باشته",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 41.789,
+       "end": 41.89,
+       "text": "او",
+       "role": null,
+       "reliability": "low",
+       "is_key": false
+      },
+      {
+       "t": 41.89,
+       "end": 42.458,
+       "text": "کنین",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 42.02,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 24,
+     "type": "phrase",
+     "t": 42.458,
+     "end": 44.931,
+     "text": "دوست دارین پیام بدین روابط رو به هم بزنین",
+     "role": null,
+     "reliability": "high",
+     "is_key": false,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 42.458,
+       "end": 42.976,
+       "text": "دوست دارین",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 42.976,
+       "end": 43.277,
+       "text": "پیام",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 43.277,
+       "end": 43.51,
+       "text": "بدین",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 43.51,
+       "end": 43.978,
+       "text": "روابط",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 43.978,
+       "end": 44.095,
+       "text": "رو",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 44.095,
+       "end": 44.196,
+       "text": "به",
+       "role": null,
+       "reliability": "low",
+       "is_key": false
+      },
+      {
+       "t": 44.196,
+       "end": 44.296,
+       "text": "هم",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 44.296,
+       "end": 44.931,
+       "text": "بزنین",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 43.558,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 44.658,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 25,
+     "type": "phrase",
+     "t": 44.931,
+     "end": 45.917,
+     "text": "دوست دارین بلاکش کنین",
+     "role": "negative",
+     "reliability": "high",
+     "is_key": true,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 44.931,
+       "end": 45.449,
+       "text": "دوست دارین",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 45.449,
+       "end": 45.85,
+       "text": "بلاکش",
+       "role": "negative",
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 45.85,
+       "end": 46.276,
+       "text": "کنین",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 46.031,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 26,
+     "type": "phrase",
+     "t": 46.552,
+     "end": 47.588,
+     "text": "شاید هم",
+     "role": null,
+     "reliability": "high",
+     "is_key": false,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 46.552,
+       "end": 47.571,
+       "text": "شاید",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 47.571,
+       "end": 47.997,
+       "text": "هم",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 47.652,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 27,
+     "type": "phrase",
+     "t": 48.039,
+     "end": 49.152,
+     "text": "بلاکش کرده باشین",
+     "role": "negative",
+     "reliability": "high",
+     "is_key": true,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 48.039,
+       "end": 48.527,
+       "text": "بلاکش",
+       "role": "negative",
+       "reliability": "high",
+       "is_key": true
+      },
+      {
+       "t": 48.527,
+       "end": 48.812,
+       "text": "کرده",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 48.812,
+       "end": 49.152,
+       "text": "باشین",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "stem": "cleaned_s2",
+   "source_file": "s02.mp3",
+   "cleaned_duration_s": 26.939,
+   "weak_region_original_s": null,
+   "events": [
+    {
+     "phrase_id": 1,
+     "type": "phrase",
+     "t": 0.28,
+     "end": 3.098,
+     "text": "خب، خب، استپ کنیم، بین برگردیم اخب، ببینیم واقعاً چی شد.",
+     "role": "structure",
+     "reliability": "high",
+     "is_key": true,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 0.28,
+       "end": 0.552,
+       "text": "خب،",
+       "role": null,
+       "reliability": "low",
+       "is_key": false
+      },
+      {
+       "t": 0.552,
+       "end": 0.748,
+       "text": "خب،",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 0.748,
+       "end": 0.926,
+       "text": "استپ",
+       "role": "structure",
+       "reliability": "low",
+       "is_key": false
+      },
+      {
+       "t": 0.926,
+       "end": 1.276,
+       "text": "کنیم،",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 1.276,
+       "end": 1.402,
+       "text": "بین",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 1.402,
+       "end": 1.865,
+       "text": "برگردیم",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 1.865,
+       "end": 2.257,
+       "text": "اخب،",
+       "role": null,
+       "reliability": "low",
+       "is_key": false
+      },
+      {
+       "t": 2.257,
+       "end": 2.481,
+       "text": "ببینیم",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 2.481,
+       "end": 2.831,
+       "text": "واقعاً",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 2.831,
+       "end": 2.916,
+       "text": "چی",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 2.916,
+       "end": 3.098,
+       "text": "شد.",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 1.38,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 2.48,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 3.58,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 2,
+     "type": "phrase",
+     "t": 3.77,
+     "end": 7.77,
+     "text": "همه چیز از از اینجایی شروع شد که اون فقط یه جواب کوتاه نوشت، خیلی کوتاه و گفت باشیم.",
+     "role": "trigger",
+     "reliability": "high",
+     "is_key": true,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 3.77,
+       "end": 3.994,
+       "text": "همه",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 3.994,
+       "end": 4.092,
+       "text": "چیز",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 4.092,
+       "end": 4.191,
+       "text": "از",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 4.191,
+       "end": 4.261,
+       "text": "از",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 4.261,
+       "end": 4.457,
+       "text": "اینجایی",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 4.457,
+       "end": 4.667,
+       "text": "شروع",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 4.667,
+       "end": 4.927,
+       "text": "شد",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 4.927,
+       "end": 5.079,
+       "text": "که",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 5.079,
+       "end": 5.186,
+       "text": "اون",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 5.186,
+       "end": 5.414,
+       "text": "فقط",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 5.414,
+       "end": 5.566,
+       "text": "یه",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 5.566,
+       "end": 5.839,
+       "text": "جواب",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 5.839,
+       "end": 6.159,
+       "text": "کوتاه",
+       "role": "trigger",
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 6.159,
+       "end": 6.736,
+       "text": "نوشت،",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 6.736,
+       "end": 7.01,
+       "text": "خیلی",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 7.01,
+       "end": 7.329,
+       "text": "کوتاه",
+       "role": "trigger",
+       "reliability": "high",
+       "is_key": true
+      },
+      {
+       "t": 7.329,
+       "end": 7.42,
+       "text": "و",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 7.42,
+       "end": 7.633,
+       "text": "گفت",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 7.633,
+       "end": 7.907,
+       "text": "باشیم.",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 4.87,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 5.97,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 7.07,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 8.17,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 3,
+     "type": "phrase",
+     "t": 8.621,
+     "end": 14.018,
+     "text": "ذهنماشون عادت نداره همه چی اینقدر ساده باشه، شروع میکنه به پر کردن و جاهای خالی.",
+     "role": "trigger",
+     "reliability": "high",
+     "is_key": true,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 8.621,
+       "end": 9.123,
+       "text": "ذهنماشون",
+       "role": "structure",
+       "reliability": "high",
+       "is_key": true
+      },
+      {
+       "t": 9.123,
+       "end": 9.518,
+       "text": "عادت",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 9.518,
+       "end": 9.991,
+       "text": "نداره",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 9.991,
+       "end": 10.347,
+       "text": "همه",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 10.347,
+       "end": 10.397,
+       "text": "چی",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 10.397,
+       "end": 10.888,
+       "text": "اینقدر",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 10.888,
+       "end": 11.193,
+       "text": "ساده",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 11.193,
+       "end": 11.886,
+       "text": "باشه،",
+       "role": "trigger",
+       "reliability": "high",
+       "is_key": true
+      },
+      {
+       "t": 11.886,
+       "end": 12.191,
+       "text": "شروع",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 12.191,
+       "end": 12.478,
+       "text": "میکنه",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 12.478,
+       "end": 12.614,
+       "text": "به",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 12.614,
+       "end": 12.8,
+       "text": "پر",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 12.8,
+       "end": 13.121,
+       "text": "کردن",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 13.121,
+       "end": 13.223,
+       "text": "و",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 13.223,
+       "end": 13.527,
+       "text": "جاهای",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 13.527,
+       "end": 14.018,
+       "text": "خالی.",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 9.721,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 10.821,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 11.921,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 13.021,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 4,
+     "type": "phrase",
+     "t": 14.153,
+     "end": 18.806,
+     "text": "و از اینجایی که همیشه میخواسته بقایی ما رو حفظ کنه، اولویت با بدترین چیز هست.",
+     "role": null,
+     "reliability": "high",
+     "is_key": false,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 14.153,
+       "end": 14.289,
+       "text": "و",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 14.289,
+       "end": 14.39,
+       "text": "از",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 14.39,
+       "end": 14.83,
+       "text": "اینجایی",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 14.83,
+       "end": 14.83,
+       "text": "که",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 14.83,
+       "end": 15.253,
+       "text": "همیشه",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 15.253,
+       "end": 15.727,
+       "text": "میخواسته",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 15.727,
+       "end": 16.116,
+       "text": "بقایی",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 16.116,
+       "end": 16.251,
+       "text": "ما",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 16.251,
+       "end": 16.353,
+       "text": "رو",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 16.353,
+       "end": 16.607,
+       "text": "حفظ",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 16.607,
+       "end": 17.283,
+       "text": "کنه،",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 17.283,
+       "end": 17.791,
+       "text": "اولویت",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 17.791,
+       "end": 17.96,
+       "text": "با",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 17.96,
+       "end": 18.4,
+       "text": "بدترین",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 18.4,
+       "end": 18.586,
+       "text": "چیز",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 18.586,
+       "end": 18.806,
+       "text": "هست.",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 15.253,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 16.353,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 17.453,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 18.553,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 5,
+     "type": "phrase",
+     "t": 18.806,
+     "end": 23.404,
+     "text": "پس میریم سراغ بدترین و دردناکترین چیز ها تکن بود اطلاعات رو جبران کنیم.",
+     "role": null,
+     "reliability": "high",
+     "is_key": false,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 18.806,
+       "end": 19.398,
+       "text": "پس",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 19.398,
+       "end": 19.669,
+       "text": "میریم",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 19.669,
+       "end": 20.143,
+       "text": "سراغ",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 20.143,
+       "end": 20.582,
+       "text": "بدترین",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 20.582,
+       "end": 20.684,
+       "text": "و",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 20.684,
+       "end": 21.361,
+       "text": "دردناکترین",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 21.361,
+       "end": 21.596,
+       "text": "چیز",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 21.596,
+       "end": 21.713,
+       "text": "ها",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 21.713,
+       "end": 21.963,
+       "text": "تکن",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 21.963,
+       "end": 22.081,
+       "text": "بود",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 22.081,
+       "end": 22.537,
+       "text": "اطلاعات",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 22.537,
+       "end": 22.61,
+       "text": "رو",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 22.61,
+       "end": 22.904,
+       "text": "جبران",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 22.904,
+       "end": 23.404,
+       "text": "کنیم.",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 19.906,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 21.006,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 22.106,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 23.206,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 6,
+     "type": "phrase",
+     "t": 23.477,
+     "end": 24.521,
+     "text": "جالب شد نه؟",
+     "role": null,
+     "reliability": "high",
+     "is_key": false,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 23.477,
+       "end": 23.801,
+       "text": "جالب",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 23.801,
+       "end": 23.933,
+       "text": "شد",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 23.933,
+       "end": 24.521,
+       "text": "نه؟",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "phrase_id": 7,
+     "type": "phrase",
+     "t": 24.521,
+     "end": 25.138,
+     "text": "به همین سادگی.",
+     "role": null,
+     "reliability": "high",
+     "is_key": false,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 24.521,
+       "end": 24.595,
+       "text": "به",
+       "role": null,
+       "reliability": "low",
+       "is_key": false
+      },
+      {
+       "t": 24.595,
+       "end": 24.756,
+       "text": "همین",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 24.756,
+       "end": 25.138,
+       "text": "سادگی.",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "stem": "cleaned_s3",
+   "source_file": "s03.mp3",
+   "cleaned_duration_s": 29.39,
+   "weak_region_original_s": null,
+   "events": [
+    {
+     "phrase_id": 1,
+     "type": "phrase",
+     "t": 0.359,
+     "end": 0.897,
+     "text": "خب، حالا چی کار کنیم؟",
+     "role": null,
+     "reliability": "high",
+     "is_key": false,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 0.359,
+       "end": 0.495,
+       "text": "خب،",
+       "role": null,
+       "reliability": "low",
+       "is_key": false
+      },
+      {
+       "t": 0.495,
+       "end": 0.581,
+       "text": "حالا",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 0.581,
+       "end": 0.624,
+       "text": "چی",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 0.624,
+       "end": 0.725,
+       "text": "کار",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 0.725,
+       "end": 0.897,
+       "text": "کنیم؟",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "phrase_id": 2,
+     "type": "phrase",
+     "t": 0.897,
+     "end": 2.521,
+     "text": "باید بتونیم واقعیت رو تفکیک کنیم.",
+     "role": "reality",
+     "reliability": "high",
+     "is_key": true,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 0.897,
+       "end": 0.983,
+       "text": "باید",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 0.983,
+       "end": 1.148,
+       "text": "بتونیم",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 1.148,
+       "end": 1.594,
+       "text": "واقعیت",
+       "role": "reality",
+       "reliability": "high",
+       "is_key": true
+      },
+      {
+       "t": 1.594,
+       "end": 1.677,
+       "text": "رو",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 1.677,
+       "end": 2.058,
+       "text": "تفکیک",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 2.058,
+       "end": 2.521,
+       "text": "کنیم.",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 1.997,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 3,
+     "type": "phrase",
+     "t": 2.637,
+     "end": 3.662,
+     "text": "واقعیت چیه؟",
+     "role": "reality",
+     "reliability": "high",
+     "is_key": true,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 2.637,
+       "end": 3.05,
+       "text": "واقعیت",
+       "role": "reality",
+       "reliability": "high",
+       "is_key": true
+      },
+      {
+       "t": 3.05,
+       "end": 3.662,
+       "text": "چیه؟",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "phrase_id": 4,
+     "type": "phrase",
+     "t": 3.662,
+     "end": 5.085,
+     "text": "جواب کوتاه باشه.",
+     "role": "trigger",
+     "reliability": "high",
+     "is_key": true,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 3.662,
+       "end": 4.043,
+       "text": "جواب",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 4.043,
+       "end": 4.423,
+       "text": "کوتاه",
+       "role": "trigger",
+       "reliability": "low",
+       "is_key": false
+      },
+      {
+       "t": 4.423,
+       "end": 5.085,
+       "text": "باشه.",
+       "role": "trigger",
+       "reliability": "high",
+       "is_key": true
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 4.762,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 5,
+     "type": "phrase",
+     "t": 5.366,
+     "end": 6.376,
+     "text": "فکرهای من چیه؟",
+     "role": null,
+     "reliability": "high",
+     "is_key": false,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 5.366,
+       "end": 5.813,
+       "text": "فکرهای",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 5.813,
+       "end": 5.995,
+       "text": "من",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 5.995,
+       "end": 6.376,
+       "text": "چیه؟",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "phrase_id": 6,
+     "type": "phrase",
+     "t": 6.376,
+     "end": 7.686,
+     "text": "همه اون دستانایی که گفتن.",
+     "role": null,
+     "reliability": "high",
+     "is_key": false,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 6.376,
+       "end": 6.591,
+       "text": "همه",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 6.591,
+       "end": 6.707,
+       "text": "اون",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 6.707,
+       "end": 7.281,
+       "text": "دستانایی",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 7.281,
+       "end": 7.297,
+       "text": "که",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 7.297,
+       "end": 7.686,
+       "text": "گفتن.",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 7.476,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 7,
+     "type": "phrase",
+     "t": 8.123,
+     "end": 10.244,
+     "text": "واقعیت چیزی که واقعا نه تفاق افتاده",
+     "role": "reality",
+     "reliability": "high",
+     "is_key": true,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 8.123,
+       "end": 8.576,
+       "text": "واقعیت",
+       "role": "reality",
+       "reliability": "high",
+       "is_key": true
+      },
+      {
+       "t": 8.576,
+       "end": 8.868,
+       "text": "چیزی",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 8.868,
+       "end": 8.965,
+       "text": "که",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 8.965,
+       "end": 9.321,
+       "text": "واقعا",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 9.321,
+       "end": 9.418,
+       "text": "نه",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 9.418,
+       "end": 9.71,
+       "text": "تفاق",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 9.71,
+       "end": 10.244,
+       "text": "افتاده",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 9.223,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 8,
+     "type": "phrase",
+     "t": 10.244,
+     "end": 12.868,
+     "text": "اما تفسیر دستانایی که ذهن من اون رو ساخته.",
+     "role": "negative",
+     "reliability": "high",
+     "is_key": true,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 10.244,
+       "end": 10.601,
+       "text": "اما",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 10.601,
+       "end": 11.07,
+       "text": "تفسیر",
+       "role": "negative",
+       "reliability": "high",
+       "is_key": true
+      },
+      {
+       "t": 11.07,
+       "end": 11.556,
+       "text": "دستانایی",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 11.556,
+       "end": 11.621,
+       "text": "که",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 11.621,
+       "end": 11.961,
+       "text": "ذهن",
+       "role": "structure",
+       "reliability": "high",
+       "is_key": true
+      },
+      {
+       "t": 11.961,
+       "end": 12.204,
+       "text": "من",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 12.204,
+       "end": 12.414,
+       "text": "اون",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 12.414,
+       "end": 12.544,
+       "text": "رو",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 12.544,
+       "end": 12.868,
+       "text": "ساخته.",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 11.344,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 12.444,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 9,
+     "type": "phrase",
+     "t": 13.386,
+     "end": 16.682,
+     "text": "پس بجای اینکه جای خالی رو با حدس های خودمون پر کنیم,",
+     "role": "structure",
+     "reliability": "high",
+     "is_key": true,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 13.386,
+       "end": 13.548,
+       "text": "پس",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 13.548,
+       "end": 13.839,
+       "text": "بجای",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 13.839,
+       "end": 14.115,
+       "text": "اینکه",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 14.115,
+       "end": 14.325,
+       "text": "جای",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 14.325,
+       "end": 14.633,
+       "text": "خالی",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 14.633,
+       "end": 14.714,
+       "text": "رو",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 14.714,
+       "end": 14.86,
+       "text": "با",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 14.86,
+       "end": 15.149,
+       "text": "حدس",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 15.149,
+       "end": 15.361,
+       "text": "های",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 15.361,
+       "end": 15.889,
+       "text": "خودمون",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 15.889,
+       "end": 16.101,
+       "text": "پر",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 16.101,
+       "end": 16.682,
+       "text": "کنیم,",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 14.486,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 15.586,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 10,
+     "type": "phrase",
+     "t": 16.788,
+     "end": 18.444,
+     "text": "بهتره که یه سوال بپرسیم.",
+     "role": "reality",
+     "reliability": "high",
+     "is_key": true,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 16.788,
+       "end": 17.175,
+       "text": "بهتره",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 17.175,
+       "end": 17.246,
+       "text": "که",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 17.246,
+       "end": 17.369,
+       "text": "یه",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 17.369,
+       "end": 17.686,
+       "text": "سوال",
+       "role": "reality",
+       "reliability": "high",
+       "is_key": true
+      },
+      {
+       "t": 17.686,
+       "end": 18.444,
+       "text": "بپرسیم.",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 17.888,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 11,
+     "type": "phrase",
+     "t": 18.444,
+     "end": 24.909,
+     "text": "مثلا، چه پیام کوتاه دادی؟ حالت خوبه؟ سرت شلوغه؟ نیاز به کمک داری؟",
+     "role": "trigger",
+     "reliability": "high",
+     "is_key": true,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 18.444,
+       "end": 19.395,
+       "text": "مثلا،",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 19.395,
+       "end": 19.553,
+       "text": "چه",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 19.553,
+       "end": 19.853,
+       "text": "پیام",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 19.853,
+       "end": 20.434,
+       "text": "کوتاه",
+       "role": "trigger",
+       "reliability": "high",
+       "is_key": true
+      },
+      {
+       "t": 20.434,
+       "end": 20.857,
+       "text": "دادی؟",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 20.857,
+       "end": 21.209,
+       "text": "حالت",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 21.209,
+       "end": 22.038,
+       "text": "خوبه؟",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 22.038,
+       "end": 22.39,
+       "text": "سرت",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 22.39,
+       "end": 23.235,
+       "text": "شلوغه؟",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 23.235,
+       "end": 23.588,
+       "text": "نیاز",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 23.588,
+       "end": 23.711,
+       "text": "به",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 23.711,
+       "end": 24.046,
+       "text": "کمک",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 24.046,
+       "end": 24.909,
+       "text": "داری؟",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 19.544,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 20.644,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 21.744,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 22.844,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 23.944,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 12,
+     "type": "phrase",
+     "t": 24.909,
+     "end": 29.225,
+     "text": "این طوری اطلاعات و با چیزای درست پر میکنیم، نه چیزای که فکر میکنیم.",
+     "role": null,
+     "reliability": "high",
+     "is_key": false,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 24.909,
+       "end": 25.085,
+       "text": "این",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 25.085,
+       "end": 25.332,
+       "text": "طوری",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 25.332,
+       "end": 25.843,
+       "text": "اطلاعات",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 25.843,
+       "end": 25.949,
+       "text": "و",
+       "role": null,
+       "reliability": "low",
+       "is_key": false
+      },
+      {
+       "t": 25.949,
+       "end": 26.019,
+       "text": "با",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 26.019,
+       "end": 26.371,
+       "text": "چیزای",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 26.371,
+       "end": 26.688,
+       "text": "درست",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 26.688,
+       "end": 26.953,
+       "text": "پر",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 26.953,
+       "end": 27.728,
+       "text": "میکنیم،",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 27.728,
+       "end": 27.834,
+       "text": "نه",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 27.834,
+       "end": 28.221,
+       "text": "چیزای",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 28.221,
+       "end": 28.433,
+       "text": "که",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 28.433,
+       "end": 28.838,
+       "text": "فکر",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 28.838,
+       "end": 29.225,
+       "text": "میکنیم.",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 26.009,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 27.109,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 28.209,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    }
+   ]
+  },
+  {
+   "stem": "cleaned_s4",
+   "source_file": "s04.mp3",
+   "cleaned_duration_s": 7.964,
+   "weak_region_original_s": null,
+   "events": [
+    {
+     "phrase_id": 1,
+     "type": "phrase",
+     "t": 0.351,
+     "end": 2.383,
+     "text": "و اینطوری حالمون احتمالا به خاطره یه باشه ساده خراب نمیشه.",
+     "role": "trigger",
+     "reliability": "high",
+     "is_key": true,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 0.351,
+       "end": 0.512,
+       "text": "و",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 0.512,
+       "end": 0.659,
+       "text": "اینطوری",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 0.659,
+       "end": 0.813,
+       "text": "حالمون",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 0.813,
+       "end": 1.059,
+       "text": "احتمالا",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 1.059,
+       "end": 1.115,
+       "text": "به",
+       "role": null,
+       "reliability": "low",
+       "is_key": false
+      },
+      {
+       "t": 1.115,
+       "end": 1.335,
+       "text": "خاطره",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 1.335,
+       "end": 1.444,
+       "text": "یه",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 1.444,
+       "end": 1.679,
+       "text": "باشه",
+       "role": "trigger",
+       "reliability": "high",
+       "is_key": true
+      },
+      {
+       "t": 1.679,
+       "end": 2.054,
+       "text": "ساده",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 2.054,
+       "end": 2.336,
+       "text": "خراب",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 2.336,
+       "end": 2.672,
+       "text": "نمیشه.",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 1.451,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 2.551,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "phrase_id": 2,
+     "type": "phrase",
+     "t": 3.322,
+     "end": 7.264,
+     "text": "یادتون باشه هر فکر که میاد توی ذهنمون لزوماً واقعیت نداره.",
+     "role": "trigger",
+     "reliability": "high",
+     "is_key": true,
+     "word_level_impact_allowed": true,
+     "words": [
+      {
+       "t": 3.322,
+       "end": 3.697,
+       "text": "یادتون",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 3.697,
+       "end": 4.01,
+       "text": "باشه",
+       "role": "trigger",
+       "reliability": "high",
+       "is_key": true
+      },
+      {
+       "t": 4.01,
+       "end": 4.198,
+       "text": "هر",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 4.198,
+       "end": 4.463,
+       "text": "فکر",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 4.463,
+       "end": 4.589,
+       "text": "که",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 4.589,
+       "end": 4.87,
+       "text": "میاد",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 4.87,
+       "end": 5.089,
+       "text": "توی",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      },
+      {
+       "t": 5.089,
+       "end": 5.652,
+       "text": "ذهنمون",
+       "role": "structure",
+       "reliability": "high",
+       "is_key": true
+      },
+      {
+       "t": 5.652,
+       "end": 6.356,
+       "text": "لزوماً",
+       "role": null,
+       "reliability": "medium",
+       "is_key": false
+      },
+      {
+       "t": 6.356,
+       "end": 6.888,
+       "text": "واقعیت",
+       "role": "reality",
+       "reliability": "high",
+       "is_key": true
+      },
+      {
+       "t": 6.888,
+       "end": 7.264,
+       "text": "نداره.",
+       "role": null,
+       "reliability": "high",
+       "is_key": false
+      }
+     ]
+    },
+    {
+     "type": "visual_beat",
+     "t": 4.422,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 5.522,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    },
+    {
+     "type": "visual_beat",
+     "t": 6.622,
+     "text": null,
+     "role": "ambient",
+     "reliability": "high",
+     "is_key": false
+    }
+   ]
+  }
+ ]
+}
