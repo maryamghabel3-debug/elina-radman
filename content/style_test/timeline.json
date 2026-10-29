@@ -1,0 +1,113 @@
+{
+  "version": "v3",
+  "source": "s01 (cleaned, non-destructive pipeline); no s01_retry exists",
+  "duration": 40.0,
+  "sampleRate": 44100,
+  "note": "Reconstructed timeline driving BasheV3 kinetic typography. Exact word-level impacts only for high-reliability words outside the s01 off-mic span (orig 27-57.5 s). Medium/low-reliability words in that span are phrase-level only.",
+  "keyTerms": [
+    "باشه", "چی شد؟", "چرا این‌قدر کوتاه؟", "ناراحت شده؟", "عصبانی شده؟",
+    "دوستم نداره؟", "بلاکش کنم", "استپ", "واقعیت", "تفسیر", "ذهن", "جای خالی",
+    "سؤال بپرسیم", "حقیقت نیست"
+  ],
+  "weakRegion": { "start": 27.0, "end": 57.5, "rule": "phrase-level panels only; no exact word stamps" },
+  "stems": [
+    {
+      "stem": "cleaned_s1",
+      "events": [
+        {
+          "t": 0.0, "end": 3.9, "text": "باشه.", "type": "phrase", "is_key": true,
+          "color_role": "accent", "reliability": "high",
+          "words": [
+            {"t": 0.0, "end": 3.9, "text": "باشه.", "is_key": true, "color_role": "accent", "reliability": "high", "impact": true}
+          ]
+        },
+        {
+          "t": 4.0, "end": 7.9, "text": "چی شد؟", "type": "phrase", "is_key": true,
+          "color_role": "question", "reliability": "high",
+          "words": [
+            {"t": 4.0, "end": 5.6, "text": "چی", "is_key": false, "color_role": "neutral", "reliability": "high"},
+            {"t": 5.6, "end": 7.9, "text": "شد؟", "is_key": true, "color_role": "question", "reliability": "high"}
+          ]
+        },
+        {
+          "t": 8.0, "end": 11.9, "text": "چرا این‌قدر کوتاه؟", "type": "phrase", "is_key": true,
+          "color_role": "question", "reliability": "high",
+          "words": [
+            {"t": 8.0, "end": 9.4, "text": "چرا", "is_key": false, "color_role": "neutral", "reliability": "high"},
+            {"t": 9.4, "end": 10.6, "text": "این‌قدر", "is_key": true, "color_role": "question", "reliability": "high"},
+            {"t": 10.6, "end": 11.9, "text": "کوتاه؟", "is_key": true, "color_role": "question", "reliability": "high", "impact": true}
+          ]
+        },
+        {
+          "t": 12.0, "end": 15.9, "text": "ناراحت شده؟", "type": "phrase", "is_key": true,
+          "color_role": "negative", "reliability": "high",
+          "words": [
+            {"t": 12.0, "end": 14.0, "text": "ناراحت", "is_key": true, "color_role": "negative", "reliability": "high"},
+            {"t": 14.0, "end": 15.9, "text": "شده؟", "is_key": false, "color_role": "neutral", "reliability": "high"}
+          ]
+        },
+        {
+          "t": 16.0, "end": 19.9, "text": "عصبانی شده؟", "type": "phrase", "is_key": true,
+          "color_role": "negative", "reliability": "high",
+          "words": [
+            {"t": 16.0, "end": 17.6, "text": "عصبانی", "is_key": true, "color_role": "negative", "reliability": "high"},
+            {"t": 17.6, "end": 18.3, "text": "شد؟", "is_key": false, "color_role": "neutral", "reliability": "high"},
+            {"t": 18.399, "end": 19.9, "text": "کوتاه", "is_key": true, "color_role": "negative", "reliability": "high", "impact": true}
+          ]
+        },
+        {
+          "t": 20.0, "end": 23.9, "text": "دوستم نداره؟", "type": "phrase", "is_key": true,
+          "color_role": "question", "reliability": "high",
+          "words": [
+            {"t": 20.011, "end": 20.9, "text": "باشه.", "is_key": true, "color_role": "accent", "reliability": "high", "impact": true},
+            {"t": 21.0, "end": 22.6, "text": "دوستم", "is_key": false, "color_role": "neutral", "reliability": "high"},
+            {"t": 22.6, "end": 23.9, "text": "نداره؟", "is_key": true, "color_role": "question", "reliability": "high"}
+          ]
+        },
+        {
+          "t": 24.0, "end": 27.4, "text": "بلاکش کنم", "type": "phrase", "is_key": true,
+          "color_role": "action", "reliability": "medium",
+          "words": [
+            {"t": 24.0, "end": 25.9, "text": "بلاکش", "is_key": true, "color_role": "action", "reliability": "medium"},
+            {"t": 25.9, "end": 27.4, "text": "کنم", "is_key": false, "color_role": "neutral", "reliability": "medium"}
+          ]
+        },
+        {
+          "t": 27.5, "end": 30.9, "text": "استپ — واقعیت", "type": "phrase", "is_key": true,
+          "color_role": "contrast", "reliability": "medium",
+          "words": [
+            {"t": 27.5, "end": 29.0, "text": "استپ", "is_key": true, "color_role": "contrast", "reliability": "medium"},
+            {"t": 29.0, "end": 30.9, "text": "واقعیت", "is_key": true, "color_role": "contrast", "reliability": "medium"}
+          ],
+          "weakRegionPhrase": true
+        },
+        {
+          "t": 31.0, "end": 34.4, "text": "تفسیر — ذهن", "type": "phrase", "is_key": true,
+          "color_role": "contrast", "reliability": "medium",
+          "words": [
+            {"t": 31.0, "end": 32.7, "text": "تفسیر", "is_key": true, "color_role": "contrast", "reliability": "medium"},
+            {"t": 32.7, "end": 34.4, "text": "ذهن", "is_key": true, "color_role": "contrast", "reliability": "medium"}
+          ],
+          "weakRegionPhrase": true
+        },
+        {
+          "t": 34.5, "end": 37.9, "text": "جای خالی — سؤال بپرسیم", "type": "phrase", "is_key": true,
+          "color_role": "open", "reliability": "medium",
+          "words": [
+            {"t": 34.5, "end": 36.0, "text": "جای", "is_key": true, "color_role": "open", "reliability": "medium"},
+            {"t": 36.0, "end": 37.9, "text": "خالی — سؤال بپرسیم", "is_key": true, "color_role": "open", "reliability": "medium"}
+          ],
+          "weakRegionPhrase": true
+        },
+        {
+          "t": 38.0, "end": 40.0, "text": "حقیقت نیست", "type": "phrase", "is_key": true,
+          "color_role": "reveal", "reliability": "high",
+          "words": [
+            {"t": 38.0, "end": 39.2, "text": "حقیقت", "is_key": true, "color_role": "reveal", "reliability": "high"},
+            {"t": 39.2, "end": 40.0, "text": "نیست", "is_key": false, "color_role": "neutral", "reliability": "high"}
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "name": "remotion",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Project 001 V3 style comparison — BasheV3 dark-glass motion graphic",
+  "scripts": {
+    "dev": "remotion studio",
+    "build": "remotion render BasheV3 out/bashe_v3.mp4 --codec=h264 --crf=20 --width=1080 --height=1920 --fps=30",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.539",
+    "@remotion/google-fonts": "^4.1.0-alpha9",
+    "@remotion/player": "^4.0.539",
+    "@remotion/shapes": "^4.1.0-alpha9",
+    "@remotion/transitions": "^4.0.539",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remotion": "^4.0.539"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.2"
+  }
+}

@@ -1,0 +1,9 @@
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("/fonts/Vazirmatn-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+html, body { margin: 0; background: #050508; }
+* { box-sizing: border-box; }
