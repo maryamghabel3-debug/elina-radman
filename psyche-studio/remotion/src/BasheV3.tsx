@@ -5,7 +5,7 @@ import {
   HtmlInCanvas,
 } from "remotion"
 
-import timeline from "../../../content/style_test/timeline.json"
+import timeline from "../../content/style_test/timeline.json"
 
 export const W = 1080
 export const H = 1920
@@ -22,11 +22,12 @@ const PANEL_RADIUS = 44
 const SILVER = "#a7acb8"
 const SUB_FILL = "#a5aeb5"
 
-type PhraseEvent = (typeof timeline)["stems"][number]["events"][number]
-type WordEvent = PhraseEvent["words"][number]
+// timeline.json is the source of truth for beats; keep access loose so the
+// composition adapts to the exported transcript shape.
+type AnyWord = { t: number; end?: number; text: string; role?: string | null; reliability?: string; is_key?: boolean; [key: string]: unknown }
+type AnyEvent = { t: number; end?: number; text: string; role?: string | null; reliability?: string; is_key?: boolean; word_level_impact_allowed?: boolean; words?: AnyWord[]; [key: string]: unknown }
 
-// flat, ordered list of every phrase/word beat
-const events: PhraseEvent[] = timeline.stems.flatMap((s) => s.events)
+const events: any[] = (timeline as any).stems.flatMap((s: any) => s.events ?? [])
 
 const frameFor = (t: number) => t * FPS
 const inFrames = 12 // 0.4s fade-in
@@ -34,9 +35,9 @@ const outFrames = 12 // 0.4s fade-out
 
 type Anim = { inProgress: number; outProgress: number; opacity: number }
 
-function eventAnim(frame: number, ev: PhraseEvent): Anim {
+function eventAnim(frame: number, ev: AnyEvent): Anim {
   const start = frameFor(ev.t)
-  const end = frameFor(ev.end)
+  const end = frameFor(ev.end != null ? ev.end : ev.t + 4)
   const inProgress = Math.max(0, Math.min(1, (frame - start) / inFrames))
   const outProgress = Math.max(
     0,
@@ -47,9 +48,9 @@ function eventAnim(frame: number, ev: PhraseEvent): Anim {
 
 type WordAnim = { opacity: number; scale: number }
 
-function wordAnim(frame: number, w: WordEvent): WordAnim {
+function wordAnim(frame: number, w: AnyWord): WordAnim {
   const start = frameFor(w.t)
-  const end = frameFor(w.end)
+  const end = frameFor(w.end != null ? w.end : w.t + 1)
   const inProg = Math.max(0, Math.min(1, (frame - start) / 10))
   const outProg = Math.max(0, Math.min(1, (frame - (end - 10)) / 10))
   const base = inProg * (1 - outProg)
@@ -255,13 +256,13 @@ const icons: Record<string, string> = {
 
 // ---------- beats renderer ----------
 
-const PhraseBeat: ComponentType<{ frame: number; ev: PhraseEvent }> = ({
+const PhraseBeat: ComponentType<{ frame: number; ev: AnyEvent }> = ({
   frame,
   ev,
 }) => {
   const anim = eventAnim(frame, ev)
   if (anim.opacity <= 0.01) return null
-  const isWeak = !!ev.weakRegionPhrase || ev.reliability !== "high"
+  const isWeak = ev.word_level_impact_allowed === false || ev.reliability !== "high"
 
   return (
     <GlassPanel
@@ -281,7 +282,7 @@ const PhraseBeat: ComponentType<{ frame: number; ev: PhraseEvent }> = ({
             {ev.text}
           </PersianText>
         ) : (
-          ev.words.map((w, i) => {
+          (ev.words ?? []).map((w, i) => {
             const wa = wordAnim(frame, w)
             if (wa.opacity <= 0.01) return null
             return (
@@ -295,24 +296,24 @@ const PhraseBeat: ComponentType<{ frame: number; ev: PhraseEvent }> = ({
                   transition: "all 0.25s ease",
                 })}
               >
-                {w.is_key ? (
-                  <PersianText
-                    size={52}
-                    color="#e8e8ea"
-                    opacity={wa.opacity}
-                    gradient
-                  >
-                    {w.text}
-                  </PersianText>
-                ) : (
-                  <PersianText
-                    size={34}
-                    color="#c9cfd6"
-                    opacity={wa.opacity}
-                  >
-                    {w.text}
-                  </PersianText>
-                )}
+              {w.is_key ? (
+                <PersianText
+                  size={52}
+                  color={w.role ?? "#e8e8ea"}
+                  opacity={wa.opacity}
+                  gradient
+                >
+                  {w.text}
+                </PersianText>
+              ) : (
+                <PersianText
+                  size={34}
+                  color={w.role ?? "#c9cfd6"}
+                  opacity={wa.opacity}
+                >
+                  {w.text}
+                </PersianText>
+              )}
               </div>
             )
           })
@@ -324,7 +325,7 @@ const PhraseBeat: ComponentType<{ frame: number; ev: PhraseEvent }> = ({
 
 const Subtitle = () => {
   const frame = useCurrentFrame()
-  const ev = events.find((e) => frame >= frameFor(e.t) && frame <= frameFor(e.end))
+  const ev = events.find((e) => frame >= frameFor(e.t) && frame <= frameFor(e.end ?? e.t + 4))
   return (
     <div
       style={st({
