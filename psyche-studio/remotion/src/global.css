@@ -5,5 +5,12 @@
   font-style: normal;
   font-display: swap;
 }
-html, body { margin: 0; background: #050508; }
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("../public/fonts/Vazirmatn-Black.ttf") format("truetype");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+html, body { margin: 0; background: #0B0B12; }
 * { box-sizing: border-box; }
