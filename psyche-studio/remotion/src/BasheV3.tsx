@@ -3,9 +3,11 @@ import {
   useCurrentFrame,
   interpolate,
   HtmlInCanvas,
+  Audio,
+  staticFile,
 } from "remotion"
 
-import timeline from "../../content/style_test/timeline.json"
+import timeline from "./data/timeline.json"
 
 export const W = 1080
 export const H = 1920
@@ -421,6 +423,7 @@ export const Scene: ComponentType = () => {
 
   return (
     <HtmlInCanvas width={W} height={H} durationInFrames={DURATION_S * FPS}>
+      <Audio src={staticFile("full_voice_cleaned.mp3")} />
       <BackgroundLayer />
       <TopRightDot />
       <FloorGrid />
