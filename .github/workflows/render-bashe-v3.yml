@@ -1,0 +1,47 @@
+name: Render BasheV3 (Remotion Dark Glass)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [arena/34e914e6-elina-radman]
+    paths:
+      - "psyche-studio/remotion/**"
+
+concurrency:
+  group: render-bashe-v3
+  cancel-in-progress: true
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: psyche-studio/remotion/package-lock.json
+
+      - name: Install dependencies
+        working-directory: psyche-studio/remotion
+        run: npm ci
+
+      - name: Ensure browser
+        working-directory: psyche-studio/remotion
+        run: npx remotion browser ensure
+
+      - name: Render video
+        working-directory: psyche-studio/remotion
+        run: >
+          npx remotion render BasheV3 out/bashe_v3.mp4
+          --codec=h264 --crf=20 --width=1080 --height=1920 --fps=30
+          --entry-point=./src/index.tsx
+          --audio=../content/my_voice_cleaned_v3/full_voice_cleaned.mp3
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bashe_v3_remotion
+          path: psyche-studio/remotion/out/bashe_v3.mp4
+          retention-days: 30
