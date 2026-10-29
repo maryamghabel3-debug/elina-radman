@@ -1,0 +1,69 @@
+name: Bashe Preview Frames
+
+on:
+  workflow_dispatch:
+    inputs:
+      render_full:
+        description: "Also render full video + audio QA"
+        type: boolean
+        default: false
+  push:
+    branches: [arena/34e914e6-elina-radman]
+    paths:
+      - "psyche-studio/remotion/**"
+
+jobs:
+  frames:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: psyche-studio/remotion/package-lock.json
+
+      - name: Install
+        working-directory: psyche-studio/remotion
+        run: npm ci
+
+      - name: Ensure browser
+        working-directory: psyche-studio/remotion
+        run: npx remotion browser ensure
+
+      - name: Render contact sheet
+        working-directory: psyche-studio/remotion
+        run: npx remotion still ContactSheet out/sheet.png
+
+      - name: Upload sheet
+        uses: actions/upload-artifact@v4
+        with:
+          name: bashe_sheet
+          path: psyche-studio/remotion/out/sheet.png
+          retention-days: 30
+
+      - name: Full render
+        if: ${{ inputs.render_full == true }}
+        working-directory: psyche-studio/remotion
+        run: >
+          npx remotion render BasheV3 out/bashe_v3.mp4
+          --codec=h264 --crf=20 --width=1080 --height=1920 --fps=30
+          --entry-point=./src/index.tsx
+          --audio=../content/my_voice_cleaned_v3/full_voice_cleaned.mp3
+
+      - name: Audio QA
+        if: ${{ inputs.render_full == true }}
+        run: |
+          echo "--- streams ---"
+          ffprobe -v error -show_entries stream=codec_type,codec_name,duration -of default=noprint_wrappers=1 psyche-studio/remotion/out/bashe_v3.mp4
+          echo "--- loudness ---"
+          ffmpeg -i psyche-studio/remotion/out/bashe_v3.mp4 -af volumedetect -f null - 2>&1 | grep -E "mean_volume|max_volume"
+
+      - name: Upload video
+        if: ${{ inputs.render_full == true }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: bashe_v3_remotion
+          path: psyche-studio/remotion/out/bashe_v3.mp4
+          retention-days: 30
