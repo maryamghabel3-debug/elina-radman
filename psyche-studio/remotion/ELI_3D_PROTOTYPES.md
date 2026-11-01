@@ -8,10 +8,16 @@ This is a **prototype only**: no narration, no music, no psychology script, no
 final Elina model. The audio drive and the old BasheV3 / ContactSheet
 compositions are untouched.
 
-| | Composition | Output |
-|---|---|---|
-| A | `EliCloudTest` | `out/eli/eli_cloud_test.mp4` |
-| B | `EliLinesTest` | `out/eli/eli_lines_test.mp4` |
+| | Composition | Deliverable (committed) | Fresh render |
+|---|---|---|---|
+| A | `EliCloudTest` | `psyche-studio/output/eli_prototypes/eli_cloud_test.mp4` | `remotion/out/eli/eli_cloud_test.mp4` |
+| B | `EliLinesTest` | `psyche-studio/output/eli_prototypes/eli_lines_test.mp4` | `remotion/out/eli/eli_lines_test.mp4` |
+| – | comparison sheet | `psyche-studio/output/eli_prototypes/eli_comparison_sheet.png` | `remotion/out/eli/eli_comparison_sheet.png` |
+
+The eight QA stills (`EliCloudTest_30/120/210/270.png`,
+`EliLinesTest_30/120/210/270.png`, i.e. ≈ 1 s, 4 s, 7 s, 9 s) sit next to the
+sheet. `remotion/out/` is git-ignored; `psyche-studio/output/` follows the
+existing convention in this repo for review renders.
 
 Both: **10 s · 1080×1920 · 30 fps · H.264 / yuv420p · silent**.
 
@@ -129,6 +135,33 @@ changes in every quarter of the timeline.
 
 `scripts/make-comparison-sheet.py` assembles the labelled 4×2 sheet
 (`out/eli/eli_comparison_sheet.png`) from frames 30 / 120 / 210 / 270.
+
+## Verified / not verified
+
+Verified on the rendered files themselves (not from TypeScript):
+
+| Check | A — Cloud | B — Lines |
+|---|---|---|
+| duration 10.000 s / 300 frames | ✅ | ✅ |
+| 1080×1920 | ✅ | ✅ |
+| 30 fps | ✅ | ✅ |
+| H.264 / yuv420p | ✅ | ✅ |
+| no audio stream at all | ✅ | ✅ |
+| full decode, zero decoder errors | ✅ | ✅ |
+| no black frames | ✅ | ✅ |
+| exposure sane (mean luma ≈ 189) | ✅ | ✅ |
+| 100 % of frames differ from the previous one | ✅ | ✅ |
+| motion in 0–2 s / 2–5 s / 5–8 s / 8–10 s | ✅ | ✅ |
+| the two versions differ at 4 s | ✅ | — |
+| frames inspected by eye (1 s, 4 s, 7 s, 9 s) | ✅ | ✅ |
+
+Not verified / open:
+
+- No CI run exists yet for these compositions (see `ELI_CI.md`), so there is no
+  Actions artifact to download. The MP4s in `psyche-studio/output/eli_prototypes/`
+  are real local renders of this exact code.
+- "Which design is better" is a human judgement; the sheet is the input for it.
+- The room is intentionally minimal: no human character, per the brief.
 
 ---
 
