@@ -148,7 +148,7 @@ function ReactionGraphics({frame}:{frame:number}) {
   const start = Math.round(6.66 * FPS);
   const hide = Math.round(8.25 * FPS);
   const opacity = interpolate(frame,[start,start+5,hide-5,hide],[0,1,1,0],clamp);
-  const bubbles = [{x:790,y:400,size:68,delay:0},{x:875,y:335,size:82,delay:2},{x:960,y:430,size:62,delay:4}];
+  const bubbles = [{x:340,y:310,size:68,delay:0},{x:440,y:220,size:82,delay:2},{x:545,y:330,size:62,delay:4}];
   const wordStart = Math.round(6.63 * FPS);
   const wordHide = Math.round(7.75 * FPS);
   const wordOpacity = interpolate(frame,[wordStart,wordStart+4,wordHide-5,wordHide],[0,1,1,0],clamp);
