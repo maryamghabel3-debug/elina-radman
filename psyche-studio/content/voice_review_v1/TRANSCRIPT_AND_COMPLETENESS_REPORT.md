@@ -55,3 +55,34 @@ Level matching only makes the candidates easier to compare. It does not improve 
 ## Next verification needed
 
 Before naming files `eli_prepared` / `elina_prepared`, cutting any turns, or building the first-scene audio preview, the actual spoken transcript and speaker-to-file mapping must be verified. The filenames alone do not meet that requirement. Once verified, turn boundaries should be aligned from the spoken words/timestamps—not inferred from text line breaks or silence detection.
+
+---
+
+## Environment and ASR feasibility recheck — 2026-11-04
+
+**Result: transcription is still blocked in this sandbox.** This recheck did not alter or re-encode either original audio file.
+
+### 1. Availability and acquisition route
+
+- The current Python environment has no `faster-whisper`, `ctranslate2`, Whisper, PyTorch, ONNX Runtime, or Hugging Face Hub package; no corresponding command-line ASR tool was found. No Whisper/CTranslate2 model files or model cache were found under the workspace or user cache, and the pip wheel cache contains no locally built wheels.
+- The project architecture document (`docs/architecture/EDITOR-SUITE-SPEC-V2.md`) lists `faster-whisper` as an optional engine, but does **not** pin a model ID/revision, provide an acquisition recipe, or record file checksums. Repository reports/history likewise contain no prior model artifact or verifiable acquisition record. I cannot recover the previous session’s model from this checkout.
+- I checked the [official SYSTRAN faster-whisper README](https://github.com/SYSTRAN/faster-whisper#model-conversion). It says the standard named-model path downloads its CTranslate2 checkpoint from the Hugging Face Hub. The official model host is not among this sandbox’s permitted outbound hosts. The runtime package can be obtained from PyPI, but installing it alone would not provide the model weights.
+- No weights were downloaded or used. Because no exact checkpoint/revision was identified and the official artifact host cannot be reached here, I did not estimate or fetch a model payload. No unofficial mirror or unverified weights were considered.
+
+With a verified multilingual Whisper/CTranslate2 model already available locally, a Persian (`fa`) faster-whisper run with segment/word timestamps would be technically possible. That has **not** been tested on these recordings, so accuracy/reliability cannot be claimed now.
+
+### 2. Transcript obtained
+
+**None.** No text was inferred from filenames, planned dialogue, pauses, or metadata.
+
+### 3. Opening-turn coverage
+
+All six remain **unknown / not verifiable**, not “missing”: turns 01–06 in the checklist above. Speaker-to-file assignment is also unverified.
+
+### 4. Uncertain words and truncation
+
+No spoken words or timestamps are available to mark as uncertain. Pronunciation of `«باشه»` and `«ذهن‌خوانی»`, omissions/repetitions, unexpected speech, and beginning/ending or website-character-limit truncation remain **unverified** for both sources. File duration and the earlier silence-threshold scan cannot settle these questions.
+
+### 5. Exact smallest next action
+
+Make the **previously used, Persian-capable CTranslate2 model directory** available locally with its official model ID/revision and a provenance/integrity manifest (SHA-256 for the model files), or provide a route that permits fetching that exact official checkpoint. Then install the faster-whisper runtime from PyPI if needed and run it on the two unchanged sources. Until that checkpoint is verifiably available, transcription and turn-coverage claims must remain blocked.
