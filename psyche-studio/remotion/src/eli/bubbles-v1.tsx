@@ -254,10 +254,13 @@ function bubblePlan(line:Line,frame:number):BubblePlan {
   return {text:wrapPersian(line.text),key:line.id,startFrame:lineStart};
 }
 
-function BubbleTail({side}:{side:"left"|"right"}) {
-  const leftPath = side === "left" ? "M2 2 L76 2 L23 58 Z" : "M2 2 L76 2 L55 58 Z";
-  const innerPath = side === "left" ? "M7 6 L69 6 L24 49 Z" : "M8 6 L71 6 L54 49 Z";
-  return <svg aria-hidden="true" width="80" height="62" viewBox="0 0 80 62" style={{position:"absolute",left:side === "left" ? 24 : undefined,right:side === "right" ? 24 : undefined,bottom:-42,zIndex:0,overflow:"visible"}}>
+function BubbleTail({side}:{side:"left"|"right"|"center"}) {
+  const pointX = side === "left" ? 23 : side === "right" ? 55 : 40;
+  const leftPath = `M2 2 L76 2 L${pointX} 58 Z`;
+  const innerX = side === "left" ? 24 : side === "right" ? 54 : 40;
+  const innerPath = `M7 6 L69 6 L${innerX} 49 Z`;
+  const placeLeft = side === "left" ? 24 : side === "center" ? "calc(50% - 40px)" : undefined;
+  return <svg aria-hidden="true" width="80" height="62" viewBox="0 0 80 62" style={{position:"absolute",left:placeLeft,right:side === "right" ? 24 : undefined,bottom:-42,zIndex:0,overflow:"visible"}}>
     <path d={leftPath} fill="#e97f72" />
     <path d={innerPath} fill="#fff7ec" />
   </svg>;
@@ -275,11 +278,11 @@ function DialogueBubble({line,frame,beat}:{line:Line;frame:number;beat:EditBeat}
   const shared = beat.kind === "shared";
   const phone = plan.caption;
   const placement = phone
-    ? {left:130,top:1330,width:820,tail:"none" as const}
+    ? {left:310,top:1335,width:460,tail:"none" as const}
     : shared
       ? eli
-        ? {left:20,top:145,width:520,tail:"right" as const}
-        : {left:20,top:145,width:520,tail:"right" as const}
+        ? {left:20,top:50,width:520,tail:"center" as const}
+        : {left:20,top:50,width:520,tail:"right" as const}
       : eli && line.id === "p1_l5"
         ? {left:610,top:430,width:440,tail:"left" as const}
         : eli
@@ -289,7 +292,7 @@ function DialogueBubble({line,frame,beat}:{line:Line;frame:number;beat:EditBeat}
   const tail = placement.tail;
   return <div aria-label={visibleText} style={{position:"absolute",left:placement.left,top:placement.top,width:placement.width,zIndex:40,opacity,transform:`scale(${scale})`,transformOrigin:eli?"bottom left":"bottom right",pointerEvents:"none",fontFamily:font}}>
     {tail !== "none" && <BubbleTail side={tail} />}
-    <div dir="rtl" style={{position:"relative",zIndex:1,boxSizing:"border-box",width:"100%",padding:phone?"12px 24px":"16px 23px",borderRadius:phone?22:26,background:"#fff7ec",border:`4px solid ${phone?"#e97f72":"#e97f72"}`,boxShadow:"0 12px 28px rgba(38,33,35,.2)",color:"#392e2b",fontSize:phone?30:32,fontWeight:700,lineHeight:1.25,textAlign:"center",unicodeBidi:"plaintext",whiteSpace:"pre-line",overflowWrap:"anywhere"}}>{visibleText}</div>
+    <div dir="rtl" style={{position:"relative",zIndex:1,boxSizing:"border-box",width:"100%",padding:phone?"10px 18px":"16px 23px",borderRadius:phone?22:26,background:"#fff7ec",border:`4px solid ${phone?"#e97f72":"#e97f72"}`,boxShadow:"0 12px 28px rgba(38,33,35,.2)",color:"#392e2b",fontSize:phone?26:32,fontWeight:700,lineHeight:1.25,textAlign:"center",unicodeBidi:"plaintext",whiteSpace:"pre-line",overflowWrap:"anywhere"}}>{visibleText}</div>
   </div>;
 }
 
