@@ -31,6 +31,16 @@ def key(source: Path, target: Path):
     matte_color = np.median(border, axis=0)
     distance = np.sqrt(np.sum((rgb - matte_color[None, None, :]) ** 2, axis=2))
     alpha = smoothstep(30.0, 112.0, distance)
+
+    if source.name.startswith("elina_chair_"):
+        # Remove the image-model floor spill with the reviewed grayscale lower
+        # matte; its edge is feathered separately from the chroma key.
+        matte_path = OUT / "source_images" / source.name.replace("_source.png", "_floor_matte.png")
+        floor_matte = np.asarray(Image.open(matte_path).convert("L"), dtype=np.float32) / 255.0
+        if floor_matte.shape != alpha.shape:
+            raise ValueError(f"matte size mismatch: {matte_path}")
+        alpha *= floor_matte
+
     alpha = np.asarray(Image.fromarray(np.uint8(alpha * 255), "L").filter(ImageFilter.GaussianBlur(1.0)), dtype=np.float32) / 255
     out = rgb.copy()
     other = np.maximum(out[:, :, 0], out[:, :, 2])

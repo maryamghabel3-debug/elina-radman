@@ -64,7 +64,7 @@ function Subtitle({line}:{line:Line}) {
   const eli=line.speaker==="eli";
   const label=eli?"الی":"الینا";
   const color=eli?"#ffd447":"#f08070";
-  return <div style={{position:"absolute",zIndex:25,top:1320,left:70,right:70,minHeight:170,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8}}>
+  return <div style={{position:"absolute",zIndex:25,top:1400,left:70,right:70,minHeight:170,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8}}>
     <div dir="rtl" style={{padding:"4px 22px",borderRadius:20,background:color,color:"#263139",fontFamily:font,fontSize:28,fontWeight:700,boxShadow:"0 4px 14px rgba(0,0,0,.2)"}}>{label}</div>
     <div dir="rtl" style={{width:"100%",textAlign:"center",color:"#fff",fontFamily:font,fontSize:line.id==="p1_l5"?40:44,fontWeight:700,lineHeight:1.28,textShadow:"0 3px 7px rgba(12,25,29,.95),0 1px 20px rgba(12,25,29,.8)",unicodeBidi:"plaintext"}}>{line.text}</div>
   </div>;
@@ -124,7 +124,7 @@ export const EliElinaTest01:React.FC=()=>{
   const eliStyle:CSSProperties={left:30,top:320,width:460,height:818,transform:`translateY(${Math.sin(frame/14)*13+eliBounce}px) rotate(${Math.sin(frame/31)*1.5}deg) scale(${entryScale})`,transformOrigin:"50% 70%",filter:"drop-shadow(0 16px 18px rgba(26,31,43,.23))"};
 
   return <AbsoluteFill style={{width:W,height:H,overflow:"hidden",background:"#84c4c5",fontFamily:font}}>
-    <div style={{position:"absolute",inset:-70,width:W+140,height:H+140,transform:`translateX(${roomShift}px) scale(${camera})`,transformOrigin:"center"}}>{portrait("room_plate.png")}</div>
+    <div style={{position:"absolute",inset:0,transform:`translateX(${roomShift}px) scale(${camera})`,transformOrigin:"center"}}>{portrait("room_plate.png")}</div>
     <div style={{position:"absolute",inset:0,opacity:sceneAlpha,pointerEvents:"none"}}>
       <div style={{position:"absolute",inset:0,transform:`scale(${camera})`,transformOrigin:"center"}}>
         {portrait(elinaFile[elinaPose],{...elinaStyle,opacity:elinaBlend.mix})}
