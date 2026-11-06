@@ -1,0 +1,31 @@
+# Exact Python package lock tested in the local Python 3.11.2 / CPU probe.
+# Direct ASR stack: faster-whisper 1.2.1 + Hugging Face Hub 0.34.4.
+PyYAML==6.0.3
+av==18.1.0
+certifi==2026.10.23
+charset-normalizer==3.5.2
+ctranslate2==4.8.5
+faster-whisper==1.2.1
+filelock==4.2.9
+flatbuffers==25.12.19
+fsspec==2026.9.0
+hf-xet==1.8.0
+huggingface-hub==0.34.4
+idna==3.20
+numpy==2.4.6
+onnxruntime==1.31.1
+packaging==26.3
+protobuf==7.36.2
+requests==2.34.2
+tokenizers==0.23.3
+tqdm==4.70.1
+typing_extensions==4.16.0
+urllib3==2.8.0
+
+# Models are pinned per run to immutable Hugging Face commit SHAs:
+# primary: Systran/faster-whisper-large-v3
+# cross-check: Systran/faster-whisper-medium (independent ASR pass)
+# The workflow resolves each repository's main ref once, validates a 40-hex SHA,
+# passes that SHA to faster-whisper, and records it in model_revisions.json and
+# TRANSCRIPT_REVIEW.md. The exact SHAs cannot be resolved in this sandbox because
+# huggingface.co is outside its outbound network allowlist.
