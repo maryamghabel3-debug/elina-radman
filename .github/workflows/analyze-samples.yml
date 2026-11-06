@@ -1,0 +1,73 @@
+name: تحلیل نمونه‌ویدیوها
+
+# وقتی ویدیو در media/samples/ آپلود می‌شود، این workflow خودکار تحلیل را اجرا می‌کند
+# و گزارش متنی + فریم‌های کلیدی را به عنوان artifact برمی‌گرداند.
+#
+# نحوه‌ی استفاده:
+#   ۱) ویدیوها را در پوشه‌ی media/samples/ آپلود کنید (کشیدن-و-رها در GitHub)
+#   ۲) Actions → «تحلیل نمونه‌ویدیوها» → Run workflow
+#   ۳) گزارش را از بخش Artifacts دانلود کنید
+
+on:
+  push:
+    paths:
+      - 'media/samples/**'
+  workflow_dispatch:
+    inputs:
+      clip_limit:
+        description: 'حداکثر تعداد فایل برای تحلیل (۰ = همه)'
+        required: false
+        default: '0'
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: نصب وابستگی‌ها
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          pip install --quiet pillow numpy arabic-reshaper python-bidi
+
+      - name: فهرست فایل‌های ورودی
+        run: |
+          echo "فایل‌های موجود در media/samples:"
+          find media/samples -type f \( -iname '*.mp4' -o -iname '*.mov' -o -iname '*.webm' -o -iname '*.mkv' \) -printf '  %p  %k KB\n' || echo "  (خالی)"
+
+      - name: اجرای تحلیل
+        run: |
+          LIMIT="${{ github.event.inputs.clip_limit }}"
+          if [ -z "$LIMIT" ]; then LIMIT=0; fi
+          python scripts/analyze_lessons.py media/samples --out analysis --limit "$LIMIT"
+
+      - name: خلاصه در صفحه‌ی اجرا
+        if: always()
+        run: |
+          if [ -f analysis/report.md ]; then
+            head -60 analysis/report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "گزارشی تولید نشد." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: بارگذاری گزارش
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: motion-analysis
+          path: |
+            analysis/report.md
+            analysis/report.json
+            analysis/keyframes/
+          retention-days: 30
+          if-no-files-found: warn

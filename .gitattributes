@@ -1,0 +1,11 @@
+# ویدیوهای نمونه‌ی آپلودشده توسط مالک — LFS برای فایل‌های سنگین
+media/samples/**/*.mp4  filter=lfs diff=lfs merge=lfs -text
+media/samples/**/*.mov  filter=lfs diff=lfs merge=lfs -text
+media/samples/**/*.webm filter=lfs diff=lfs merge=lfs -text
+media/samples/**/*.mkv  filter=lfs diff=lfs merge=lfs -text
+media/samples/**/*.m4v  filter=lfs diff=lfs merge=lfs -text
+media/samples/**/*.avi  filter=lfs diff=lfs merge=lfs -text
+
+# خروجی تحلیل، متن است — نه LFS
+analysis/**/*.md   text
+analysis/**/*.json text

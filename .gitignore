@@ -47,3 +47,6 @@ content/assets/characters/ellie/*.png
 content/assets/characters/ellie/*.webp
 content/assets/characters/ellie/*.heic
 content/assets/characters/ellie/*.gif
+
+# ---------- خروجی رندر موشن ----------
+out/

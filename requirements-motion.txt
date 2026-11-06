@@ -1,0 +1,7 @@
+# وابستگی‌های موتور موشن (مستقل از کل سیستم)
+# نصب:  pip install -r requirements-motion.txt
+pillow>=10.0
+numpy>=1.26
+arabic-reshaper>=3.0.0
+python-bidi>=0.4.2
+imageio-ffmpeg>=0.4.9   # باینری ffmpeg را خودش می‌آورد
