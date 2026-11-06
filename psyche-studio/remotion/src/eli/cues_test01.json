@@ -1,0 +1,18 @@
+{
+  "composition": "EliElinaTest01",
+  "fps": 30,
+  "durationSeconds": 12,
+  "shots": [
+    { "id": "wide", "start": 0, "end": 3.5 },
+    { "id": "phone_closeup", "start": 3.5, "end": 6.5 },
+    { "id": "medium", "start": 6.5, "end": 12 }
+  ],
+  "lines": [
+    { "id": "p1_l1", "start": 0, "end": 2.15, "speaker": "eli", "text": "الینا! الینا! گوشیت لرزید!", "eliPose": "excited", "elinaPose": "neutral" },
+    { "id": "p1_l2", "start": 2.15, "end": 3.5, "speaker": "elina", "text": "آره، دیدم... جواب داده.", "eliPose": "excited", "elinaPose": "neutral" },
+    { "id": "p1_l3", "start": 3.5, "end": 4.65, "speaker": "eli", "text": "خب؟ چی نوشته؟ زود باش بخون!", "eliPose": "curious", "elinaPose": "concerned" },
+    { "id": "p1_l4", "start": 4.65, "end": 6.5, "speaker": "elina", "text": "فقط نوشته «باشه».", "eliPose": "curious", "elinaPose": "concerned" },
+    { "id": "p1_l5", "start": 6.5, "end": 10.05, "speaker": "eli", "text": "همین؟! فقط باشه؟ نه سلامی، نه استیکری، نه هیچی؟", "eliPose": "suspicious", "elinaPose": "concerned" },
+    { "id": "p1_l6", "start": 10.05, "end": 12, "speaker": "elina", "text": "نه... فقط همین.", "eliPose": "suspicious", "elinaPose": "concerned" }
+  ]
+}
